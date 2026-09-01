@@ -1,0 +1,19 @@
+# Spike A / fetch layer
+requests>=2.32
+beautifulsoup4>=4.12
+
+# Best-quality extraction, but depends on lxml whose unsigned DLLs are blocked
+# by Windows Smart App Control on some machines. spike_a.py falls back to a
+# pure-Python BeautifulSoup extractor if this fails to import.
+trafilatura>=2.0
+
+# Optional JS-rendering fallback for Spike A:
+#   pip install playwright && playwright install chromium
+# playwright>=1.49
+
+# Later phases (uncomment as needed)
+# psycopg[binary]>=3.2
+# scikit-learn>=1.5
+# torch
+# transformers
+# anthropic

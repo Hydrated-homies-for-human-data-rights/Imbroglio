@@ -1,0 +1,24 @@
+# Spike A test set: 5 large, 10 medium, 5 small (proposal objective 1)
+# Large
+google.com
+facebook.com
+amazon.com
+apple.com
+microsoft.com
+# Medium
+notion.so
+ticktick.com
+duolingo.com
+canva.com
+spotify.com
+dropbox.com
+figma.com
+discord.com
+reddit.com
+zoom.us
+# Small
+todoist.com
+obsidian.md
+raindrop.io
+standardnotes.com
+bear.app

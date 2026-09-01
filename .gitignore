@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Spike output
+pipeline/spike_a/results/
+
+# Data / models (large artifacts stay out of git)
+pipeline/data/
+pipeline/models/
+*.ckpt
+*.safetensors
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
