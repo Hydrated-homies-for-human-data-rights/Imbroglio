@@ -11,9 +11,12 @@ trafilatura>=2.0
 #   pip install playwright && playwright install chromium
 # playwright>=1.49
 
+# Storage + ML track
+psycopg[binary]>=3.2
+scikit-learn>=1.5
+numpy>=2.0
+
 # Later phases (uncomment as needed)
-# psycopg[binary]>=3.2
-# scikit-learn>=1.5
 # torch
 # transformers
 # anthropic

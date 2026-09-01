@@ -31,6 +31,10 @@ pip install -r requirements.txt
 # Run Spike A (extraction feasibility test on 20 sites)
 cd spike_a
 python spike_a.py
+
+# Analyze one domain end to end (discover -> extract -> hash -> store)
+python -m imbroglio.cli analyze notion.so           # needs Postgres up
+python -m imbroglio.cli analyze notion.so --no-db   # dry run
 ```
 
 ## Milestone gates
