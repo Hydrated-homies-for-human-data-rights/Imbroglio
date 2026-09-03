@@ -31,6 +31,9 @@ class DocOutcome:
     version_id: int | None = None
     chars: int = 0
     notes: str = ""
+    content_hash: str | None = None
+    discovered_via: str | None = None
+    fetch_method: str | None = None
 
 
 def analyze(domain: str, use_playwright: bool = True,
@@ -55,7 +58,8 @@ def analyze(domain: str, use_playwright: bool = True,
 
             if conn is None:
                 outcomes.append(DocOutcome(doc_type, "stored-new", loc.url,
-                                           None, len(text), f"hash {digest[:12]} (dry run)"))
+                                           None, len(text), "dry run (no db)",
+                                           digest, loc.discovered_via, loc.fetch_method))
                 continue
 
             document_id = db.upsert_document(conn, service_id, doc_type,
@@ -77,7 +81,8 @@ def analyze(domain: str, use_playwright: bool = True,
             # TODO(scorer): fold verified findings into category scores
 
             conn.commit()
-            outcomes.append(DocOutcome(doc_type, status, loc.url, version_id, len(text)))
+            outcomes.append(DocOutcome(doc_type, status, loc.url, version_id, len(text),
+                                       "", digest, loc.discovered_via, loc.fetch_method))
     finally:
         if conn is not None:
             conn.close()

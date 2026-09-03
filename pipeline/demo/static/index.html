@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imbroglio Console</title>
+<style>
+  :root {
+    --paper: #fafaf8;
+    --card: #ffffff;
+    --ink: #1a1d1b;
+    --ink-soft: #5c625e;
+    --rule: #d9d6cc;
+    --found: #1f7a3d;
+    --missing: #b3261e;
+    --changed: #9a6b00;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; }
+  h1 {
+    font-size: 20px; font-weight: 700; letter-spacing: 0.35em;
+    margin: 0; text-transform: uppercase;
+  }
+  .sub { color: var(--ink-soft); font-size: 12px; margin-top: 4px; }
+  .db-pill { font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .db-pill::before { content: "●"; margin-right: 6px; color: var(--missing); }
+  .db-pill.on::before { color: var(--found); }
+
+  form { display: flex; gap: 8px; margin-top: 28px; }
+  input[type="text"] {
+    flex: 1; padding: 12px 14px; font: inherit; color: inherit;
+    background: var(--card); border: 1.5px solid var(--ink); border-radius: 2px;
+  }
+  input[type="text"]:focus-visible, button:focus-visible, input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--found); outline-offset: 2px;
+  }
+  button {
+    padding: 12px 22px; font: inherit; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; cursor: pointer; border-radius: 2px;
+    background: var(--ink); color: var(--paper); border: 1.5px solid var(--ink);
+  }
+  button:disabled { opacity: 0.45; cursor: wait; }
+  .opts { margin-top: 10px; font-size: 12px; color: var(--ink-soft); display: flex; gap: 18px; }
+  .opts label { cursor: pointer; }
+
+  #status { margin-top: 24px; font-size: 12px; color: var(--ink-soft); min-height: 18px; }
+  #status .dots::after {
+    content: ""; display: inline-block; width: 1em; text-align: left;
+    animation: dots 1.2s steps(4) infinite;
+  }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  #status .stages b { color: var(--ink); font-weight: 400; }
+
+  .error {
+    margin-top: 24px; padding: 12px 14px; border: 1.5px solid var(--missing);
+    color: var(--missing); border-radius: 2px; font-size: 13px;
+  }
+
+  .card {
+    position: relative; background: var(--card); border: 1.5px solid var(--ink);
+    border-radius: 2px; padding: 18px 18px 16px; margin-top: 20px;
+  }
+  .card .doc-label {
+    font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .card .doc-url { margin-top: 8px; word-break: break-all; }
+  .card .doc-url a { color: var(--ink); }
+  .card .meta { margin-top: 10px; font-size: 12px; color: var(--ink-soft); }
+  .card .meta .chip { color: var(--ink); }
+  .card .meta .chip.changed { color: var(--changed); font-weight: 700; }
+  .card .notes { margin-top: 8px; font-size: 12px; color: var(--missing); word-break: break-word; }
+
+  .stamp {
+    position: absolute; top: 12px; right: 14px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 4px 10px; border: 2px solid; border-radius: 2px;
+    transform: rotate(-4deg);
+  }
+  .stamp.found { color: var(--found); border-color: var(--found); }
+  .stamp.missing { color: var(--missing); border-color: var(--missing); }
+  @media (prefers-reduced-motion: no-preference) {
+    .stamp { animation: stamp-in 0.28s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+    @keyframes stamp-in {
+      from { transform: rotate(-9deg) scale(1.7); opacity: 0; }
+      to   { transform: rotate(-4deg) scale(1); opacity: 1; }
+    }
+  }
+
+  #log { margin-top: 36px; }
+  #log h2 {
+    font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 400;
+    border-bottom: 1px solid var(--rule); padding-bottom: 6px;
+  }
+  #log ul { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; color: var(--ink-soft); }
+  #log li { padding: 3px 0; }
+  #log .y { color: var(--found); }
+  #log .n { color: var(--missing); }
+
+  footer {
+    margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--rule);
+    font-size: 11px; color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Imbroglio</h1>
+      <div class="sub">policy intake console — vertical slice, week 1</div>
+    </div>
+    <div class="db-pill" id="dbPill">checking db</div>
+  </header>
+
+  <form id="form">
+    <input type="text" id="domain" placeholder="domain, e.g. notion.so"
+           autocomplete="off" spellcheck="false" autofocus>
+    <button id="go" type="submit">Analyze</button>
+  </form>
+  <div class="opts">
+    <label><input type="checkbox" id="pw" checked> browser fallback</label>
+    <label><input type="checkbox" id="store" checked> store to database</label>
+  </div>
+
+  <div id="status"></div>
+  <div id="results"></div>
+
+  <div id="log" hidden>
+    <h2>Session log</h2>
+    <ul id="logList"></ul>
+  </div>
+
+  <footer>
+    Analysis is automated and unreviewed. Every finding must carry a verbatim
+    quote before it is ever published — this console shows the intake stage only.
+  </footer>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  const DOC_LABELS = { privacy: "Privacy policy", terms: "Terms of service" };
+  const STATUS_LABELS = {
+    "stored-new": "new version stored",
+    "unchanged": "unchanged since last fetch",
+    "changed": "CONTENT CHANGED since last fetch",
+    "failed": "not located",
+  };
+
+  let timer = null;
+
+  fetch("/api/health").then(r => r.json()).then(h => {
+    $("dbPill").textContent = h.db ? "db connected" : "db offline — dry run";
+    $("dbPill").classList.toggle("on", h.db);
+  }).catch(() => { $("dbPill").textContent = "server unreachable"; });
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const domain = $("domain").value.trim();
+    if (!domain) return;
+
+    $("go").disabled = true;
+    $("results").innerHTML = "";
+    const t0 = Date.now();
+    const tick = () => {
+      const s = ((Date.now() - t0) / 1000).toFixed(0);
+      $("status").innerHTML =
+        `working on <b>${esc(domain)}</b> — ${s}s ` +
+        `<span class="stages">discover &rarr; fetch &rarr; extract &rarr; hash &rarr; store</span>` +
+        `<span class="dots"></span>`;
+    };
+    tick();
+    timer = setInterval(tick, 1000);
+
+    try {
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain,
+          playwright: $("pw").checked,
+          store: $("store").checked,
+        }),
+      });
+      const data = await resp.json();
+      clearInterval(timer);
+      $("status").textContent = "";
+
+      if (!resp.ok) {
+        $("results").innerHTML = `<div class="error">${esc(data.error || "Something went wrong.")}</div>`;
+        return;
+      }
+      render(data);
+      logRun(data);
+    } catch (err) {
+      clearInterval(timer);
+      $("status").textContent = "";
+      $("results").innerHTML =
+        `<div class="error">Lost the server. Is app.py still running? (${esc(err.message)})</div>`;
+    } finally {
+      $("go").disabled = false;
+      $("domain").select();
+    }
+  });
+
+  function render(data) {
+    const cards = data.outcomes.map((o, i) => {
+      const stamp = o.found
+        ? `<span class="stamp found" style="animation-delay:${i * 0.35}s">Found &#10003;</span>`
+        : `<span class="stamp missing" style="animation-delay:${i * 0.35}s">Not found</span>`;
+      const body = o.found ? `
+        <div class="doc-url"><a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.url)}</a></div>
+        <div class="meta">
+          ${o.chars.toLocaleString()} chars · found via ${esc(o.discovered_via)} · ${esc(o.fetch_method)} fetch<br>
+          sha256 ${esc((o.content_hash || "").slice(0, 16))}&hellip;
+          ${o.version_id ? ` · version ${o.version_id}` : ""} ·
+          <span class="chip ${o.status === "changed" ? "changed" : ""}">${STATUS_LABELS[o.status]}</span>
+          ${data.db ? "" : " · dry run (db off)"}
+        </div>` : `
+        <div class="notes">${esc(o.notes || "no candidate link, common path, or iframe yielded a valid document")}</div>`;
+      return `<div class="card">
+        <div class="doc-label">${DOC_LABELS[o.doc_type] || esc(o.doc_type)}</div>
+        ${stamp}${body}
+      </div>`;
+    }).join("");
+    $("results").innerHTML = cards +
+      `<div style="margin-top:14px;font-size:12px;color:var(--ink-soft)">finished in ${data.seconds}s</div>`;
+  }
+
+  function logRun(data) {
+    $("log").hidden = false;
+    const marks = data.outcomes.map(o =>
+      `${DOC_LABELS[o.doc_type].split(" ")[0].toLowerCase()} ` +
+      (o.found ? '<span class="y">&#10003;</span>' : '<span class="n">&#10007;</span>')
+    ).join(" · ");
+    const li = document.createElement("li");
+    li.innerHTML = `${esc(data.domain)} — ${marks} — ${data.seconds}s`;
+    $("logList").prepend(li);
+  }
+</script>
+</body>
+</html>
