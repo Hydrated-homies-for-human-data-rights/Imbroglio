@@ -13,9 +13,12 @@ fast and the crawler stays polite.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
+
+log = logging.getLogger("imbroglio")
 
 import requests
 from bs4 import BeautifulSoup
@@ -137,18 +140,26 @@ def locate_document(domain: str, doc_type: str,
             continue
         tried.add(url)
 
+        log.info("[%s] trying %s (%s)", doc_type, url, via)
         html, text, status, method = _try_url(url, doc_type, session, use_playwright)
         if html is None:
+            log.info("[%s]   fetch failed (%s)", doc_type, status)
             result.notes.append(f"{via} {url} -> {status}")
             continue
 
         result.url, result.discovered_via, result.fetch_method = url, via, method
         if _validate(doc_type, text):
+            log.info("[%s]   got %s chars via %s fetch — looks like a real document",
+                     doc_type, f"{len(text):,}", method)
             result.ok, result.text = True, text
             return result
+        log.info("[%s]   page too thin (%d chars), trying next candidate", doc_type, len(text))
         result.notes.append(f"{via} {url} -> thin ({len(text)} chars)")
         for src in _iframe_srcs(html, url):  # shell page? follow its iframes
+            log.info("[%s]   page embeds an iframe, queueing %s", doc_type, src)
             probes.append((src, "iframe"))
+    if not result.ok:
+        log.info("[%s] no candidate produced a valid document", doc_type)
     return result
 
 
@@ -156,15 +167,23 @@ def locate_all(domain: str, use_playwright: bool = True) -> dict[str, Located]:
     """Discover and extract both document types for a domain."""
     session = requests.Session()
     homepage = f"https://{domain}"
+    log.info("fetching homepage %s", homepage)
     html, _status = fetch_static(homepage, session)
 
     cands: dict[str, list[tuple[str, str]]] = {"privacy": [], "terms": []}
     if html:
         cands = _candidates(html, homepage)
+        log.info("homepage links: %d privacy candidate(s), %d terms candidate(s)",
+                 len(cands["privacy"]), len(cands["terms"]))
+    else:
+        log.info("homepage static fetch failed")
     if use_playwright and not (cands["privacy"] or cands["terms"]):
+        log.info("no candidates in static HTML — re-rendering homepage in headless browser")
         rendered, _ = fetch_rendered(homepage)  # JS-shell homepage
         if rendered:
             cands = _candidates(rendered, homepage)
+            log.info("rendered homepage links: %d privacy, %d terms",
+                     len(cands["privacy"]), len(cands["terms"]))
 
     return {
         dt: locate_document(domain, dt, cands[dt], session, use_playwright)

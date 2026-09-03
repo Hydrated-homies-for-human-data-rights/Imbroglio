@@ -16,9 +16,12 @@ the analyze-once-and-cache economics the proposal is built on.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from . import db
+
+log = logging.getLogger("imbroglio")
 from .locate import Located, locate_all
 from .normalize import content_hash, normalize
 
@@ -55,6 +58,8 @@ def analyze(domain: str, use_playwright: bool = True,
 
             text = normalize(loc.text)
             digest = content_hash(text)
+            log.info("[%s] normalized to %s chars, sha256 %s…",
+                     doc_type, f"{len(text):,}", digest[:12])
 
             if conn is None:
                 outcomes.append(DocOutcome(doc_type, "stored-new", loc.url,
@@ -70,11 +75,15 @@ def analyze(domain: str, use_playwright: bool = True,
 
             if previous is None:
                 status = "stored-new"
+                log.info("[%s] first version stored (id %d)", doc_type, version_id)
             elif previous[1] == digest:
                 status = "unchanged"
+                log.info("[%s] hash matches stored version %d — no change", doc_type, previous[0])
             else:
                 status = "changed"
                 db.insert_change_event(conn, document_id, previous[0], version_id)
+                log.info("[%s] hash differs from version %d — change event recorded",
+                         doc_type, previous[0])
 
             # TODO(classifier): route segments of `text` to practice categories
             # TODO(llm_extract): answer rubric questions on relevant segments
