@@ -92,7 +92,8 @@
         const name = o.doc_type === "privacy" ? "privacy policy" : "terms of service";
         if (o.found) {
           out += `<span class="ok">[FOUND]</span> ${name}\n`;
-          out += `        <a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.url)}</a>\n`;
+          const safeUrl = /^https?:\/\//i.test(o.url) ? o.url : "#";
+          out += `        <a href="${esc(safeUrl)}" target="_blank" rel="noopener">${esc(o.url)}</a>\n`;
           out += `        ${o.chars.toLocaleString()} chars, via ${esc(o.discovered_via)}, ${esc(o.fetch_method)} fetch\n`;
           out += `        sha256 ${esc((o.content_hash || "").slice(0, 16))}...`;
           if (o.version_id) out += ` (version ${o.version_id})`;
