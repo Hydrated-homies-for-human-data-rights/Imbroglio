@@ -77,6 +77,58 @@ def insert_version(conn: psycopg.Connection, document_id: int, content_hash: str
     ).fetchone()[0]
 
 
+def list_services(conn: psycopg.Connection) -> list[tuple]:
+    """One row per (service, document): domain, doc_type, url, version count,
+    change count, newest fetch time. Services with no documents yet appear
+    with doc_type NULL."""
+    return conn.execute(
+        """SELECT s.domain, d.doc_type, d.url,
+                  count(DISTINCT v.id)  AS versions,
+                  count(DISTINCT c.id)  AS changes,
+                  max(v.fetched_at)     AS last_fetched
+           FROM services s
+           LEFT JOIN documents d         ON d.service_id = s.id
+           LEFT JOIN document_versions v ON v.document_id = d.id
+           LEFT JOIN change_events c     ON c.document_id = d.id
+           GROUP BY s.domain, d.doc_type, d.url
+           ORDER BY s.domain, d.doc_type""",
+    ).fetchall()
+
+
+def service_detail(conn: psycopg.Connection, domain: str) -> list[tuple]:
+    """Latest stored version of each document for one domain, full text
+    included, plus a version-history count via list_services. One row per
+    document: doc_type, url, discovered_via, version_id, content_hash,
+    fetch_method, fetched_at, normalized_text."""
+    return conn.execute(
+        """SELECT d.doc_type, d.url, d.discovered_via,
+                  v.id, v.content_hash, v.fetch_method, v.fetched_at, v.normalized_text
+           FROM services s
+           JOIN documents d ON d.service_id = s.id
+           JOIN document_versions v ON v.document_id = d.id
+           WHERE s.domain = %s
+             AND v.fetched_at = (SELECT max(v2.fetched_at)
+                                 FROM document_versions v2
+                                 WHERE v2.document_id = d.id)
+           ORDER BY d.doc_type""",
+        (domain,),
+    ).fetchall()
+
+
+def version_history(conn: psycopg.Connection, domain: str) -> list[tuple]:
+    """All stored versions for a domain: doc_type, version_id, content_hash,
+    fetched_at — newest first."""
+    return conn.execute(
+        """SELECT d.doc_type, v.id, v.content_hash, v.fetched_at
+           FROM services s
+           JOIN documents d ON d.service_id = s.id
+           JOIN document_versions v ON v.document_id = d.id
+           WHERE s.domain = %s
+           ORDER BY d.doc_type, v.fetched_at DESC""",
+        (domain,),
+    ).fetchall()
+
+
 def insert_change_event(conn: psycopg.Connection, document_id: int,
                         old_version_id: int, new_version_id: int) -> None:
     conn.execute(

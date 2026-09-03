@@ -66,6 +66,79 @@ def health() -> dict:
     return {"ok": True, "db": db_reachable()}
 
 
+@app.get("/api/services")
+def services() -> dict:
+    """Everything cached in the database, grouped by domain."""
+    if not db_reachable():
+        return {"db": False, "services": []}
+    conn = db.connect()
+    try:
+        db.init_schema(conn)
+        rows = db.list_services(conn)
+    finally:
+        conn.close()
+
+    grouped: dict[str, dict] = {}
+    for domain, doc_type, url, versions, changes, last_fetched in rows:
+        svc = grouped.setdefault(domain, {"domain": domain, "docs": []})
+        if doc_type:
+            svc["docs"].append({
+                "doc_type": doc_type,
+                "url": url,
+                "versions": versions,
+                "changes": changes,
+                "last_fetched": last_fetched.isoformat() if last_fetched else None,
+            })
+    return {"db": True, "services": list(grouped.values())}
+
+
+@app.get("/api/service/{domain}")
+def service_detail(domain: str):
+    """Latest cached version of each document for one domain, extracted text
+    included, plus full version history."""
+    domain = clean_domain(domain) or ""
+    if not domain:
+        return JSONResponse({"error": "bad domain"}, status_code=400)
+    if not db_reachable():
+        return JSONResponse({"error": "database offline"}, status_code=503)
+
+    conn = db.connect()
+    try:
+        rows = db.service_detail(conn, domain)
+        history = db.version_history(conn, domain)
+    finally:
+        conn.close()
+    if not rows:
+        return JSONResponse({"error": f"{domain} is not cached"}, status_code=404)
+
+    hist_by_doc: dict[str, list] = {}
+    for doc_type, vid, vhash, fetched_at in history:
+        hist_by_doc.setdefault(doc_type, []).append({
+            "version_id": vid,
+            "content_hash": vhash,
+            "fetched_at": fetched_at.isoformat(),
+        })
+
+    return {
+        "domain": domain,
+        "docs": [
+            {
+                "doc_type": doc_type,
+                "url": url,
+                "discovered_via": via,
+                "version_id": vid,
+                "content_hash": vhash,
+                "fetch_method": method,
+                "fetched_at": fetched_at.isoformat(),
+                "chars": len(text),
+                "text": text,
+                "history": hist_by_doc.get(doc_type, []),
+            }
+            for doc_type, url, via, vid, vhash, method, fetched_at, text in rows
+        ],
+    }
+
+
 class _QueueHandler(logging.Handler):
     def __init__(self, q: queue.Queue) -> None:
         super().__init__()

@@ -11,6 +11,11 @@
   #results { font-family: monospace; font-size: 14px; white-space: pre-wrap; }
   .ok { color: green; }
   .bad { color: red; }
+  table { border-collapse: collapse; font-size: 14px; }
+  th, td { border: 1px solid #999; padding: 4px 10px; text-align: left; }
+  #detail pre { background: #f0f0f0; padding: 10px; max-height: 400px; overflow-y: auto;
+                font-size: 12px; white-space: pre-wrap; }
+  #detail { font-family: monospace; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -31,6 +36,10 @@
   <h3>Results</h3>
   <div id="results">(none yet)</div>
 
+  <h3>Cached websites</h3>
+  <div id="cached">(loading)</div>
+  <div id="detail"></div>
+
 <script>
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
@@ -39,6 +48,61 @@
   fetch("/api/health").then(r => r.json())
     .then(h => { $("db").textContent = h.db ? "(db: connected)" : "(db: offline, dry run)"; })
     .catch(() => { $("db").textContent = "(server unreachable)"; });
+
+  async function loadCached() {
+    try {
+      const data = await (await fetch("/api/services")).json();
+      if (!data.db) { $("cached").textContent = "(database offline)"; return; }
+      if (!data.services.length) { $("cached").textContent = "(nothing cached yet)"; return; }
+      const cell = (docs, type) => {
+        const d = docs.find(x => x.doc_type === type);
+        if (!d) return "&mdash;";
+        return `${d.versions} version${d.versions === 1 ? "" : "s"}` +
+               (d.changes ? `, <b>${d.changes} change${d.changes === 1 ? "" : "s"}</b>` : "");
+      };
+      let html = "<table><tr><th>domain</th><th>privacy</th><th>terms</th><th>last checked</th><th></th></tr>";
+      for (const s of data.services) {
+        const last = s.docs.map(d => d.last_fetched).filter(Boolean).sort().pop();
+        html += `<tr>
+          <td>${esc(s.domain)}</td>
+          <td>${cell(s.docs, "privacy")}</td>
+          <td>${cell(s.docs, "terms")}</td>
+          <td>${last ? esc(last.slice(0, 16).replace("T", " ")) : "&mdash;"}</td>
+          <td><a href="#" data-domain="${esc(s.domain)}" class="view">view</a></td>
+        </tr>`;
+      }
+      $("cached").innerHTML = html + "</table>";
+      for (const a of document.querySelectorAll("a.view")) {
+        a.addEventListener("click", (e) => { e.preventDefault(); viewService(a.dataset.domain); });
+      }
+    } catch { $("cached").textContent = "(failed to load cached list)"; }
+  }
+
+  async function viewService(domain) {
+    $("detail").textContent = "(loading " + domain + "...)";
+    try {
+      const resp = await fetch("/api/service/" + encodeURIComponent(domain));
+      const data = await resp.json();
+      if (!resp.ok) { $("detail").textContent = "Error: " + (data.error || resp.status); return; }
+      let html = `<h4>${esc(data.domain)}</h4>`;
+      for (const d of data.docs) {
+        const name = d.doc_type === "privacy" ? "privacy policy" : "terms of service";
+        const safeUrl = /^https?:\/\//i.test(d.url) ? d.url : "#";
+        html += `<p><b>${name}</b><br>
+          <a href="${esc(safeUrl)}" target="_blank" rel="noopener">${esc(d.url)}</a><br>
+          ${d.chars.toLocaleString()} chars, via ${esc(d.discovered_via)}, ${esc(d.fetch_method)} fetch,
+          fetched ${esc(d.fetched_at.slice(0, 16).replace("T", " "))}<br>
+          sha256 ${esc(d.content_hash.slice(0, 16))}... (version ${d.version_id})<br>
+          history: ${d.history.map(h => `v${h.version_id} @ ${esc(h.fetched_at.slice(0, 10))}`).join(", ")}</p>
+          <details><summary>show extracted text (${d.chars.toLocaleString()} chars)</summary>
+          <pre>${esc(d.text)}</pre></details>`;
+      }
+      $("detail").innerHTML = html;
+      $("detail").scrollIntoView({ behavior: "smooth" });
+    } catch (err) { $("detail").textContent = "Error: " + err.message; }
+  }
+
+  loadCached();
 
   $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -104,6 +168,7 @@
         }
       }
       $("results").innerHTML = out;
+      loadCached();
     } catch (err) {
       $("results").textContent = "Error: lost the server (" + err.message + ")";
     } finally {
