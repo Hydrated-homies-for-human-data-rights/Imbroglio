@@ -40,14 +40,17 @@ class DocOutcome:
 
 
 def analyze(domain: str, use_playwright: bool = True,
-            dsn: str | None = None, store: bool = True) -> list[DocOutcome]:
-    located = locate_all(domain, use_playwright=use_playwright)
+            dsn: str | None = None, store: bool = True,
+            init_schema: bool = True,
+            time_budget: float | None = None) -> list[DocOutcome]:
+    located = locate_all(domain, use_playwright=use_playwright, time_budget=time_budget)
     outcomes: list[DocOutcome] = []
 
     conn = db.connect(dsn) if store else None
     try:
         if conn is not None:
-            db.init_schema(conn)
+            if init_schema:  # batch runs init once up front; concurrent DDL races
+                db.init_schema(conn)
             service_id = db.upsert_service(conn, domain)
 
         for doc_type, loc in located.items():

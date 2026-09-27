@@ -32,3 +32,7 @@ pipeline/models/
 Thumbs.db
 .idea/
 .vscode/
+
+# Batch inputs and outputs (seed lists are regenerable; reports are per-run)
+pipeline/seeds/
+pipeline/runs/

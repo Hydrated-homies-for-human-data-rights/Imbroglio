@@ -72,3 +72,36 @@ CREATE TABLE IF NOT EXISTS change_events (
 CREATE INDEX IF NOT EXISTS idx_versions_document ON document_versions(document_id, fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_findings_version ON findings(version_id);
 CREATE INDEX IF NOT EXISTS idx_changes_document ON change_events(document_id, detected_at DESC);
+
+-- Batch runs: every bulk import, with its source and timing.
+CREATE TABLE IF NOT EXISTS batches (
+    id          SERIAL PRIMARY KEY,
+    source      TEXT NOT NULL,          -- input file name or seed source
+    total       INT NOT NULL,
+    workers     INT NOT NULL,
+    started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at TIMESTAMPTZ
+);
+
+-- One row per (domain, doc_type) attempt, success OR failure. Successful
+-- documents also land in documents/document_versions; this table is the
+-- audit trail that lets us report extraction success rates (F1) and group
+-- failures by cause.
+CREATE TABLE IF NOT EXISTS crawl_attempts (
+    id             SERIAL PRIMARY KEY,
+    batch_id       INT REFERENCES batches(id) ON DELETE CASCADE,
+    domain         TEXT NOT NULL,
+    doc_type       TEXT NOT NULL CHECK (doc_type IN ('privacy', 'terms')),
+    ok             BOOLEAN NOT NULL,
+    status         TEXT NOT NULL,      -- stored-new | unchanged | changed | failed | error
+    url            TEXT,
+    discovered_via TEXT,
+    fetch_method   TEXT,
+    chars          INT NOT NULL DEFAULT 0,
+    notes          TEXT,
+    seconds        REAL,               -- wall time for the whole domain
+    attempted_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_attempts_batch ON crawl_attempts(batch_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_domain ON crawl_attempts(domain, attempted_at DESC);

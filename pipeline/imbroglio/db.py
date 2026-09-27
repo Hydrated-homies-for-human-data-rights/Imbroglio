@@ -136,3 +136,64 @@ def insert_change_event(conn: psycopg.Connection, document_id: int,
            VALUES (%s, %s, %s, %s)""",
         (document_id, old_version_id, new_version_id, "content hash changed"),
     )
+
+
+# --- batch runs ---------------------------------------------------------------
+
+def create_batch(conn: psycopg.Connection, source: str, total: int, workers: int) -> int:
+    return conn.execute(
+        "INSERT INTO batches (source, total, workers) VALUES (%s, %s, %s) RETURNING id",
+        (source, total, workers),
+    ).fetchone()[0]
+
+
+def finish_batch(conn: psycopg.Connection, batch_id: int) -> None:
+    conn.execute("UPDATE batches SET finished_at = now() WHERE id = %s", (batch_id,))
+
+
+def insert_attempt(conn: psycopg.Connection, batch_id: int | None, domain: str,
+                   doc_type: str, ok: bool, status: str, url: str | None,
+                   discovered_via: str | None, fetch_method: str | None,
+                   chars: int, notes: str | None, seconds: float) -> None:
+    conn.execute(
+        """INSERT INTO crawl_attempts
+               (batch_id, domain, doc_type, ok, status, url, discovered_via,
+                fetch_method, chars, notes, seconds)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (batch_id, domain, doc_type, ok, status, url, discovered_via,
+         fetch_method, chars, notes, seconds),
+    )
+
+
+def domains_with_privacy(conn: psycopg.Connection) -> set[str]:
+    """Domains that already have a stored privacy policy version."""
+    rows = conn.execute(
+        """SELECT DISTINCT s.domain FROM services s
+           JOIN documents d ON d.service_id = s.id AND d.doc_type = 'privacy'
+           JOIN document_versions v ON v.document_id = d.id""",
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
+def latest_batch_id(conn: psycopg.Connection) -> int | None:
+    row = conn.execute("SELECT max(id) FROM batches").fetchone()
+    return row[0] if row else None
+
+
+def get_batch(conn: psycopg.Connection, batch_id: int) -> tuple:
+    """(source, total, workers, started_at, finished_at)"""
+    return conn.execute(
+        "SELECT source, total, workers, started_at, finished_at FROM batches WHERE id = %s",
+        (batch_id,),
+    ).fetchone()
+
+
+def batch_attempts(conn: psycopg.Connection, batch_id: int) -> list[tuple]:
+    """(domain, doc_type, ok, status, url, discovered_via, fetch_method,
+    chars, notes, seconds) for every attempt in a batch."""
+    return conn.execute(
+        """SELECT domain, doc_type, ok, status, url, discovered_via, fetch_method,
+                  chars, notes, seconds
+           FROM crawl_attempts WHERE batch_id = %s ORDER BY domain, doc_type""",
+        (batch_id,),
+    ).fetchall()

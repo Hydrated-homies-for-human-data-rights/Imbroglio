@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
@@ -126,7 +127,8 @@ def _try_url(url: str, doc_type: str, session: requests.Session,
 def locate_document(domain: str, doc_type: str,
                     candidates: list[tuple[str, str]],
                     session: requests.Session,
-                    use_playwright: bool) -> Located:
+                    use_playwright: bool,
+                    deadline: float | None = None) -> Located:
     result = Located(doc_type)
     probes = candidates + [
         (f"https://{domain}{p}", "common-path") for p in COMMON_PATHS[doc_type]
@@ -134,6 +136,10 @@ def locate_document(domain: str, doc_type: str,
     tried: set[str] = set()
     i = 0
     while i < len(probes) and i < MAX_PROBES:
+        if deadline is not None and time.monotonic() > deadline:
+            log.info("[%s] time budget spent, giving up", doc_type)
+            result.notes.append("time budget exceeded")
+            break
         url, via = probes[i]
         i += 1
         if url in tried:
@@ -163,8 +169,15 @@ def locate_document(domain: str, doc_type: str,
     return result
 
 
-def locate_all(domain: str, use_playwright: bool = True) -> dict[str, Located]:
-    """Discover and extract both document types for a domain."""
+def locate_all(domain: str, use_playwright: bool = True,
+               time_budget: float | None = None) -> dict[str, Located]:
+    """Discover and extract both document types for a domain.
+
+    time_budget (seconds) caps the probe loop for batch runs, so one slow or
+    hostile site can't hold a worker for minutes. Checked between probes, so a
+    single in-flight fetch can overrun it by up to one fetch timeout.
+    """
+    deadline = time.monotonic() + time_budget if time_budget else None
     session = requests.Session()
     homepage = f"https://{domain}"
     log.info("fetching homepage %s", homepage)
@@ -186,6 +199,6 @@ def locate_all(domain: str, use_playwright: bool = True) -> dict[str, Located]:
                      len(cands["privacy"]), len(cands["terms"]))
 
     return {
-        dt: locate_document(domain, dt, cands[dt], session, use_playwright)
+        dt: locate_document(domain, dt, cands[dt], session, use_playwright, deadline)
         for dt in ("privacy", "terms")
     }
