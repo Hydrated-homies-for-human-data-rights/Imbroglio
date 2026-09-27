@@ -7,14 +7,18 @@ beautifulsoup4>=4.12
 # pure-Python BeautifulSoup extractor if this fails to import.
 trafilatura>=2.0
 
-# Optional JS-rendering fallback for Spike A:
-#   pip install playwright && playwright install chromium
-# playwright>=1.49
+# Headless-browser fallback for JS-rendered pages.
+# After install, also run: playwright install chromium
+playwright>=1.49
 
 # Storage + ML track
 psycopg[binary]>=3.2
 scikit-learn>=1.5
 numpy>=2.0
+
+# Demo console (pipeline/demo)
+fastapi>=0.115
+uvicorn>=0.30
 
 # Later phases (uncomment as needed)
 # torch

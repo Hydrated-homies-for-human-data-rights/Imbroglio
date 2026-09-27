@@ -16,8 +16,10 @@ out/
 .env.*
 !.env.example
 
-# Spike output
-pipeline/spike_a/results/
+# Spike output: extracted policy text stays local (third-party copyrighted
+# text); the pass/fail report is committed as evidence for the week-2 gate.
+pipeline/spike_a/results/*
+!pipeline/spike_a/results/report.md
 
 # Data / models (large artifacts stay out of git)
 pipeline/data/
