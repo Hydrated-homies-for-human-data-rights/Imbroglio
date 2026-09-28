@@ -56,7 +56,7 @@ def analyze(domain: str, use_playwright: bool = True,
         for doc_type, loc in located.items():
             if not loc.ok:
                 outcomes.append(DocOutcome(doc_type, "failed",
-                                           notes="; ".join(loc.notes[-3:])))
+                                           notes="; ".join(loc.notes)[:2000]))
                 continue
 
             text = normalize(loc.text)

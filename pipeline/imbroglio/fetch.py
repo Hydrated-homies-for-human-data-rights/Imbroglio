@@ -23,7 +23,7 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
-TIMEOUT = 20
+TIMEOUT = 15
 RETRIES = 2
 BACKOFF = 3.0  # seconds, doubled per retry
 
@@ -35,6 +35,11 @@ def fetch_static(url: str, session: requests.Session | None = None) -> tuple[str
     for attempt in range(RETRIES + 1):
         try:
             resp = sess.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
+        except requests.Timeout as exc:
+            # Silent drops are a bot-defense pattern (observed: adobe.com,
+            # hidemyass.com); retrying burned ~70s per site in batch 2/3.
+            # Return now and let the caller try the headless browser.
+            return None, type(exc).__name__
         except requests.RequestException as exc:
             last_status = type(exc).__name__
         else:

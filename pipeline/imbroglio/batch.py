@@ -205,14 +205,20 @@ def failure_cause(status: str, notes: str | None) -> str:
     n = (notes or "").lower()
     if status == "error":
         return "pipeline error"
+    if "host unreachable" in n:
+        return "host unreachable (no connection, statically or in a browser)"
+    if "captcha" in n or re.search(r"-> (401|403|429|503)\b", n):
+        return "blocked (captcha / 401 / 403 / 429 / 503)"
     if "time budget" in n:
         return "time budget exceeded"
-    if re.search(r"-> (401|403|429|503)\b", n):
-        return "blocked (401/403/429/503)"
-    if re.search(r"connectionerror|sslerror|timeout|nameresolution", n):
-        return "network / DNS / TLS"
-    if "thin" in n:
-        return "page found but too little text (JS-rendered, wall, non-English)"
+    if re.search(r"connectionerror|sslerror|timeout|nameresolution|playwright:error", n):
+        return "network / DNS / TLS (site unreachable)"
+    if re.search(r"no (privacy|terms) signals", n):
+        return "long page found, but doesn't read like a policy"
+    if "soft 404" in n:
+        return "soft 404 (site returns the same page for every path)"
+    if "too short" in n or "thin" in n:
+        return "page found but too little text (JS-rendered or stub)"
     if re.search(r"-> 404|-> 410", n):
         return "only 404s (no link found, guessed paths missing)"
     if not n:
@@ -246,6 +252,8 @@ def batch_report(batch_id: int | None = None) -> str:
     priv = sum(1 for d in by_domain.values() if d.get("privacy", (None,) * 3)[2])
     terms = sum(1 for d in by_domain.values() if d.get("terms", (None,) * 3)[2])
     either = sum(1 for d in by_domain.values() if any(x[2] for x in d.values()))
+    unreachable = sum(1 for d in by_domain.values()
+                      if "host unreachable" in ((d.get("privacy") or (None,) * 9)[8] or ""))
     same_url = sum(1 for d in by_domain.values()
                    if d.get("privacy") and d.get("terms") and d["privacy"][2] and d["terms"][2]
                    and d["privacy"][4] == d["terms"][4])
@@ -263,6 +271,8 @@ def batch_report(batch_id: int | None = None) -> str:
         "| Metric | Result |",
         "| --- | --- |",
         f"| Privacy policy found | **{rate(priv)}** |",
+        f"| Privacy found, among hosts we could connect to | **{priv}/{n - unreachable}"
+        f" ({100 * priv / max(n - unreachable, 1):.0f}%)** ({unreachable} unreachable) |",
         f"| Terms of service found | {rate(terms)} |",
         f"| At least one document | {rate(either)} |",
         f"| Privacy and terms resolved to the same URL | {same_url} (likely a combined legal page, or a wrong pick) |",
