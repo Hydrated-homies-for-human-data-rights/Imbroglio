@@ -43,6 +43,7 @@ from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from imbroglio import db, jobs
+from imbroglio.api import router as v1_router
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -55,9 +56,14 @@ async def lifespan(_app):
     yield
 
 
-# Public deployments don't need the interactive API docs pages.
-app = FastAPI(title="Imbroglio demo console", docs_url=None, redoc_url=None, openapi_url=None,
+# API docs (F8) are generated from the /v1 models and sit behind the same
+# password as everything else until launch.
+app = FastAPI(title="Imbroglio API", version="0.1",
+              description="Read API for Imbroglio privacy-policy analysis. "
+                          "Every endpoint reads precomputed data only.",
+              docs_url="/v1/docs", redoc_url=None, openapi_url="/v1/openapi.json",
               lifespan=lifespan)
+app.include_router(v1_router)
 STATIC = Path(__file__).parent / "static"
 
 AUTH_USER = os.environ.get("IMBROGLIO_USER", "imbroglio")

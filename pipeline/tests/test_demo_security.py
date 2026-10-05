@@ -63,9 +63,13 @@ def test_healthz_open_and_reveals_nothing(client):
     assert r.json() == {"ok": True}
 
 
-def test_api_docs_disabled(client):
-    for path in ("/docs", "/redoc", "/openapi.json"):
+def test_api_docs_behind_password(client):
+    for path in ("/docs", "/redoc", "/openapi.json"):  # old default paths stay off
         assert client.get(path, headers=AUTH).status_code == 404
+    assert client.get("/v1/docs").status_code == 401
+    assert client.get("/v1/openapi.json").status_code == 401
+    spec = client.get("/v1/openapi.json", headers=AUTH).json()
+    assert "/v1/sites/{domain}" in spec["paths"]
 
 
 @pytest.mark.parametrize("domain", ["169.254.169.254", "127.0.0.1", "localhost",
