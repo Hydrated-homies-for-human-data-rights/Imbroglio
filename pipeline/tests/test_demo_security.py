@@ -21,6 +21,7 @@ def _basic(user, pw):
 def app_module(monkeypatch):
     monkeypatch.setenv("IMBROGLIO_PASSWORD", PASSWORD)
     monkeypatch.setenv("IMBROGLIO_USER", "team")
+    monkeypatch.setenv("EMBEDDED_WORKER", "0")
     import app as demo_app
     demo_app = importlib.reload(demo_app)
     monkeypatch.setattr(demo_app, "db_reachable", lambda: False)  # no DB needed
@@ -40,7 +41,8 @@ def test_everything_requires_password(client):
         r = client.get(path)
         assert r.status_code == 401, path
         assert "Basic" in r.headers["www-authenticate"]
-    assert client.post("/api/analyze", json={"domain": "notion.so"}).status_code == 401
+    assert client.post("/api/requests", json={"domain": "notion.so"}).status_code == 401
+    assert client.get("/api/requests/1").status_code == 401
 
 
 def test_wrong_credentials_rejected(client):
@@ -68,28 +70,14 @@ def test_api_docs_disabled(client):
 
 @pytest.mark.parametrize("domain", ["169.254.169.254", "127.0.0.1", "localhost",
                                     "not a domain", "x" * 300])
-def test_analyze_rejects_non_domains(client, domain):
-    r = client.post("/api/analyze", json={"domain": domain}, headers=AUTH)
+def test_request_rejects_non_domains(client, domain):
+    r = client.post("/api/requests", json={"domain": domain}, headers=AUTH)
     assert r.status_code in (400, 422)
 
 
-def test_concurrency_cap(client, app_module):
-    for _ in range(app_module.MAX_CONCURRENT):
-        assert app_module._slots.acquire(blocking=False)
-    try:
-        r = client.post("/api/analyze", json={"domain": "notion.so"}, headers=AUTH)
-        assert r.status_code == 429
-    finally:
-        for _ in range(app_module.MAX_CONCURRENT):
-            app_module._slots.release()
-
-
-def test_slot_released_after_run(client, app_module, monkeypatch):
-    monkeypatch.setattr(app_module, "analyze", lambda *a, **k: [])
-    for _ in range(app_module.MAX_CONCURRENT + 2):  # more runs than slots
-        r = client.post("/api/analyze", json={"domain": "notion.so"}, headers=AUTH)
-        assert r.status_code == 200
-        assert '"type": "result"' in r.text
+def test_request_needs_database(client):
+    r = client.post("/api/requests", json={"domain": "notion.so"}, headers=AUTH)
+    assert r.status_code == 503  # fixture stubs the DB as unreachable
 
 
 def test_audit_routes_require_password(client):

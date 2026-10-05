@@ -3,57 +3,71 @@
     cd pipeline/demo
     ../.venv/Scripts/python app.py        # -> http://localhost:8765
 
-Type a domain, watch discovery -> fetch -> extract -> hash -> store run live.
-If Postgres is down (classroom wifi, docker not running), the console
-automatically falls back to a dry run so the demo never dies on stage.
+Type a domain: cached sites are served straight from the database; others
+are queued, and a worker runs discovery -> fetch -> extract -> hash -> store
+while the page polls for progress.
 
 Deployment settings (environment variables):
     IMBROGLIO_PASSWORD   required unless HOST is 127.0.0.1; HTTP basic auth
     IMBROGLIO_USER       basic-auth username (default "imbroglio")
     HOST / PORT          bind address (default 127.0.0.1:8765; Railway sets PORT)
     IMBROGLIO_DB / DATABASE_URL   Postgres connection string
-    MAX_CONCURRENT       simultaneous analyses (default 2)
+    EMBEDDED_WORKER      1 = run queue worker threads in this process (default;
+                         set 0 in production, where a worker service runs)
+    WORKER_CONCURRENCY   embedded worker threads (default 2)
+    MAX_OPEN_REQUESTS    queue size cap (default 200)
 
 Security model for the hosted prototype: one shared password gates every
 route except /healthz; outbound fetches refuse non-public addresses (see
-imbroglio/netguard.py); analyses are capped in number and duration because
-each can launch a Chromium process. Batch runs stay CLI-only.
+imbroglio/netguard.py); analyses run in queue workers with a capped queue,
+never inside a web request. Batch runs stay CLI-only.
 """
 
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import os
-import queue
 import re
 import secrets
 import sys
-import threading
-import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from imbroglio import db
-from imbroglio.analyze import analyze
+from imbroglio import db, jobs
+
+@asynccontextmanager
+async def lifespan(_app):
+    # Local dev convenience: process the queue inside this process.
+    if EMBEDDED_WORKER and db_reachable():
+        from imbroglio.worker import start_threads
+        start_threads(EMBEDDED_WORKER_THREADS)
+        logging.getLogger("imbroglio.demo").info(
+            "embedded worker started (%d threads)", EMBEDDED_WORKER_THREADS)
+    yield
+
 
 # Public deployments don't need the interactive API docs pages.
-app = FastAPI(title="Imbroglio demo console", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Imbroglio demo console", docs_url=None, redoc_url=None, openapi_url=None,
+              lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 
 AUTH_USER = os.environ.get("IMBROGLIO_USER", "imbroglio")
 AUTH_PASSWORD = os.environ.get("IMBROGLIO_PASSWORD", "")
-MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "2"))
-ANALYZE_TIME_BUDGET = 90.0  # seconds of probing per site, same idea as batch runs
-_slots = threading.BoundedSemaphore(MAX_CONCURRENT)
+# Analyses run in queue workers, never in the web request. EMBEDDED_WORKER=1
+# starts worker threads inside this process (local dev); production runs a
+# separate worker service so Chromium never shares memory with the web server.
+EMBEDDED_WORKER = os.environ.get("EMBEDDED_WORKER", "1") == "1"
+EMBEDDED_WORKER_THREADS = int(os.environ.get("WORKER_CONCURRENCY", "2"))
+MAX_OPEN_REQUESTS = int(os.environ.get("MAX_OPEN_REQUESTS", "200"))  # abuse cap
 OPEN_PATHS = {"/healthz"}  # platform health checks; reveals nothing
 
 
@@ -93,7 +107,6 @@ DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-
 class AnalyzeRequest(BaseModel):
     domain: str = Field(max_length=253)
     playwright: bool = True
-    store: bool = True
 
 
 def clean_domain(raw: str) -> str | None:
@@ -195,23 +208,6 @@ def service_detail(domain: str):
             for doc_type, url, via, vid, vhash, method, fetched_at, text in rows
         ],
     }
-
-
-def _log_attempts(domain: str, outcomes, seconds: float) -> None:
-    """Record console analyses in crawl_attempts (no batch) so the audit page
-    can review them alongside batch runs. Best effort: never fails a run."""
-    try:
-        conn = db.connect()
-        try:
-            for o in outcomes:
-                db.insert_attempt(conn, None, domain, o.doc_type, o.status != "failed",
-                                  o.status, o.url, o.discovered_via, o.fetch_method,
-                                  o.chars, o.notes or None, seconds)
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        logging.getLogger("imbroglio.demo").exception("could not log attempts for %s", domain)
 
 
 # --- audit --------------------------------------------------------------------
@@ -319,99 +315,51 @@ def audit_summary():
     return audit_metrics(counts)
 
 
-class _QueueHandler(logging.Handler):
-    def __init__(self, q: queue.Queue) -> None:
-        super().__init__()
-        self.q = q
+# --- analysis requests (queue) ----------------------------------------------
 
-        self.thread_id: int | None = None
-
-    def emit(self, record: logging.LogRecord) -> None:
-        # The "imbroglio" logger is process-wide; with concurrent analyses
-        # each stream must only carry its own worker thread's lines.
-        if record.thread == self.thread_id:
-            self.q.put(record.getMessage())
-
-
-@app.post("/api/analyze")
-def run(req: AnalyzeRequest):
-    """Streams NDJSON: {"type":"log",...} lines while the pipeline runs,
-    then one final {"type":"result",...} line.
-
-    The worker starts before the response is returned and owns all cleanup
-    (log handler, concurrency slot), so a client that disconnects early, or
-    before streaming even begins, can't leak a slot."""
+@app.post("/api/requests")
+def create_request(req: AnalyzeRequest):
+    """Queue a domain for analysis. Returns immediately; poll
+    /api/requests/{id}. An open request for the same domain is reused."""
     domain = clean_domain(req.domain)
     if not domain:
         return JSONResponse({"error": "That doesn't look like a domain. Try something like notion.so."},
                             status_code=400)
-
-    if not _slots.acquire(blocking=False):
-        return JSONResponse({"error": f"Busy: {MAX_CONCURRENT} analyses already running. "
-                                      "Try again in a minute."}, status_code=429)
-
-    # Check the database up front so a dead DB costs a fallback flag, not a
-    # 30-second re-fetch after a failed analyze.
+    if not db_reachable():
+        return JSONResponse({"error": "database offline"}, status_code=503)
+    conn = db.connect()
     try:
-        store = req.store and db_reachable()
-    except Exception:
-        _slots.release()
-        raise
+        db.init_schema(conn)
+        open_now = sum(n for st, n in jobs.stats(conn).items() if st in ("queued", "running"))
+        if open_now >= MAX_OPEN_REQUESTS:
+            return JSONResponse({"error": "The analysis queue is full. Try again in a few minutes."},
+                                status_code=429)
+        request_id, status, created = jobs.enqueue(conn, domain, source="web",
+                                                   use_playwright=req.playwright)
+    finally:
+        conn.close()
+    return {"request_id": request_id, "domain": domain, "status": status, "created": created}
 
-    q: queue.Queue = queue.Queue()
-    handler = _QueueHandler(q)
-    logger = logging.getLogger("imbroglio")
-    logger.setLevel(logging.INFO)
-    result: dict = {}
 
-    def work() -> None:
-        handler.thread_id = threading.get_ident()
-        logger.addHandler(handler)
-        t0 = time.time()
-        try:
-            outcomes = analyze(domain, use_playwright=req.playwright, store=store,
-                               time_budget=ANALYZE_TIME_BUDGET)
-            if store:
-                _log_attempts(domain, outcomes, time.time() - t0)
-            result.update(
-                domain=domain, db=store, seconds=round(time.time() - t0, 1),
-                outcomes=[
-                    {
-                        "doc_type": o.doc_type,
-                        "found": o.status != "failed",
-                        "status": o.status,
-                        "url": o.url,
-                        "version_id": o.version_id,
-                        "chars": o.chars,
-                        "content_hash": o.content_hash,
-                        "discovered_via": o.discovered_via,
-                        "fetch_method": o.fetch_method,
-                        "notes": o.notes,
-                    }
-                    for o in outcomes
-                ],
-            )
-        except Exception as exc:
-            logging.getLogger("imbroglio.demo").exception("analyze failed for %s", domain)
-            result["error"] = f"Pipeline error: {type(exc).__name__}"  # details stay in server logs
-        finally:
-            logger.removeHandler(handler)
-            _slots.release()
-            q.put(None)  # sentinel: work finished
+@app.get("/api/requests/{request_id}")
+def get_request(request_id: int):
+    conn = db.connect()
+    try:
+        job = jobs.get(conn, request_id)
+    finally:
+        conn.close()
+    if job is None:
+        return JSONResponse({"error": "request not found"}, status_code=404)
+    return job
 
-    threading.Thread(target=work, daemon=True).start()
 
-    def stream():
-        if not store:
-            yield json.dumps({"type": "log", "msg": "database off — dry run, nothing will be stored"}) + "\n"
-        while True:
-            msg = q.get()
-            if msg is None:
-                break
-            yield json.dumps({"type": "log", "msg": msg}) + "\n"
-        yield json.dumps({"type": "result", **result}) + "\n"
-
-    return StreamingResponse(stream(), media_type="application/x-ndjson")
+@app.get("/api/queue")
+def queue_stats() -> dict:
+    conn = db.connect()
+    try:
+        return {"queue": jobs.stats(conn), "embedded_worker": EMBEDDED_WORKER}
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

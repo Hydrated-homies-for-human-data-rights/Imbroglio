@@ -1,3 +1,20 @@
+"""Baseline: the schema as deployed before migrations existed.
+
+Frozen copy of the former schema.sql. Every statement uses IF NOT EXISTS, so
+this adopts an existing database (Supabase production, older local Docker
+volumes) without touching data, and builds a fresh one from scratch.
+
+Revision ID: 0001
+"""
+
+from alembic import op
+
+revision = "0001"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+SCHEMA = r"""
 -- Imbroglio core schema.
 -- Design rules:
 --   * document_versions is append-only: every published claim must be
@@ -123,3 +140,13 @@ CREATE TABLE IF NOT EXISTS audit_labels (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_domain ON audit_labels(domain, doc_type);
+"""
+
+
+def upgrade() -> None:
+    # Raw driver call: op.execute would parse ":word" in comments as bind params.
+    op.get_bind().exec_driver_sql(SCHEMA)
+
+
+def downgrade() -> None:
+    raise NotImplementedError("baseline migration is not reversible")

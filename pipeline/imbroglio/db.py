@@ -9,26 +9,51 @@ keeping this layer thin.
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 
 import psycopg
 
 DEFAULT_DSN = "postgresql://imbroglio:imbroglio@localhost:5432/imbroglio"
-SCHEMA = Path(__file__).parent / "schema.sql"
+MIGRATIONS = Path(__file__).parent / "migrations"
+
+
+def database_url() -> str:
+    return os.environ.get("IMBROGLIO_DB") or os.environ.get("DATABASE_URL") or DEFAULT_DSN
 
 
 def connect(dsn: str | None = None) -> psycopg.Connection:
-    dsn = dsn or os.environ.get("IMBROGLIO_DB") or os.environ.get("DATABASE_URL") or DEFAULT_DSN
     # prepare_threshold=None: Supabase's connection pooler (PgBouncer-style)
     # can hand consecutive statements to different backends, which breaks
     # server-side prepared statements. connect_timeout keeps a dead database
     # from hanging requests for half a minute.
-    return psycopg.connect(dsn, prepare_threshold=None, connect_timeout=5)
+    return psycopg.connect(dsn or database_url(), prepare_threshold=None, connect_timeout=5)
 
 
-def init_schema(conn: psycopg.Connection) -> None:
-    conn.execute(SCHEMA.read_text(encoding="utf-8"))
-    conn.commit()
+_migrated = False
+_migrate_lock = threading.Lock()
+
+
+def migrate() -> None:
+    """Apply pending Alembic migrations (once per process). Safe to call from
+    several processes at once: env.py serializes them with an advisory lock."""
+    global _migrated
+    with _migrate_lock:
+        if _migrated:
+            return
+        from alembic import command
+        from alembic.config import Config
+
+        cfg = Config()
+        cfg.set_main_option("script_location", str(MIGRATIONS))
+        command.upgrade(cfg, "head")
+        _migrated = True
+
+
+def init_schema(conn: psycopg.Connection | None = None) -> None:
+    """Kept for existing callers: ensures the schema is current. The schema
+    itself now lives in migrations/ (Alembic), not in a SQL file."""
+    migrate()
 
 
 def upsert_service(conn: psycopg.Connection, domain: str) -> int:
