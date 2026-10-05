@@ -20,6 +20,7 @@
 </head>
 <body>
   <h1>Imbroglio prototype</h1>
+  <p><a href="/audit">Audit extraction results</a></p>
   <p>Type a website, it tries to find + extract the privacy policy and terms of service.
      <span id="db"></span></p>
 
@@ -36,7 +37,7 @@
   <h3>Results</h3>
   <div id="results">(none yet)</div>
 
-  <h3>Cached websites</h3>
+  <h3>Cached websites <span id="cachedCount"></span></h3>
   <div id="cached">(loading)</div>
   <div id="detail"></div>
 
@@ -53,6 +54,8 @@
     try {
       const data = await (await fetch("/api/services")).json();
       if (!data.db) { $("cached").textContent = "(database offline)"; return; }
+      const withDocs = data.services.filter(s => s.docs.length).length;
+      $("cachedCount").textContent = `(${withDocs} with documents, ${data.services.length} attempted)`;
       if (!data.services.length) { $("cached").textContent = "(nothing cached yet)"; return; }
       const cell = (docs, type) => {
         const d = docs.find(x => x.doc_type === type);

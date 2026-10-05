@@ -105,3 +105,21 @@ CREATE TABLE IF NOT EXISTS crawl_attempts (
 
 CREATE INDEX IF NOT EXISTS idx_attempts_batch ON crawl_attempts(batch_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_domain ON crawl_attempts(domain, attempted_at DESC);
+
+-- Human review of discovery results: was the found document the right one,
+-- and did a "not found" site actually have a policy? These labels turn the
+-- automatic success rate into a verified accuracy figure (F1, F5).
+CREATE TABLE IF NOT EXISTS audit_labels (
+    id          SERIAL PRIMARY KEY,
+    attempt_id  INT REFERENCES crawl_attempts(id) ON DELETE SET NULL,
+    domain      TEXT NOT NULL,
+    doc_type    TEXT NOT NULL CHECK (doc_type IN ('privacy', 'terms')),
+    outcome     TEXT NOT NULL CHECK (outcome IN ('found', 'missed')),
+    verdict     TEXT NOT NULL CHECK (verdict IN ('correct', 'wrong', 'missed', 'none', 'unsure')),
+    correct_url TEXT,               -- reviewer-supplied URL of the real document, if known
+    note        TEXT,
+    reviewer    TEXT,               -- free-text name; there are no accounts
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_domain ON audit_labels(domain, doc_type);

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imbroglio audit</title>
+<style>
+  body { max-width: 900px; margin: 20px auto; padding: 0 10px; font-family: sans-serif; }
+  #summary { background: #f0f0f0; padding: 10px; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+  #item { border: 1px solid #999; padding: 10px; margin-top: 10px; }
+  #preview { background: #f7f7f7; padding: 10px; max-height: 380px; overflow-y: auto;
+             font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+  .ok { color: green; } .bad { color: red; }
+  button { margin: 4px 6px 4px 0; padding: 6px 10px; }
+  .muted { color: #666; font-size: 13px; }
+  input[type=text] { width: 60%; }
+</style>
+</head>
+<body>
+  <p><a href="/">&larr; back to prototype</a></p>
+  <h1>Audit extraction results</h1>
+  <p class="muted">Check whether discovery found the right document, and whether "not found" sites really
+     have no policy. Your verdicts turn the automatic success rate into a verified accuracy number.</p>
+
+  <h3>Results so far</h3>
+  <div id="summary">(loading)</div>
+
+  <h3>Review</h3>
+  <p>
+    Show:
+    <label><input type="radio" name="kind" value="all" checked> all</label>
+    <label><input type="radio" name="kind" value="found"> found</label>
+    <label><input type="radio" name="kind" value="missed"> not found</label>
+    &nbsp; Your name: <input type="text" id="reviewer" maxlength="60" style="width:140px" placeholder="optional">
+  </p>
+  <div id="item">(loading)</div>
+  <p class="muted">Keyboard: 1 / 2 / 3 = the three verdict buttons, S = skip.</p>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+  const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : null);
+  const pct = (x) => (x == null ? "not enough reviews yet" : (100 * x).toFixed(0) + "%");
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                  set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+  let current = null;
+  const skipped = [];
+  let buttons = [];
+
+  $("reviewer").value = store.get("imb_reviewer") || "";
+  $("reviewer").addEventListener("change", () => store.set("imb_reviewer", $("reviewer").value));
+  document.querySelectorAll("input[name=kind]").forEach(r => r.addEventListener("change", loadNext));
+
+  async function loadSummary() {
+    try {
+      const r = await fetch("/api/audit/summary");
+      const d = await r.json();
+      if (!r.ok) { $("summary").textContent = d.error || "error"; return; }
+      const v = d.verdicts;
+      $("summary").textContent =
+        `Found documents:  ${d.reviewed.found} of ${d.totals.found} reviewed` +
+        `  (correct ${v["found:correct"] || 0}, wrong ${v["found:wrong"] || 0}, unsure ${v["found:unsure"] || 0})\n` +
+        `Not found:        ${d.reviewed.missed} of ${d.totals.missed} reviewed` +
+        `  (we missed it ${v["missed:missed"] || 0}, no policy exists ${v["missed:none"] || 0}, unsure ${v["missed:unsure"] || 0})\n\n` +
+        `Precision (found docs that are the right doc):    ${pct(d.precision)}\n` +
+        `Estimated recall (sites with a doc that we found): ${pct(d.recall_estimate)}`;
+    } catch (e) { $("summary").textContent = "could not load summary"; }
+  }
+
+  async function loadNext() {
+    const kind = document.querySelector("input[name=kind]:checked").value;
+    $("item").textContent = "(loading)";
+    try {
+      const r = await fetch(`/api/audit/next?kind=${kind}&skip=${skipped.join(",")}`);
+      const d = await r.json();
+      if (!r.ok) { $("item").textContent = d.error || "error"; return; }
+      current = d.item;
+      render();
+    } catch (e) { $("item").textContent = "could not load next item"; }
+  }
+
+  function render() {
+    const box = $("item");
+    box.replaceChildren();
+    buttons = [];
+    if (!current) { box.textContent = "Nothing left to review in this view. Try another filter."; return; }
+
+    const name = current.doc_type === "privacy" ? "privacy policy" : "terms of service";
+    const h = el("h3"); h.append(el("span", current.domain + " — " + name + " "),
+      el("span", current.found ? "[FOUND]" : "[NOT FOUND]", current.found ? "ok" : "bad"));
+    box.append(h);
+
+    const home = safeUrl("https://" + current.domain);
+    if (current.found) {
+      const p = el("p");
+      const u = safeUrl(current.url);
+      if (u) { const a = el("a", current.url); a.href = u; a.target = "_blank"; a.rel = "noopener noreferrer"; p.append("Found at: ", a); }
+      p.append(el("div", `${(current.chars || 0).toLocaleString()} chars, via ${current.discovered_via}, ${current.fetch_method} fetch`, "muted"));
+      box.append(p);
+      box.append(el("div", "Is this the site's actual " + name + "? Start of the extracted text:", "muted"));
+      const preview = el("div", (current.preview || "(no stored text)") + (current.preview_truncated ? "\n\n[… truncated]" : ""));
+      preview.id = "preview";
+      box.append(preview);
+      addButtons([["correct", "1  Correct document"], ["wrong", "2  Wrong document"], ["unsure", "3  Unsure"]]);
+    } else {
+      const p = el("p");
+      if (home) { const a = el("a", home); a.href = home; a.target = "_blank"; a.rel = "noopener noreferrer"; p.append("Check the site yourself: ", a); }
+      p.append(el("div", "Why we gave up: " + (current.notes || "no detail recorded"), "muted"));
+      box.append(p);
+      box.append(el("div", "Does this site publish a " + name + "?", "muted"));
+      addButtons([["missed", "1  Yes — we missed it"], ["none", "2  No — none exists"], ["unsure", "3  Unsure / site broken"]]);
+    }
+
+    const urlRow = el("p"); urlRow.append("Real document URL (optional): ");
+    const urlIn = el("input"); urlIn.type = "text"; urlIn.id = "correctUrl"; urlIn.maxLength = 2000; urlIn.placeholder = "https://...";
+    urlRow.append(urlIn);
+    const noteRow = el("p"); noteRow.append("Note (optional): ");
+    const noteIn = el("input"); noteIn.type = "text"; noteIn.id = "note"; noteIn.maxLength = 1000;
+    noteRow.append(noteIn);
+    const skip = el("button", "S  Skip"); skip.onclick = doSkip;
+    box.append(urlRow, noteRow, skip);
+  }
+
+  function addButtons(defs) {
+    const row = el("p");
+    for (const [verdict, label] of defs) {
+      const b = el("button", label); b.onclick = () => save(verdict); row.append(b); buttons.push(b);
+    }
+    $("item").append(row);
+  }
+
+  async function save(verdict) {
+    if (!current) return;
+    const correct_url = ($("correctUrl").value || "").trim();
+    if (correct_url && !safeUrl(correct_url)) { alert("URL must start with http:// or https://"); return; }
+    buttons.forEach(b => b.disabled = true);
+    try {
+      const r = await fetch("/api/audit", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attempt_id: current.attempt_id, verdict, correct_url: correct_url || null,
+                               note: $("note").value || null, reviewer: $("reviewer").value || null }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || "save failed"); buttons.forEach(b => b.disabled = false); return; }
+      loadSummary(); loadNext();
+    } catch (e) { alert("save failed: " + e.message); buttons.forEach(b => b.disabled = false); }
+  }
+
+  function doSkip() { if (current) skipped.push(current.attempt_id); loadNext(); }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT") return;
+    if (e.key === "s" || e.key === "S") doSkip();
+    const i = ["1", "2", "3"].indexOf(e.key);
+    if (i >= 0 && buttons[i] && !buttons[i].disabled) buttons[i].click();
+  });
+
+  loadSummary(); loadNext();
+</script>
+</body>
+</html>

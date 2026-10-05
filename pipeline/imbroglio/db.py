@@ -203,3 +203,81 @@ def batch_attempts(conn: psycopg.Connection, batch_id: int) -> list[tuple]:
            FROM crawl_attempts WHERE batch_id = %s ORDER BY domain, doc_type""",
         (batch_id,),
     ).fetchall()
+
+
+# --- audit (human review of discovery results) --------------------------------
+
+# Latest attempt per (domain, doc_type). Excluded: pipeline errors and hosts we
+# couldn't connect to at all — neither says anything about discovery quality,
+# and a reviewer can't verify an unreachable site (batch reports count those
+# separately).
+_LATEST_ATTEMPTS = """
+    SELECT * FROM (
+        SELECT DISTINCT ON (domain, doc_type)
+               id, domain, doc_type, ok, status, url, discovered_via, fetch_method, chars, notes
+        FROM crawl_attempts
+        WHERE status <> 'error'
+        ORDER BY domain, doc_type, attempted_at DESC
+    ) latest_per_doc
+    WHERE coalesce(notes, '') NOT LIKE '%%host unreachable%%'
+"""
+
+
+def audit_next(conn: psycopg.Connection, kind: str, skip: list[int]) -> tuple | None:
+    """One unreviewed attempt. kind: 'found' | 'missed' | 'all'. Order is a
+    stable pseudo-random shuffle so reviewers see a representative mix rather
+    than alphabetical order. Returns (id, domain, doc_type, ok, status, url,
+    discovered_via, fetch_method, chars, notes) or None."""
+    return conn.execute(
+        f"""WITH latest AS ({_LATEST_ATTEMPTS})
+            SELECT l.* FROM latest l
+            WHERE NOT EXISTS (SELECT 1 FROM audit_labels a
+                              WHERE a.domain = l.domain AND a.doc_type = l.doc_type)
+              AND (%(kind)s = 'all' OR (%(kind)s = 'found' AND l.ok)
+                   OR (%(kind)s = 'missed' AND NOT l.ok))
+              AND NOT (l.id = ANY(%(skip)s))
+            ORDER BY md5(l.domain || l.doc_type)
+            LIMIT 1""",
+        {"kind": kind, "skip": skip},
+    ).fetchone()
+
+
+def latest_text(conn: psycopg.Connection, domain: str, doc_type: str) -> str | None:
+    row = conn.execute(
+        """SELECT v.normalized_text FROM services s
+           JOIN documents d ON d.service_id = s.id AND d.doc_type = %s
+           JOIN document_versions v ON v.document_id = d.id
+           WHERE s.domain = %s ORDER BY v.fetched_at DESC LIMIT 1""",
+        (doc_type, domain),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def audit_save(conn: psycopg.Connection, attempt_id: int, verdict: str,
+               correct_url: str | None, note: str | None, reviewer: str | None) -> bool:
+    """Record a verdict against an attempt. Domain/doc_type/outcome are taken
+    from the attempt row, not the client. Returns False if the attempt is gone."""
+    row = conn.execute(
+        """INSERT INTO audit_labels (attempt_id, domain, doc_type, outcome, verdict,
+                                     correct_url, note, reviewer)
+           SELECT id, domain, doc_type, CASE WHEN ok THEN 'found' ELSE 'missed' END,
+                  %s, %s, %s, %s
+           FROM crawl_attempts WHERE id = %s
+           RETURNING id""",
+        (verdict, correct_url, note, reviewer, attempt_id),
+    ).fetchone()
+    return row is not None
+
+
+def audit_counts(conn: psycopg.Connection) -> dict:
+    """Totals of latest attempts by outcome, plus reviewed verdict counts."""
+    totals = dict(conn.execute(
+        f"""SELECT CASE WHEN ok THEN 'found' ELSE 'missed' END, count(*)
+            FROM ({_LATEST_ATTEMPTS}) l GROUP BY 1""").fetchall())
+    verdicts = conn.execute(
+        """SELECT DISTINCT ON (domain, doc_type) outcome, verdict
+           FROM audit_labels ORDER BY domain, doc_type, created_at DESC""").fetchall()
+    counts: dict[str, int] = {}
+    for outcome, verdict in verdicts:
+        counts[f"{outcome}:{verdict}"] = counts.get(f"{outcome}:{verdict}", 0) + 1
+    return {"totals": totals, "verdicts": counts}

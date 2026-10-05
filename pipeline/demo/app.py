@@ -37,6 +37,8 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -195,6 +197,128 @@ def service_detail(domain: str):
     }
 
 
+def _log_attempts(domain: str, outcomes, seconds: float) -> None:
+    """Record console analyses in crawl_attempts (no batch) so the audit page
+    can review them alongside batch runs. Best effort: never fails a run."""
+    try:
+        conn = db.connect()
+        try:
+            for o in outcomes:
+                db.insert_attempt(conn, None, domain, o.doc_type, o.status != "failed",
+                                  o.status, o.url, o.discovered_via, o.fetch_method,
+                                  o.chars, o.notes or None, seconds)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logging.getLogger("imbroglio.demo").exception("could not log attempts for %s", domain)
+
+
+# --- audit --------------------------------------------------------------------
+
+AUDIT_PREVIEW_CHARS = 4000
+
+
+class AuditVerdict(BaseModel):
+    attempt_id: int
+    verdict: Literal["correct", "wrong", "missed", "none", "unsure"]
+    correct_url: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=1000)
+    reviewer: str | None = Field(default=None, max_length=60)
+
+
+@app.get("/audit")
+def audit_page() -> FileResponse:
+    return FileResponse(STATIC / "audit.html")
+
+
+@app.get("/api/audit/next")
+def audit_next(kind: Literal["found", "missed", "all"] = "all", skip: str = ""):
+    if not db_reachable():
+        return JSONResponse({"error": "database offline"}, status_code=503)
+    skip_ids = [int(x) for x in skip.split(",") if x.strip().isdigit()][:500]
+    conn = db.connect()
+    try:
+        db.init_schema(conn)
+        row = db.audit_next(conn, kind, skip_ids)
+        if row is None:
+            return {"item": None}
+        aid, domain, doc_type, ok, status, url, via, method, chars, notes = row
+        text = db.latest_text(conn, domain, doc_type) if ok else None
+    finally:
+        conn.close()
+    return {"item": {
+        "attempt_id": aid, "domain": domain, "doc_type": doc_type, "found": ok,
+        "status": status, "url": url, "discovered_via": via, "fetch_method": method,
+        "chars": chars, "notes": notes,
+        "preview": text[:AUDIT_PREVIEW_CHARS] if text else None,
+        "preview_truncated": bool(text and len(text) > AUDIT_PREVIEW_CHARS),
+    }}
+
+
+@app.post("/api/audit")
+def audit_save(v: AuditVerdict):
+    if v.correct_url and not re.match(r"^https?://", v.correct_url, re.I):
+        return JSONResponse({"error": "correct_url must start with http:// or https://"},
+                            status_code=400)
+    conn = db.connect()
+    try:
+        saved = db.audit_save(conn, v.attempt_id, v.verdict, v.correct_url or None,
+                              (v.note or "").strip() or None, (v.reviewer or "").strip() or None)
+        conn.commit()
+    finally:
+        conn.close()
+    if not saved:
+        return JSONResponse({"error": "attempt not found"}, status_code=404)
+    return {"ok": True}
+
+
+def audit_metrics(counts: dict) -> dict:
+    """Turn raw counts into the two numbers that matter.
+
+    precision: of documents we said we found, the share that were the right
+      document (reviewed sample).
+    recall: of sites that actually publish the document, the share we found.
+      Found and missed attempts are reviewed at different rates, so each
+      reviewed rate is scaled up to its population before combining:
+        TP ~ total_found  * precision
+        FN ~ total_missed * (missed / (missed + none))
+    """
+    t, v = counts["totals"], counts["verdicts"]
+    total_found, total_missed = t.get("found", 0), t.get("missed", 0)
+    correct, wrong = v.get("found:correct", 0), v.get("found:wrong", 0)
+    missed, none = v.get("missed:missed", 0), v.get("missed:none", 0)
+    precision = correct / (correct + wrong) if correct + wrong else None
+    miss_has_policy = missed / (missed + none) if missed + none else None
+    recall = None
+    if precision is not None and miss_has_policy is not None:
+        tp = total_found * precision
+        fn = total_missed * miss_has_policy
+        recall = tp / (tp + fn) if tp + fn else None
+    return {
+        "totals": {"found": total_found, "missed": total_missed},
+        "reviewed": {"found": sum(n for k, n in v.items() if k.startswith("found:")),
+                     "missed": sum(n for k, n in v.items() if k.startswith("missed:"))},
+        "verdicts": v,
+        "precision": precision,
+        "missed_with_policy_rate": miss_has_policy,
+        "recall_estimate": recall,
+    }
+
+
+@app.get("/api/audit/summary")
+def audit_summary():
+    if not db_reachable():
+        return JSONResponse({"error": "database offline"}, status_code=503)
+    conn = db.connect()
+    try:
+        db.init_schema(conn)
+        counts = db.audit_counts(conn)
+    finally:
+        conn.close()
+    return audit_metrics(counts)
+
+
 class _QueueHandler(logging.Handler):
     def __init__(self, q: queue.Queue) -> None:
         super().__init__()
@@ -247,6 +371,8 @@ def run(req: AnalyzeRequest):
         try:
             outcomes = analyze(domain, use_playwright=req.playwright, store=store,
                                time_budget=ANALYZE_TIME_BUDGET)
+            if store:
+                _log_attempts(domain, outcomes, time.time() - t0)
             result.update(
                 domain=domain, db=store, seconds=round(time.time() - t0, 1),
                 outcomes=[

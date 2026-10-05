@@ -90,3 +90,36 @@ def test_slot_released_after_run(client, app_module, monkeypatch):
         r = client.post("/api/analyze", json={"domain": "notion.so"}, headers=AUTH)
         assert r.status_code == 200
         assert '"type": "result"' in r.text
+
+
+def test_audit_routes_require_password(client):
+    for path in ("/audit", "/api/audit/next", "/api/audit/summary"):
+        assert client.get(path).status_code == 401, path
+    assert client.post("/api/audit", json={"attempt_id": 1, "verdict": "correct"}).status_code == 401
+
+
+def test_audit_rejects_bad_input(client):
+    r = client.post("/api/audit", json={"attempt_id": 1, "verdict": "DROP TABLE"}, headers=AUTH)
+    assert r.status_code == 422
+    r = client.post("/api/audit", json={"attempt_id": 1, "verdict": "missed",
+                                        "correct_url": "javascript:alert(1)"}, headers=AUTH)
+    assert r.status_code == 400
+
+
+def test_audit_metrics_math(app_module):
+    # 80 found, 20 missed. Reviewed found: 9 correct, 1 wrong -> precision 0.9.
+    # Reviewed missed: 1 had a policy, 3 had none -> 25% of misses are real misses.
+    # TP ~ 80 * 0.9 = 72, FN ~ 20 * 0.25 = 5 -> recall 72 / 77.
+    m = app_module.audit_metrics({
+        "totals": {"found": 80, "missed": 20},
+        "verdicts": {"found:correct": 9, "found:wrong": 1, "missed:missed": 1, "missed:none": 3},
+    })
+    assert m["precision"] == 0.9
+    assert m["missed_with_policy_rate"] == 0.25
+    assert abs(m["recall_estimate"] - 72 / 77) < 1e-9
+    assert m["reviewed"] == {"found": 10, "missed": 4}
+
+
+def test_audit_metrics_empty(app_module):
+    m = app_module.audit_metrics({"totals": {}, "verdicts": {}})
+    assert m["precision"] is None and m["recall_estimate"] is None
