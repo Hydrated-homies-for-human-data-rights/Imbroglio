@@ -18,6 +18,7 @@ COPY requirements.txt .
 # --with-deps adds the system libraries Chromium needs on Debian.
 RUN pip install -r requirements.txt \
  && playwright install --with-deps chromium \
+ && apt-get update && apt-get install -y --no-install-recommends tini \
  && rm -rf /var/lib/apt/lists/*
 
 COPY imbroglio/ imbroglio/
@@ -32,4 +33,7 @@ USER app
 ENV HOST=0.0.0.0 PORT=8765
 EXPOSE 8765
 
+# tini as PID 1 reaps exited Chromium helper processes; without it they
+# piled up as zombies under the Python server.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "demo/app.py"]

@@ -74,3 +74,17 @@ def test_redirect_to_internal_address_is_blocked(monkeypatch):
     assert html is None
     assert status.startswith("blocked")
     assert calls == ["https://public.example/"]  # never requested the internal URL
+
+
+def test_browser_cap_returns_busy_instead_of_launching(monkeypatch):
+    """With every browser slot taken, fetch_rendered must not start Chromium."""
+    import threading
+    monkeypatch.setattr(fetch, "_browser_slots", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(fetch, "BROWSER_WAIT", 0.05)
+    monkeypatch.setattr(fetch, "is_allowed", lambda url: True)
+    assert fetch._browser_slots.acquire(blocking=False)
+    try:
+        html, status = fetch.fetch_rendered("https://example.com/")
+    finally:
+        fetch._browser_slots.release()
+    assert html is None and status == "playwright:busy"

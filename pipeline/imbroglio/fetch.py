@@ -9,6 +9,8 @@ Ported from Spike A with its hard-won lessons baked in:
 
 from __future__ import annotations
 
+import os
+import threading
 import time
 from urllib.parse import urljoin
 
@@ -29,6 +31,17 @@ HEADERS = {
 TIMEOUT = 15
 RETRIES = 2
 MAX_REDIRECTS = 5
+
+# Process-wide cap on simultaneous headless browsers (env MAX_BROWSERS).
+MAX_BROWSERS = int(os.environ.get("MAX_BROWSERS", "2"))
+BROWSER_WAIT = 60  # seconds to wait for a free browser slot before giving up
+_browser_slots = threading.BoundedSemaphore(MAX_BROWSERS)
+CHROMIUM_ARGS = [
+    "--disable-dev-shm-usage",  # containers ship a tiny /dev/shm; use /tmp instead
+    "--disable-gpu",
+    "--disable-extensions",
+    "--mute-audio",
+]
 BACKOFF = 3.0  # seconds, doubled per retry
 
 
@@ -87,20 +100,28 @@ def fetch_rendered(url: str) -> tuple[str | None, str]:
         return None, "playwright-not-installed"
     if not is_allowed(url):
         return None, "blocked: non-public address"
+    # Each Chromium costs ~150-300 MB. On a 1 GB container, unbounded
+    # concurrency (web requests + batch workers) exhausted memory and stalled
+    # every connection in the process, including the database's.
+    if not _browser_slots.acquire(timeout=BROWSER_WAIT):
+        return None, "playwright:busy"
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            # Default browser UA on purpose — see module docstring.
-            page = browser.new_page()
-            # SSRF guard for everything the page loads: navigations, iframes,
-            # scripts, XHR. A page script fetching an internal endpoint and
-            # writing it into the DOM would otherwise leak it into our text.
-            page.route("**/*", lambda route: route.continue_() if is_allowed(route.request.url)
-                       else route.abort("blockedbyclient"))
-            page.goto(url, wait_until="domcontentloaded", timeout=TIMEOUT * 1000)
-            page.wait_for_timeout(3000)  # hydration settle
-            html = page.content()
-            browser.close()
-            return html, "200 (rendered)"
+            browser = p.chromium.launch(headless=True, args=CHROMIUM_ARGS)
+            try:
+                # Default browser UA on purpose — see module docstring.
+                page = browser.new_page()
+                # SSRF guard for everything the page loads: navigations, iframes,
+                # scripts, XHR. A page script fetching an internal endpoint and
+                # writing it into the DOM would otherwise leak it into our text.
+                page.route("**/*", lambda route: route.continue_() if is_allowed(route.request.url)
+                           else route.abort("blockedbyclient"))
+                page.goto(url, wait_until="domcontentloaded", timeout=TIMEOUT * 1000)
+                page.wait_for_timeout(3000)  # hydration settle
+                return page.content(), "200 (rendered)"
+            finally:
+                browser.close()  # also on errors; leaked browsers held memory
     except Exception as exc:
         return None, f"playwright:{type(exc).__name__}"
+    finally:
+        _browser_slots.release()
