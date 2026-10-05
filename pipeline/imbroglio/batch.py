@@ -41,6 +41,8 @@ def clean_domain(raw: str) -> str | None:
     d = d.split("/")[0].split("?")[0].split("#")[0].removeprefix("www.")
     if d.endswith(".onion"):
         return None
+    if re.fullmatch(r"[0-9.]+", d):
+        return None  # IPv4 literal: we analyze websites by name, never raw addresses
     return d if DOMAIN_RE.match(d) else None
 
 

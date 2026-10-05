@@ -1,0 +1,12 @@
+.venv/
+**/__pycache__/
+*.pyc
+data/
+models/
+seeds/
+runs/
+spike_a/
+spike_b/
+tests/
+.env
+.env.*

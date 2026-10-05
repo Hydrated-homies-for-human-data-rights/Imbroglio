@@ -1,8 +1,9 @@
 """Postgres storage layer.
 
-Connection string from IMBROGLIO_DB env var, defaulting to the local
-docker-compose instance. Production (Neon) is the same code with a different
-DSN — that's the whole point of keeping this layer thin.
+Connection string from IMBROGLIO_DB (or DATABASE_URL, the name hosting
+platforms use), defaulting to the local docker-compose instance. Production
+(Supabase) is the same code with a different DSN — that's the whole point of
+keeping this layer thin.
 """
 
 from __future__ import annotations
@@ -17,7 +18,12 @@ SCHEMA = Path(__file__).parent / "schema.sql"
 
 
 def connect(dsn: str | None = None) -> psycopg.Connection:
-    return psycopg.connect(dsn or os.environ.get("IMBROGLIO_DB", DEFAULT_DSN))
+    dsn = dsn or os.environ.get("IMBROGLIO_DB") or os.environ.get("DATABASE_URL") or DEFAULT_DSN
+    # prepare_threshold=None: Supabase's connection pooler (PgBouncer-style)
+    # can hand consecutive statements to different backends, which breaks
+    # server-side prepared statements. connect_timeout keeps a dead database
+    # from hanging requests for half a minute.
+    return psycopg.connect(dsn, prepare_threshold=None, connect_timeout=5)
 
 
 def init_schema(conn: psycopg.Connection) -> None:

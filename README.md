@@ -67,6 +67,23 @@ cd spike_a && python spike_a.py --playwright
 cd spike_b && python prepare.py && python baseline.py
 ```
 
+## Deploy (hosted prototype)
+
+The pipeline and demo console ship as one Docker image (`pipeline/Dockerfile`)
+deployed on Railway, with Postgres on Supabase.
+
+| Variable | Purpose |
+| --- | --- |
+| `IMBROGLIO_PASSWORD` | Shared password for the whole site (12+ chars). Required. |
+| `IMBROGLIO_USER` | Basic-auth username (default `imbroglio`) |
+| `DATABASE_URL` | Supabase **session pooler** connection string |
+| `MAX_CONCURRENT` | Simultaneous analyses (default 2; each can launch Chromium) |
+
+Security: every route except `/healthz` requires the password; outbound
+fetches refuse private, loopback and cloud-metadata addresses, including via
+redirects and in-browser requests (`pipeline/imbroglio/netguard.py`); batch
+runs are CLI-only. Tests: `cd pipeline && pytest`.
+
 ## Known issues
 
 - **Windows Smart App Control** can block lxml's DLLs, which breaks
