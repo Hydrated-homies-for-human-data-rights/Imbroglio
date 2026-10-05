@@ -37,6 +37,9 @@
   <h3>Results</h3>
   <div id="results">(none yet)</div>
 
+  <h3>Queue <span id="queueCount"></span></h3>
+  <div id="queue">(loading)</div>
+
   <h3>Cached websites <span id="cachedCount"></span></h3>
   <div id="cached">(loading)</div>
   <div id="detail"></div>
@@ -106,6 +109,57 @@
   }
 
   loadCached();
+
+  // --- live queue view (plain-text cells only: domains/stages come from crawled sites)
+  const ago = (iso) => {
+    if (!iso) return "";
+    const s = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+    return s < 60 ? s + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : Math.round(s / 3600) + "h ago";
+  };
+  function queueTable(rows, cols) {
+    const t = document.createElement("table");
+    const head = t.insertRow();
+    for (const [label] of cols) { const th = document.createElement("th"); th.textContent = label; head.append(th); }
+    for (const r of rows) {
+      const tr = t.insertRow();
+      for (const [, fn] of cols) tr.insertCell().textContent = fn(r);
+    }
+    return t;
+  }
+  async function loadQueue() {
+    if (document.hidden) return;
+    try {
+      const r = await fetch("/api/queue");
+      const d = await r.json();
+      if (!r.ok) { $("queue").textContent = d.error || "error"; return; }
+      const c = d.counts;
+      $("queueCount").textContent = `(${c.running || 0} running, ${c.queued || 0} waiting, ${c.done || 0} done, ${c.failed || 0} failed)`;
+      const box = $("queue"); box.replaceChildren();
+      if (d.open.length) {
+        box.append(queueTable(d.open, [
+          ["domain", x => x.domain],
+          ["status", x => x.status],
+          ["step", x => x.status === "running" ? (x.stage || "") : `waiting (${ago(x.requested_at)})`],
+          ["requests", x => x.request_count],
+          ["from", x => x.source],
+        ]));
+      } else {
+        box.append("(queue empty)");
+      }
+      if (d.recent.length) {
+        const h = document.createElement("p"); h.textContent = "Recently finished:"; box.append(h);
+        box.append(queueTable(d.recent, [
+          ["domain", x => x.domain],
+          ["result", x => x.status === "failed" ? "failed: " + (x.error || "") : (x.found && x.found.length ? "found " + x.found.join(" + ") : "nothing found")],
+          ["took", x => x.started_at && x.finished_at ? ((new Date(x.finished_at) - new Date(x.started_at)) / 1000).toFixed(1) + "s" : ""],
+          ["finished", x => ago(x.finished_at)],
+        ]));
+      }
+    } catch { $("queue").textContent = "(could not load queue)"; }
+  }
+  loadQueue();
+  setInterval(loadQueue, 3000);
+  document.addEventListener("visibilitychange", loadQueue);
 
   const docName = (t) => (t === "privacy" ? "privacy policy" : "terms of service");
   const safeHref = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");

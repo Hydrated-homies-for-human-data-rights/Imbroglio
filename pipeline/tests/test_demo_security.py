@@ -85,7 +85,7 @@ def test_request_needs_database(client):
 
 
 def test_audit_routes_require_password(client):
-    for path in ("/audit", "/api/audit/next", "/api/audit/summary"):
+    for path in ("/audit", "/api/audit/next", "/api/audit/summary", "/api/queue"):
         assert client.get(path).status_code == 401, path
     assert client.post("/api/audit", json={"attempt_id": 1, "verdict": "correct"}).status_code == 401
 

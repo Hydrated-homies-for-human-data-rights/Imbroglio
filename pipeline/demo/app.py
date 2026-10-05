@@ -360,10 +360,14 @@ def get_request(request_id: int):
 
 
 @app.get("/api/queue")
-def queue_stats() -> dict:
+def queue_overview():
+    """Live queue view: counts, open jobs, recently finished jobs."""
+    if not db_reachable():
+        return JSONResponse({"error": "database offline"}, status_code=503)
     conn = db.connect()
     try:
-        return {"queue": jobs.stats(conn), "embedded_worker": EMBEDDED_WORKER}
+        db.init_schema(conn)
+        return jobs.overview(conn)
     finally:
         conn.close()
 

@@ -66,3 +66,19 @@ def test_progress_and_result_roundtrip(conn):
     row = jobs.get(conn, rid)
     assert row["progress"] == ["fetching homepage", "got 1,234 chars"]
     assert row["status"] == "done" and row["result"]["documents"][0]["found"]
+
+
+def test_overview_lists_open_and_recent(conn):
+    done_id, *_ = jobs.enqueue(conn, "done.com")
+    jobs.claim(conn, "w")
+    jobs.finish(conn, done_id, True, {"documents": [{"doc_type": "privacy", "found": True},
+                                                     {"doc_type": "terms", "found": False}]})
+    jobs.enqueue(conn, "waiting.com")
+    jobs.enqueue(conn, "busy.com")
+    jobs.enqueue(conn, "busy.com")  # higher priority -> claimed next
+    running = jobs.claim(conn, "w")
+    assert running[1] == "busy.com"
+    ov = jobs.overview(conn)
+    assert [j["domain"] for j in ov["open"]] == ["busy.com", "waiting.com"]  # running first
+    assert ov["recent"][0]["domain"] == "done.com" and ov["recent"][0]["found"] == ["privacy"]
+    assert ov["counts"] == {"done": 1, "running": 1, "queued": 1}

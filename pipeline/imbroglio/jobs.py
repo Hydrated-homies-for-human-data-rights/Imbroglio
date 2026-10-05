@@ -121,3 +121,33 @@ def get(conn: psycopg.Connection, request_id: int) -> dict | None:
 def stats(conn: psycopg.Connection) -> dict:
     return dict(conn.execute(
         "SELECT status, count(*) FROM analysis_requests GROUP BY status").fetchall())
+
+
+def overview(conn: psycopg.Connection, open_limit: int = 50, recent_limit: int = 10) -> dict:
+    """Open jobs (running first, then in claim order) and the latest finished
+    ones, for a live queue view."""
+    cols = ["id", "domain", "status", "stage", "source", "request_count", "attempts",
+            "requested_at", "started_at", "finished_at", "error", "found"]
+
+    def rows(sql: str, limit: int) -> list[dict]:
+        out = []
+        for r in conn.execute(sql, (limit,)).fetchall():
+            d = dict(zip(cols, r))
+            for k in ("requested_at", "started_at", "finished_at"):
+                d[k] = d[k].isoformat() if d[k] else None
+            out.append(d)
+        return out
+
+    select = """SELECT id, domain, status, stage, source, request_count, attempts,
+                       requested_at, started_at, finished_at, error,
+                       (SELECT array_agg(x->>'doc_type') FROM jsonb_array_elements(result->'documents') x
+                        WHERE (x->>'found')::boolean) AS found
+                FROM analysis_requests"""
+    return {
+        "counts": stats(conn),
+        "open": rows(select + """ WHERE status IN ('queued', 'running')
+                     ORDER BY status = 'running' DESC, request_count DESC, requested_at
+                     LIMIT %s""", open_limit),
+        "recent": rows(select + """ WHERE status IN ('done', 'failed')
+                       ORDER BY finished_at DESC LIMIT %s""", recent_limit),
+    }
