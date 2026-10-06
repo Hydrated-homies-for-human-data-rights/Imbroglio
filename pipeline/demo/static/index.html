@@ -79,18 +79,32 @@
         return `${d.versions} version${d.versions === 1 ? "" : "s"}` +
                (d.changes ? `, <b>${d.changes} change${d.changes === 1 ? "" : "s"}</b>` : "");
       };
-      let html = "<table><tr><th>domain</th><th>privacy</th><th>terms</th><th>last checked</th><th></th></tr>";
+      const rated = data.services.filter(s => s.rating).length;
+      $("cachedCount").textContent += ` · ${rated} rated`;
+      // rated sites first, worst rating first, so the scorecards are easy to find
+      const order = { SEVERE: 0, EXTENSIVE: 1, MODERATE: 2, LIMITED: 3, NOT_DISCLOSED: 4 };
+      data.services.sort((a, b) => (a.rating ? order[a.rating] : 9) - (b.rating ? order[b.rating] : 9) || a.domain.localeCompare(b.domain));
+      let html = "<table><tr><th>domain</th><th>rating</th><th>privacy</th><th>terms</th><th>last checked</th><th></th></tr>";
       for (const s of data.services) {
         const last = s.docs.map(d => d.last_fetched).filter(Boolean).sort().pop();
         html += `<tr>
           <td>${esc(s.domain)}</td>
+          <td>${s.rating ? `<span class="tier ${TIER[s.rating].cls}">${TIER[s.rating].shape} ${TIER[s.rating].label}</span>` : '<span class="muted">not rated</span>'}</td>
           <td>${cell(s.docs, "privacy")}</td>
           <td>${cell(s.docs, "terms")}</td>
           <td>${last ? esc(last.slice(0, 16).replace("T", " ")) : "&mdash;"}</td>
-          <td><a href="#" data-domain="${esc(s.domain)}" class="view">view</a></td>
+          <td><a href="#" data-domain="${esc(s.domain)}" class="card">scorecard</a> · <a href="#" data-domain="${esc(s.domain)}" class="view">text</a></td>
         </tr>`;
       }
       $("cached").innerHTML = html + "</table>";
+      for (const a of document.querySelectorAll("a.card")) {
+        a.addEventListener("click", async (e) => {
+          e.preventDefault();
+          currentDomain = a.dataset.domain; $("recheck").disabled = false;
+          $("log").textContent = ""; await showSite(a.dataset.domain, "Cached result.");
+          $("results").scrollIntoView({ behavior: "smooth" });
+        });
+      }
       for (const a of document.querySelectorAll("a.view")) {
         a.addEventListener("click", (e) => { e.preventDefault(); viewService(a.dataset.domain); });
       }

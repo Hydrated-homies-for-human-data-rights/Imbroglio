@@ -150,12 +150,15 @@ def services() -> dict:
     try:
         db.init_schema(conn)
         rows = db.list_services(conn)
+        from imbroglio.analysis import RUBRIC_VERSION
+        from imbroglio.scorer import SCORER_VERSION
+        ratings = db.headlines(conn, RUBRIC_VERSION, SCORER_VERSION)
     finally:
         conn.close()
 
     grouped: dict[str, dict] = {}
     for domain, doc_type, url, versions, changes, last_fetched in rows:
-        svc = grouped.setdefault(domain, {"domain": domain, "docs": []})
+        svc = grouped.setdefault(domain, {"domain": domain, "docs": [], "rating": ratings.get(domain)})
         if doc_type:
             svc["docs"].append({
                 "doc_type": doc_type,

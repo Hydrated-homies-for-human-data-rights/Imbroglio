@@ -86,3 +86,11 @@ def test_scorecard_shows_only_verified_evidence(conn, fake_llm):
     assert ev["quotes"] == ["We use your content to train our machine learning models."]
     assert ev["document"] == "privacy" and ev["reused"] is False
     assert card["documents"] == ["privacy"]
+
+
+def test_headlines_for_list_view(conn, fake_llm):
+    analysis.ensure_analyzed(conn, _store(conn, "rated.example"))
+    _store(conn, "unrated.example", POLICY + " different")
+    from imbroglio.scorer import SCORER_VERSION
+    h = db.headlines(conn, "v0", SCORER_VERSION)
+    assert h == {"rated.example": "SEVERE"}       # unrated sites are simply absent

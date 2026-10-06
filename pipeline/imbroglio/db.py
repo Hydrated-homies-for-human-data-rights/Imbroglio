@@ -306,3 +306,24 @@ def audit_counts(conn: psycopg.Connection) -> dict:
     for outcome, verdict in verdicts:
         counts[f"{outcome}:{verdict}"] = counts.get(f"{outcome}:{verdict}", 0) + 1
     return {"totals": totals, "verdicts": counts}
+
+
+def headlines(conn: psycopg.Connection, rubric_version: str, scorer_version: str) -> dict[str, str]:
+    """domain -> headline tier (worst category across the site's latest
+    analyzed documents), for list views. Mirrors scorer.combine/headline."""
+    rows = conn.execute(
+        """WITH latest AS (
+               SELECT DISTINCT ON (d.id) s.domain, v.id AS version_id
+               FROM documents d JOIN services s ON s.id = d.service_id
+               JOIN document_versions v ON v.document_id = d.id
+               ORDER BY d.id, v.fetched_at DESC)
+           SELECT l.domain,
+                  max(CASE sc.tier WHEN 'SEVERE' THEN 3 WHEN 'EXTENSIVE' THEN 2
+                                   WHEN 'MODERATE' THEN 1 WHEN 'LIMITED' THEN 0 ELSE -1 END)
+           FROM latest l JOIN scores sc ON sc.version_id = l.version_id
+           WHERE sc.rubric_version = %s AND sc.scorer_version = %s
+           GROUP BY l.domain""",
+        (rubric_version, scorer_version),
+    ).fetchall()
+    names = {3: "SEVERE", 2: "EXTENSIVE", 1: "MODERATE", 0: "LIMITED", -1: "NOT_DISCLOSED"}
+    return {domain: names[rank] for domain, rank in rows}
