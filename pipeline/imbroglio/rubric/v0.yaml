@@ -1,0 +1,152 @@
+# Rubric v0 — PLACEHOLDER for the prototype.
+#
+# Sam owns the real rubric (v1: 25 checks across the 7 scorecard categories,
+# design spec "Two category schemes"). This v0 has 2 checks per category so the
+# extraction -> verification -> scoring pipeline can be built and measured
+# end to end. Its format is the contract v1 should follow; the content is not.
+#
+# Each check is one question asked of a policy document. Every status has an
+# `exposure` level that the deterministic scorer turns into a tier:
+#   0 = LIMITED, 1 = MODERATE, 2 = EXTENSIVE, 3 = SEVERE   (higher = more exposed)
+# `not_disclosed` is always allowed: the document says nothing about it. It
+# carries no exposure level of its own (design goal 4: vagueness is reported,
+# never filled in by inference).
+
+version: v0
+categories:
+  selling_sharing: Data selling and sharing
+  collection: Collection scope
+  retention: Retention and deletion
+  user_rights: User rights
+  security: Security
+  ai_training: AI and model training
+  government: Government requests
+
+checks:
+  - id: sells_personal_data
+    category: selling_sharing
+    question: Does the company sell users' personal information?
+    guidance: >
+      Look for "sell", "sale", and the CCPA "Do Not Sell or Share" language.
+      A statement that they do not sell data counts as `no`.
+    statuses:
+      "yes": {exposure: 3, meaning: Personal information is sold}
+      "no": {exposure: 0, meaning: The document states personal information is not sold}
+
+  - id: shares_for_advertising
+    category: selling_sharing
+    question: Is personal information shared with third parties for advertising or marketing?
+    guidance: >
+      Includes advertising partners, ad networks, cross-context behavioral
+      advertising, and "marketing partners". Sharing only with processors that
+      act on the company's behalf is `service_providers_only`.
+    statuses:
+      "yes": {exposure: 2, meaning: Shared with third parties for advertising or marketing}
+      service_providers_only: {exposure: 1, meaning: Shared only with service providers acting on the company's behalf}
+      "no": {exposure: 0, meaning: The document states it is not shared for advertising}
+
+  - id: collects_sensitive_data
+    category: collection
+    question: Does the company collect sensitive categories of data (precise location, biometrics, health, financial, or government ID)?
+    guidance: Quote the passage naming the sensitive categories collected.
+    statuses:
+      "yes": {exposure: 2, meaning: One or more sensitive categories are collected}
+      "no": {exposure: 0, meaning: The document states no sensitive categories are collected}
+
+  - id: collects_from_third_parties
+    category: collection
+    question: Does the company obtain information about users from other companies (data brokers, partners, social networks)?
+    guidance: Collection directly from the user or their device alone is `no`.
+    statuses:
+      "yes": {exposure: 2, meaning: Information about users is obtained from third parties}
+      "no": {exposure: 0, meaning: Information is collected only from the user and their use of the service}
+
+  - id: retention_period
+    category: retention
+    question: How long is personal information kept?
+    guidance: >
+      `specific` needs a concrete period or a clear trigger ("deleted 30 days
+      after account closure"). "As long as necessary" or similar is `vague`.
+    statuses:
+      specific: {exposure: 0, meaning: A concrete retention period or deletion trigger is stated}
+      vague: {exposure: 2, meaning: Retention is described only in open-ended terms}
+      indefinite: {exposure: 3, meaning: Information may be kept indefinitely}
+
+  - id: deletion_on_request
+    category: retention
+    question: Can users have their personal information deleted?
+    guidance: >
+      `all_users` if any user can request deletion; `some_jurisdictions` if the
+      right is limited to residents of certain places (for example the EU or California).
+    statuses:
+      all_users: {exposure: 0, meaning: Any user can request deletion}
+      some_jurisdictions: {exposure: 2, meaning: Deletion is offered only to residents of certain jurisdictions}
+      "no": {exposure: 3, meaning: Deletion is not offered}
+
+  - id: access_and_export
+    category: user_rights
+    question: Can users access or export the personal information held about them?
+    statuses:
+      all_users: {exposure: 0, meaning: Any user can access or export their information}
+      some_jurisdictions: {exposure: 2, meaning: Offered only to residents of certain jurisdictions}
+      "no": {exposure: 3, meaning: Access or export is not offered}
+
+  - id: opt_out_of_tracking
+    category: user_rights
+    question: Can users opt out of tracking, targeted advertising, or the sale or sharing of their information?
+    statuses:
+      "yes": {exposure: 0, meaning: An opt-out is offered to users}
+      limited: {exposure: 1, meaning: An opt-out exists but is narrow or only for some users}
+      "no": {exposure: 3, meaning: The document indicates no opt-out is offered}
+
+  - id: security_measures
+    category: security
+    question: Does the document describe specific security measures (such as encryption, access controls, or audits)?
+    guidance: A generic promise of "reasonable" or "industry-standard" security without specifics is `generic`.
+    statuses:
+      specific: {exposure: 0, meaning: Specific security measures are described}
+      generic: {exposure: 2, meaning: Only a generic security commitment is made}
+
+  - id: breach_notification
+    category: security
+    question: Does the company commit to notifying users of a data breach?
+    statuses:
+      "yes": {exposure: 0, meaning: The company commits to notifying users of breaches}
+      "no": {exposure: 2, meaning: The document disclaims or does not commit to notification}
+
+  - id: trains_ai_on_user_data
+    category: ai_training
+    question: Does the company use users' data or content to train AI or machine-learning models?
+    guidance: >
+      Includes "improve our models", "machine learning", "artificial intelligence",
+      and training on user-generated content. If training happens only with
+      explicit opt-in consent, answer `opt_in`.
+    statuses:
+      "yes": {exposure: 3, meaning: User data or content is used to train AI models}
+      opt_in: {exposure: 1, meaning: Used for training only with the user's opt-in consent}
+      "no": {exposure: 0, meaning: The document states user data is not used to train AI models}
+
+  - id: content_license
+    category: ai_training
+    question: Do users grant the company a broad license to their content (for example worldwide, royalty-free, sublicensable)?
+    statuses:
+      broad: {exposure: 2, meaning: A broad, sublicensable license to user content is granted}
+      limited: {exposure: 0, meaning: The license is limited to operating the service}
+
+  - id: discloses_to_government
+    category: government
+    question: Under what conditions does the company disclose information to governments or law enforcement?
+    guidance: >
+      `legal_process_required` if they disclose only in response to valid
+      legal process (subpoena, warrant, court order). `broad` if they may
+      disclose whenever they believe it is appropriate or without legal process.
+    statuses:
+      legal_process_required: {exposure: 1, meaning: Disclosure only in response to valid legal process}
+      broad: {exposure: 3, meaning: Disclosure is permitted without requiring legal process}
+
+  - id: notifies_users_of_requests
+    category: government
+    question: Does the company commit to notifying users about government requests for their data?
+    statuses:
+      "yes": {exposure: 0, meaning: Users are notified of government requests where legally allowed}
+      "no": {exposure: 2, meaning: The document states users are not notified, or disclaims notification}

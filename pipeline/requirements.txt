@@ -22,7 +22,10 @@ numpy>=2.0
 fastapi>=0.115
 uvicorn>=0.30
 
+# Extraction (M4)
+anthropic>=1.0
+pyyaml>=6.0
+
 # Later phases (uncomment as needed)
 # torch
 # transformers
-# anthropic

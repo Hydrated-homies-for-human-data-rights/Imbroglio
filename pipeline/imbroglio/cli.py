@@ -49,7 +49,20 @@ def main() -> int:
     r.add_argument("batch_id", nargs="?", type=int)
     r.add_argument("--out", type=Path, help="also write the report to this markdown file")
 
+    cm = sub.add_parser("compare-models", help="run extraction models side by side on sample documents")
+    cm.add_argument("--sample", type=int, default=10)
+    cm.add_argument("--models", default="opus,sonnet,haiku")
+    cm.add_argument("--seed", type=int, default=1)
+    cm.add_argument("--out", type=Path, default=Path("runs/compare-models.md"))
+
     args = ap.parse_args()
+
+    if args.command == "compare-models":
+        from .compare import run as compare_run
+        print(compare_run(args.sample, args.models.split(","), seed=args.seed, out=args.out))
+        print()
+        print(f"report: {args.out}  details: {args.out.with_suffix('.json')}")
+        return 0
 
     if args.command == "seed-tosdr":
         from .batch import seed_tosdr
