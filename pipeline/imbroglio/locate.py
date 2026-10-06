@@ -94,6 +94,41 @@ CAPTCHA_URL = re.compile(r"captcha|challenge|cf-chl|perimeterx|px-cdn|datadome",
 
 MAX_PROBES = 12
 
+# Two-label public suffixes common in our data; good enough to tell
+# "policies.google.com" apart from "sololearn.com" without a full suffix list.
+_MULTI_SUFFIXES = {
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au", "co.jp",
+    "ne.jp", "or.jp", "com.br", "com.cn", "co.nz", "co.in", "com.mx", "co.kr",
+    "com.tr", "com.sg", "co.za", "com.ar", "com.tw", "com.hk",
+}
+
+# Bot-challenge / CAPTCHA interstitials. A homepage like this is a wall, not
+# the site: its links (e.g. "Privacy" -> cloudflare.com/privacypolicy) belong
+# to the wall's vendor. Observed: 11 sites stored Cloudflare's own policy.
+CHALLENGE_MARKERS = re.compile(
+    r"challenge-platform|cf-chl-|cf_chl_|<title>\s*just a moment|attention required! \| cloudflare|"
+    r"checking (if the site connection is secure|your browser)|verify you are human|"
+    r"captcha-delivery\.com|px-captcha|hcaptcha\.com/1/api|please enable js and disable any ad blocker",
+    re.I,
+)
+
+
+def site_of(host: str) -> str:
+    """Registrable domain: 'policies.google.com' -> 'google.com'."""
+    labels = (host or "").lower().rstrip(".").split(".")
+    if len(labels) >= 3 and ".".join(labels[-2:]) in _MULTI_SUFFIXES:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+def brand_of(domain: str) -> str:
+    """'linustechtips.com' -> 'linustechtips'; 'bbc.co.uk' -> 'bbc'."""
+    return site_of(domain).split(".")[0]
+
+
+def is_challenge(html: str) -> bool:
+    return bool(html) and bool(CHALLENGE_MARKERS.search(html[:200_000]))
+
 
 @dataclass
 class Located:
@@ -107,14 +142,22 @@ class Located:
 
 
 def _candidates(html: str, base_url: str) -> dict[str, list[tuple[str, str]]]:
+    """Policy-looking links, strongest first. Links to another site get a
+    '-external' suffix on their via-label; locate_document tries them only
+    after the site's own links and guessed paths, and only accepts them if
+    the document mentions the site (see _external_ok)."""
     soup = BeautifulSoup(html, "html.parser")
     out: dict[str, list[tuple[str, str]]] = {"privacy": [], "terms": []}
     seen: dict[str, set[str]] = {"privacy": set(), "terms": set()}
+    home_site = site_of(urlparse(base_url).hostname or "")
 
     def add(doc_type: str, href: str, via: str) -> None:
         url = urljoin(base_url, href)
-        if urlparse(url).scheme in ("http", "https") and url not in seen[doc_type]:
+        parsed = urlparse(url)
+        if parsed.scheme in ("http", "https") and url not in seen[doc_type]:
             seen[doc_type].add(url)
+            if site_of(parsed.hostname or "") != home_site:
+                via += "-external"
             out[doc_type].append((url, via))
 
     anchors = soup.find_all("a", href=True)
@@ -148,6 +191,14 @@ def _iframe_srcs(html: str, base_url: str, domain: str) -> tuple[list[str], bool
         if host == domain or host.endswith("." + domain) or LEGAL_URL.search(parsed.path):
             follow.append(url)
     return follow, captcha
+
+
+def _external_ok(domain: str, text: str) -> bool:
+    """A policy hosted on another site counts only if it names this site.
+    Google's policy names YouTube (legit: youtube.com uses it); Cloudflare's
+    and reCAPTCHA's links lead to policies that never name the site."""
+    brand = brand_of(domain)
+    return len(brand) >= 3 and brand.lower() in text.lower()
 
 
 def _validate(doc_type: str, text: str) -> tuple[bool, str]:
@@ -191,9 +242,11 @@ def locate_document(domain: str, doc_type: str,
                     use_playwright: bool,
                     deadline: float | None = None) -> Located:
     result = Located(doc_type)
-    probes = candidates + [
+    own = [c for c in candidates if not c[1].endswith("-external")]
+    external = [c for c in candidates if c[1].endswith("-external")]
+    probes = own + [
         (f"https://{domain}{p}", "common-path") for p in COMMON_PATHS[doc_type]
-    ]
+    ] + external
     tried: set[str] = set()
     seen_texts: set[str] = set()
     i = 0
@@ -215,8 +268,15 @@ def locate_document(domain: str, doc_type: str,
             result.notes.append(f"{via} {url} -> {status}")
             continue
 
+        if is_challenge(html):
+            log.info("[%s]   bot-challenge page, skipping", doc_type)
+            result.notes.append(f"{via} {url} -> blocked: bot challenge")
+            continue
+
         result.url, result.discovered_via, result.fetch_method = url, via, method
         ok, reason = _validate(doc_type, text)
+        if ok and via.endswith("-external") and not _external_ok(domain, text):
+            ok, reason = False, f"another site's document (doesn't mention {brand_of(domain)})"
         if ok:
             log.info("[%s]   got %s chars via %s fetch — looks like a real document",
                      doc_type, f"{len(text):,}", method)
@@ -263,6 +323,10 @@ def locate_all(domain: str, use_playwright: bool = True,
     home_notes: list[str] = [] if html else [f"homepage static -> {home_status}"]
 
     cands: dict[str, list[tuple[str, str]]] = {"privacy": [], "terms": []}
+    if html and is_challenge(html):
+        log.info("homepage is a bot-challenge page; ignoring its links")
+        home_notes.append("homepage static -> blocked: bot challenge")
+        html = None
     if html:
         cands = _candidates(html, homepage)
         log.info("homepage links: %d privacy candidate(s), %d terms candidate(s)",
@@ -277,6 +341,10 @@ def locate_all(domain: str, use_playwright: bool = True,
         rendered, rstatus = fetch_rendered(homepage)  # JS-shell homepage
         if not rendered:
             home_notes.append(f"homepage render -> {rstatus}")
+        if rendered and is_challenge(rendered):
+            log.info("rendered homepage is a bot-challenge page; ignoring its links")
+            home_notes.append("homepage render -> blocked: bot challenge")
+            rendered = None
         if rendered:
             rcands = _candidates(rendered, homepage)
             # Merge: keep static finds first, add anything the render revealed.
@@ -290,6 +358,12 @@ def locate_all(domain: str, use_playwright: bool = True,
     # HTTP status) both statically and rendered. Guessed paths on the same
     # host fail the same way, and batch 4 showed them burning the whole time
     # budget (cyberghostvpn.com, hidemyass.com, ok.ru, adobe.com).
+    walled = [n for n in home_notes if "bot challenge" in n]
+    if walled and not (cands["privacy"] or cands["terms"]) and             (len(walled) == 2 or not use_playwright):
+        log.info("blocked by a bot challenge, skipping discovery")
+        return {dt: Located(dt, notes=home_notes + ["blocked: bot challenge"])
+                for dt in ("privacy", "terms")}
+
     home_failed_rendered = any(n.startswith("homepage render") for n in home_notes)
     if not html and not home_status.isdigit() and (home_failed_rendered or not use_playwright):
         log.info("host unreachable, skipping discovery")

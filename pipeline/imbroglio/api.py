@@ -19,7 +19,7 @@ import re
 import threading
 import time
 from collections import defaultdict, deque
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Request, Response
@@ -35,6 +35,11 @@ from .batch import clean_domain
 REQUESTS_PER_HOUR = int(os.environ.get("REQUESTS_PER_HOUR", "30"))
 DAILY_REQUEST_CAP = int(os.environ.get("DAILY_REQUEST_CAP", "300"))
 PUBLIC_SOURCES = ("web", "api", "extension")
+
+# "No policy found" is itself a result (design goal 4) and is remembered:
+# re-requesting such a site within this window answers from the database
+# instead of crawling it again. `refresh` overrides.
+NEGATIVE_TTL_DAYS = int(os.environ.get("NEGATIVE_TTL_DAYS", "7"))
 
 router = APIRouter(prefix="/v1", tags=["v1"])
 
@@ -53,6 +58,10 @@ class Document(BaseModel):
     fetched_at: datetime
     versions_stored: int
     changes_detected: int
+    shared_with: int = Field(
+        description="Other sites whose current document is word-for-word identical. "
+                    "Common for policy generators and for one company running several "
+                    "domains; analysis of identical text is reused.")
 
 
 class PendingRequest(BaseModel):
@@ -70,6 +79,8 @@ class Site(BaseModel):
     documents: list[Document]
     missing: list[Literal["privacy", "terms"]]
     pending_request: PendingRequest | None
+    recheck_after: datetime | None = Field(
+        None, description="For no_policy_found: when a new request will crawl the site again")
     scores: None = None  # filled in once the rubric scorer exists (M4)
 
 
@@ -82,7 +93,10 @@ def _documents(conn, domain: str) -> list[Document]:
         """SELECT d.doc_type, d.url, d.discovered_via, v.fetch_method, v.id, v.content_hash,
                   length(v.normalized_text), v.fetched_at,
                   (SELECT count(*) FROM document_versions v2 WHERE v2.document_id = d.id),
-                  (SELECT count(*) FROM change_events c WHERE c.document_id = d.id)
+                  (SELECT count(*) FROM change_events c WHERE c.document_id = d.id),
+                  (SELECT count(DISTINCT d2.service_id) FROM document_versions v2
+                   JOIN documents d2 ON d2.id = v2.document_id
+                   WHERE v2.content_hash = v.content_hash AND d2.service_id <> s.id)
            FROM services s
            JOIN documents d ON d.service_id = s.id
            JOIN LATERAL (SELECT * FROM document_versions v
@@ -94,7 +108,8 @@ def _documents(conn, domain: str) -> list[Document]:
     ).fetchall()
     return [Document(type=r[0], url=r[1], discovered_via=r[2], fetch_method=r[3],
                      version_id=r[4], content_hash=r[5], chars=r[6], fetched_at=r[7],
-                     versions_stored=r[8], changes_detected=r[9]) for r in rows]
+                     versions_stored=r[8], changes_detected=r[9], shared_with=r[10])
+            for r in rows]
 
 
 def _pending(conn, domain: str) -> PendingRequest | None:
@@ -134,9 +149,11 @@ def build_site(conn, domain: str) -> Site:
         else:
             state = "unknown"
     have = {d.type for d in docs}
+    recheck = (checked_at + timedelta(days=NEGATIVE_TTL_DAYS)
+               if state == "no_policy_found" and checked_at else None)
     return Site(domain=domain, state=state, checked_at=checked_at, documents=docs,
                 missing=[t for t in ("privacy", "terms") if t not in have],
-                pending_request=pending)
+                pending_request=pending, recheck_after=recheck)
 
 
 @router.get("/sites/{domain}", response_model=Site,
@@ -206,7 +223,8 @@ class NewRequest(BaseModel):
 class RequestAccepted(BaseModel):
     request_id: int | None
     domain: str
-    status: Literal["queued", "running", "already_available"]
+    status: Literal["queued", "running", "already_available", "no_policy_found"]
+    recheck_after: datetime | None = None
     created: bool
     status_url: str | None
 
@@ -232,8 +250,10 @@ class AnalysisRequest(BaseModel):
              summary="Ask for a site to be analyzed")
 def create_request(body: NewRequest, request: Request):
     """Queues the site and returns immediately (202); follow it at
-    `status_url`. A site that already has documents returns 200 with status
-    `already_available` and queues nothing, unless `refresh` is true.
+    `status_url`. Answered from the database instead (200, nothing queued)
+    when the site already has documents (`already_available`) or was checked
+    recently and had none (`no_policy_found`, with `recheck_after`), unless
+    `refresh` is true.
     Duplicate requests for a site already in the queue join that job."""
     domain = clean_domain(body.domain)
     if not domain:
@@ -245,10 +265,17 @@ def create_request(body: NewRequest, request: Request):
         return JSONResponse({"error": "database unavailable"}, status_code=503)
     try:
         db.init_schema(conn)
-        if not body.refresh and _documents(conn, domain):
-            return JSONResponse(RequestAccepted(request_id=None, domain=domain,
-                                                status="already_available", created=False,
-                                                status_url=None).model_dump(), status_code=200)
+        if not body.refresh:
+            if _documents(conn, domain):
+                return JSONResponse(RequestAccepted(request_id=None, domain=domain,
+                                                    status="already_available", created=False,
+                                                    status_url=None).model_dump(), status_code=200)
+            last = _last_attempt(conn, domain)
+            if last and datetime.now(timezone.utc) - last < timedelta(days=NEGATIVE_TTL_DAYS):
+                return JSONResponse(RequestAccepted(
+                    request_id=None, domain=domain, status="no_policy_found", created=False,
+                    status_url=None, recheck_after=last + timedelta(days=NEGATIVE_TTL_DAYS),
+                ).model_dump(mode="json"), status_code=200)
         if not _limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_HOUR} requests per hour."},
                                 status_code=429, headers={"Retry-After": "600"})

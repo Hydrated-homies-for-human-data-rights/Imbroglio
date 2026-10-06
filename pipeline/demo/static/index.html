@@ -246,6 +246,12 @@
       const data = await r.json();
       if (!r.ok) { $("results").textContent = "Error: " + (data.error || r.status); return; }
       currentDomain = data.domain;
+      if (data.status === "no_policy_found") {
+        addLog(`${data.domain} was checked recently and no policy was found — answered from the database`);
+        $("results").textContent = `No privacy policy or terms found on the last check. ` +
+          `Next automatic re-check after ${(data.recheck_after || "").slice(0, 10)}; press "Re-check now" to crawl again.`;
+        return;
+      }
       if (data.status === "already_available") {
         const c = await fetch("/api/service/" + encodeURIComponent(data.domain));
         if (c.ok) { addLog(`${data.domain} is cached — served from the database, no crawl`); renderCached(await c.json()); }

@@ -139,3 +139,40 @@ def test_lookup_validates_prefix(conn):
     for bad in ("abc", "ZZZZ", "abcd1234ef", "not-hex!"):
         assert client.get(f"/v1/lookup/{bad}").status_code == 400
     assert client.get("/v1/lookup/0000").json()["sites"] == []
+
+
+# --- M3: negative caching and identical-text detection ---
+
+def _failed_attempt(conn, domain, days_ago=0):
+    db.insert_attempt(conn, None, domain, "privacy", False, "failed", None, None, None,
+                      0, "only 404s", 3.0)
+    conn.execute("UPDATE crawl_attempts SET attempted_at = now() - make_interval(days => %s) "
+                 "WHERE domain = %s", (days_ago, domain))
+    conn.commit()
+
+
+def test_recent_no_policy_answered_from_cache(conn):
+    _failed_attempt(conn, "nopolicy.example", days_ago=1)
+    r = client.post("/v1/requests", json={"domain": "nopolicy.example"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "no_policy_found" and body["recheck_after"] and not body["created"]
+    site = client.get("/v1/sites/nopolicy.example").json()
+    assert site["state"] == "no_policy_found" and site["recheck_after"]
+    # refresh still forces a crawl
+    assert client.post("/v1/requests", json={"domain": "nopolicy.example", "refresh": True}).status_code == 202
+
+
+def test_old_no_policy_result_is_rechecked(conn):
+    _failed_attempt(conn, "stale.example", days_ago=30)
+    assert client.post("/v1/requests", json={"domain": "stale.example"}).status_code == 202
+
+
+def test_shared_with_counts_identical_documents(conn):
+    text = "Generated privacy policy. We collect personal data and use cookies. " * 40
+    for d in ("a-shop.example", "b-shop.example", "c-shop.example"):
+        _store(conn, d, text=text)
+    _store(conn, "unique.example", text="Our own custom policy about personal data. " * 40)
+    docs = client.get("/v1/sites/a-shop.example").json()["documents"]
+    assert docs[0]["shared_with"] == 2
+    assert client.get("/v1/sites/unique.example").json()["documents"][0]["shared_with"] == 0

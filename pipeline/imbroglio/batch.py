@@ -209,8 +209,10 @@ def failure_cause(status: str, notes: str | None) -> str:
         return "pipeline error"
     if "host unreachable" in n:
         return "host unreachable (no connection, statically or in a browser)"
-    if "captcha" in n or re.search(r"-> (401|403|429|503)\b", n):
-        return "blocked (captcha / 401 / 403 / 429 / 503)"
+    if "captcha" in n or "bot challenge" in n or re.search(r"-> (401|403|429|503)\b", n):
+        return "blocked (bot challenge / captcha / 401 / 403 / 429 / 503)"
+    if "another site's document" in n:
+        return "only found another company's policy (e.g. a vendor's)"
     if "time budget" in n:
         return "time budget exceeded"
     if re.search(r"connectionerror|sslerror|timeout|nameresolution|playwright:error", n):
