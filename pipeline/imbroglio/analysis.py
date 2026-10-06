@@ -27,7 +27,7 @@ from .rubric import load
 
 log = logging.getLogger("imbroglio")
 
-RUBRIC_VERSION = os.environ.get("RUBRIC_VERSION", "v0")
+RUBRIC_VERSION = os.environ.get("RUBRIC_VERSION", "v0.1")
 EXTRACTION_MODEL = os.environ.get("EXTRACTION_MODEL", "claude-sonnet-5")
 # Hard ceiling on LLM spend per rolling 24 hours (all callers combined). When
 # reached, crawling continues but analysis waits; the Console spend limit is
@@ -154,3 +154,43 @@ def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = 
     log.info("analysis: %d verified findings, headline %s, $%.3f", verified,
              scorer.headline(tiers), ex.cost_usd)
     return "analyzed"
+
+
+def rebase(conn: psycopg.Connection, version_id: int, from_version: str, to_version: str) -> str:
+    """Carry a document's findings from one rubric version to another
+    without a new LLM call: the model's answers and quotes are kept, and
+    every quote is re-checked under the new rubric's rules (statuses,
+    evidence terms), then the document is re-scored. Valid when the new
+    rubric keeps the same checks and statuses (calibration changes);
+    question changes need a fresh extraction instead."""
+    from .llm_extract import check_findings
+
+    if _has_findings(conn, version_id, to_version):
+        return "done-already"
+    rows = conn.execute(
+        """SELECT check_id, status, quotes, explanation, model, run_id, provenance, reused_from_version_id
+           FROM findings WHERE version_id = %s AND rubric_version = %s""",
+        (version_id, from_version)).fetchall()
+    if not rows:
+        return "skipped:no findings to rebase"
+    text = conn.execute("SELECT normalized_text FROM document_versions WHERE id = %s",
+                        (version_id,)).fetchone()[0]
+    rubric = load(to_version)
+    raw = [{"check_id": r[0], "status": r[1], "quotes": r[2], "explanation": r[3] or ""} for r in rows]
+    meta = {r[0]: r for r in rows}
+    for f in check_findings(rubric, raw, text):
+        if f.check_id not in meta:
+            continue  # the new rubric added a check: needs a real extraction
+        _, _, _, _, model, run_id, provenance, reused_from = meta[f.check_id]
+        conn.execute(
+            """INSERT INTO findings (version_id, run_id, rubric_version, check_id, category, status,
+                                     quotes, quotes_verified, verified, explanation, model,
+                                     provenance, reused_from_version_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               ON CONFLICT (version_id, rubric_version, check_id) DO NOTHING""",
+            (version_id, run_id, to_version, f.check_id, f.category, f.status, f.quotes,
+             f.quotes_verified, f.verified, f.explanation, model, provenance, reused_from),
+        )
+    _write_scores(conn, version_id, to_version)
+    conn.commit()
+    return "rebased"

@@ -154,7 +154,9 @@ def check_findings(rubric: Rubric, raw: list[dict], document: str) -> list[Findi
             # A claim of silence has nothing to quote; quotes would contradict it.
             out.append(Finding(c.id, c.category, status, [], [], not quotes, explanation))
             continue
-        flags = verify_quotes(quotes, document)
+        # A quote counts only if it is in the document word-for-word AND is
+        # about the question (rubric evidence terms). Both checks are code.
+        flags = [found and c.relevant(q) for q, found in zip(quotes, verify_quotes(quotes, document))]
         out.append(Finding(c.id, c.category, status, quotes, flags, any(flags), explanation))
     return out
 

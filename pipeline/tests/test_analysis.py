@@ -92,5 +92,43 @@ def test_headlines_for_list_view(conn, fake_llm):
     analysis.ensure_analyzed(conn, _store(conn, "rated.example"))
     _store(conn, "unrated.example", POLICY + " different")
     from imbroglio.scorer import SCORER_VERSION
-    h = db.headlines(conn, "v0", SCORER_VERSION)
+    h = db.headlines(conn, analysis.RUBRIC_VERSION, SCORER_VERSION)
     assert h == {"rated.example": "SEVERE"}       # unrated sites are simply absent
+
+
+GOV_POLICY = ("We may investigate your use of the services to determine whether a violation of "
+              "these Terms has occurred. We may disclose information to law enforcement in response "
+              "to a valid subpoena or court order. ") * 15
+
+
+def _seed_v0(conn, vid, check_id, status, quote):
+    conn.execute(
+        """INSERT INTO findings (version_id, rubric_version, check_id, category, status, quotes,
+                                 quotes_verified, verified, explanation, model)
+           VALUES (%s, 'v0', %s, 'government', %s, %s, %s, true, 'e', 'claude-sonnet-5')""",
+        (vid, check_id, status, [quote], [True]))
+    conn.commit()
+
+
+def test_rebase_rejects_off_topic_quote_without_llm(conn, monkeypatch):
+    monkeypatch.setattr(analysis, "extract", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no LLM")))
+    vid = _store(conn, "wiki.example", GOV_POLICY)
+    _seed_v0(conn, vid, "discloses_to_government", "broad",
+             "We may investigate your use of the services to determine whether a violation of these Terms has occurred.")
+    assert analysis.rebase(conn, vid, "v0", "v0.1") == "rebased"
+    row = conn.execute("""SELECT verified FROM findings WHERE version_id = %s AND rubric_version = 'v0.1'
+                          AND check_id = 'discloses_to_government'""", (vid,)).fetchone()
+    assert row == (False,)     # real quote, but not about governments -> doesn't count
+    tier = conn.execute("""SELECT tier FROM scores WHERE version_id = %s AND rubric_version = 'v0.1'
+                           AND category = 'government'""", (vid,)).fetchone()[0]
+    assert tier == "NOT_DISCLOSED"
+
+
+def test_rebase_recalibrates_broad_government_disclosure(conn):
+    vid = _store(conn, "gov.example", GOV_POLICY)
+    _seed_v0(conn, vid, "discloses_to_government", "broad",
+             "We may disclose information to law enforcement in response to a valid subpoena or court order.")
+    analysis.rebase(conn, vid, "v0", "v0.1")
+    tier = conn.execute("""SELECT tier FROM scores WHERE version_id = %s AND rubric_version = 'v0.1'
+                           AND category = 'government'""", (vid,)).fetchone()[0]
+    assert tier == "EXTENSIVE"   # was SEVERE under v0

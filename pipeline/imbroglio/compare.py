@@ -37,7 +37,7 @@ def sample_documents(conn, n: int, seed: int, min_chars=3000, max_chars=60000) -
 
 
 def run(n: int, models: list[str], seed: int = 1, out: Path | None = None,
-        rubric_version: str = "v0", parallel: int = 4) -> str:
+        rubric_version: str = "v0.1", parallel: int = 4) -> str:
     models = [ALIASES.get(m, m) for m in models]
     rubric = load(rubric_version)
     conn = db.connect()

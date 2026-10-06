@@ -8,7 +8,8 @@ instead of silently producing wrong scores.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -33,9 +34,18 @@ class Check:
     question: str
     guidance: str
     statuses: dict[str, Status]
+    # Words a supporting quote must contain (case-insensitive). Deterministic
+    # relevance check: a real quote that isn't about the question (seen: a
+    # Terms of Use clause about rule violations cited as "government
+    # disclosure") doesn't count. Empty = no relevance requirement.
+    evidence: tuple[str, ...] = ()
+    _evidence_re: re.Pattern | None = field(default=None, compare=False, repr=False)
 
     def allowed(self) -> list[str]:
         return [*self.statuses, NOT_DISCLOSED]
+
+    def relevant(self, quote: str) -> bool:
+        return self._evidence_re is None or bool(self._evidence_re.search(quote))
 
 
 @dataclass(frozen=True)
@@ -79,8 +89,11 @@ def load(version: str = "v0") -> Rubric:
             statuses[name] = Status(name, int(s["exposure"]), s["meaning"])
         if not statuses:
             raise RubricError(f"{cid}: no statuses")
+        evidence = tuple(str(e).strip().lower() for e in (c.get("evidence") or []) if str(e).strip())
+        evidence_re = (re.compile("|".join(re.escape(e) for e in evidence), re.I)
+                       if evidence else None)
         checks.append(Check(cid, c["category"], c["question"].strip(),
-                            (c.get("guidance") or "").strip(), statuses))
+                            (c.get("guidance") or "").strip(), statuses, evidence, evidence_re))
     missing = set(categories) - {c.category for c in checks}
     if missing:
         raise RubricError(f"categories with no checks: {sorted(missing)}")

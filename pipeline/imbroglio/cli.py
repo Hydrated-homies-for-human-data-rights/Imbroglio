@@ -127,7 +127,23 @@ def main() -> int:
     ex.add_argument("--force", action="store_true", help="re-analyze even if findings exist")
     ex.add_argument("--workers", type=int, default=3)
 
+    rb = sub.add_parser("rebase-rubric", help="move findings to a new rubric version without new LLM calls")
+    rb.add_argument("--from", dest="from_version", required=True)
+    rb.add_argument("--to", dest="to_version", required=True)
+
     args = ap.parse_args()
+
+    if args.command == "rebase-rubric":
+        from . import db
+        from .analysis import rebase
+        conn = db.connect()
+        db.init_schema(conn)
+        ids = [r[0] for r in conn.execute(
+            "SELECT DISTINCT version_id FROM findings WHERE rubric_version = %s", (args.from_version,))]
+        from collections import Counter
+        outcomes = Counter(rebase(conn, v, args.from_version, args.to_version) for v in ids)
+        print(f"{len(ids)} document versions: {dict(outcomes)}")
+        return 0
 
     if args.command == "extract":
         return _extract_cmd(args)
