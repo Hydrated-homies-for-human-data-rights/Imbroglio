@@ -131,7 +131,21 @@ def main() -> int:
     rb.add_argument("--from", dest="from_version", required=True)
     rb.add_argument("--to", dest="to_version", required=True)
 
+    cal = sub.add_parser("calibrate", help="compare scoring schemes on stored findings (no LLM calls)")
+    cal.add_argument("--rubric", default="v0.1")
+    cal.add_argument("--tosdr", type=Path, default=Path("seeds/tosdr_rated.csv"))
+    cal.add_argument("--out", type=Path, help="also write the report to this markdown file")
+
     args = ap.parse_args()
+
+    if args.command == "calibrate":
+        from .calibrate import run as calibrate_run
+        text = calibrate_run(args.rubric, args.tosdr)
+        print(text)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text, encoding="utf-8")
+        return 0
 
     if args.command == "rebase-rubric":
         from . import db

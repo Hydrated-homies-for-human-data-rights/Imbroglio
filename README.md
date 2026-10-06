@@ -99,6 +99,9 @@ python -m imbroglio.cli seed-tosdr seeds/tosdr_rated.csv --rated-only
 python -m imbroglio.cli batch seeds/tosdr_rated.csv --sample 100 --workers 4
 python -m imbroglio.cli report
 
+# Compare scoring schemes on stored findings (read-only, no LLM cost)
+python -m imbroglio.cli calibrate --out runs/calibration.md
+
 # Standalone worker (what production runs)
 python -m imbroglio.worker
 ```
