@@ -23,6 +23,7 @@ import threading
 import time
 
 from . import db, jobs
+from .analysis import ensure_analyzed
 from .analyze import analyze
 
 log = logging.getLogger("imbroglio.worker")
@@ -78,7 +79,7 @@ def _summary(outcomes) -> dict:
             {"doc_type": o.doc_type, "found": o.status != "failed", "status": o.status,
              "url": o.url, "chars": o.chars, "version_id": o.version_id,
              "discovered_via": o.discovered_via, "fetch_method": o.fetch_method,
-             "notes": o.notes}
+             "notes": o.notes, "analysis": getattr(o, "analysis", None)}
             for o in outcomes
         ],
     }
@@ -111,6 +112,17 @@ def process_one(worker_id: str) -> bool:
                                   o.status, o.url, o.discovered_via, o.fetch_method,
                                   o.chars, o.notes or None, seconds)
             conn.commit()
+            # Analysis (findings + scores) for every stored document. Reuses
+            # identical text and respects the daily LLM budget; a failure here
+            # never fails the crawl that already succeeded.
+            for o in outcomes:
+                if o.version_id:
+                    try:
+                        o.analysis = ensure_analyzed(conn, o.version_id)
+                    except Exception:
+                        conn.rollback()
+                        log.exception("analysis failed for version %s", o.version_id)
+                        o.analysis = "failed:error"
             pipeline_log.removeHandler(handler)
             handler.close()
             jobs.finish(conn, request_id, True, _summary(outcomes))

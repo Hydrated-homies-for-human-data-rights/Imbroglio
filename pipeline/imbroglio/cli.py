@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import logging
 import sys
 from pathlib import Path
@@ -20,7 +21,70 @@ from pathlib import Path
 from .analyze import analyze
 
 
+def _load_dotenv(path: Path = Path(__file__).resolve().parent.parent / ".env") -> None:
+    """Read KEY=VALUE lines from pipeline/.env (gitignored) into the
+    environment, without overriding variables that are already set. Keeps
+    secrets like ANTHROPIC_API_KEY out of the shell history and the code."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def _extract_cmd(args) -> int:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import db
+    from .analysis import RUBRIC_VERSION, ensure_analyzed, extraction_enabled, spent_last_24h
+
+    logging.basicConfig(level=logging.WARNING)
+    if not extraction_enabled():
+        print("ANTHROPIC_API_KEY not set (put it in pipeline/.env)")
+        return 1
+    conn = db.connect()
+    db.init_schema(conn)
+    where, params = "", []
+    if args.domains:
+        where, params = "WHERE s.domain = ANY(%s)", [list(args.domains)]
+    elif not args.all:
+        print("give domains, or --all")
+        return 1
+    rows = conn.execute(
+        f"""SELECT DISTINCT ON (d.id) s.domain, d.doc_type, v.id
+            FROM documents d JOIN services s ON s.id = d.service_id
+            JOIN document_versions v ON v.document_id = d.id {where}
+            ORDER BY d.id, v.fetched_at DESC""", params).fetchall()
+    if not args.force:
+        rows = [r for r in rows if not conn.execute(
+            "SELECT 1 FROM findings WHERE version_id = %s AND rubric_version = %s LIMIT 1",
+            (r[2], RUBRIC_VERSION)).fetchone()]
+    rows = rows[: args.limit]
+    print(f"{len(rows)} documents to analyze; spent in last 24h: ${spent_last_24h(conn):.2f}")
+    conn.close()
+
+    def one(row):
+        domain, doc_type, version_id = row
+        c = db.connect()
+        try:
+            return domain, doc_type, ensure_analyzed(c, version_id, force=args.force, model=args.model)
+        finally:
+            c.close()
+
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for i, (domain, doc_type, outcome) in enumerate(pool.map(one, rows), 1):
+            print(f"[{i:>3}/{len(rows)}] {outcome:<28} {domain} {doc_type}", flush=True)
+    conn = db.connect()
+    print(f"spent in last 24h: ${spent_last_24h(conn):.2f}")
+    conn.close()
+    return 0
+
+
 def main() -> int:
+    _load_dotenv()
     ap = argparse.ArgumentParser(prog="imbroglio")
     sub = ap.add_subparsers(dest="command", required=True)
 
@@ -55,7 +119,18 @@ def main() -> int:
     cm.add_argument("--seed", type=int, default=1)
     cm.add_argument("--out", type=Path, default=Path("runs/compare-models.md"))
 
+    ex = sub.add_parser("extract", help="run LLM analysis (findings + scores) for stored documents")
+    ex.add_argument("domains", nargs="*", help="domains to analyze (default: none; see --all)")
+    ex.add_argument("--all", action="store_true", help="every stored document without findings")
+    ex.add_argument("--limit", type=int, default=50)
+    ex.add_argument("--model", help="override EXTRACTION_MODEL")
+    ex.add_argument("--force", action="store_true", help="re-analyze even if findings exist")
+    ex.add_argument("--workers", type=int, default=3)
+
     args = ap.parse_args()
+
+    if args.command == "extract":
+        return _extract_cmd(args)
 
     if args.command == "compare-models":
         from .compare import run as compare_run

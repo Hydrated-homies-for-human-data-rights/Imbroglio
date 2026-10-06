@@ -33,7 +33,7 @@ def test_ready_site_with_documents(conn):
     assert [d["type"] for d in body["documents"]] == ["privacy"]
     assert body["missing"] == ["terms"]
     assert body["documents"][0]["versions_stored"] == 1
-    assert body["scores"] is None
+    assert body["scorecard"] is None
 
 
 def test_queued_then_analyzing(conn):

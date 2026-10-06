@@ -26,7 +26,8 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import db, jobs
+from . import db, jobs, scorer
+from .rubric import NOT_DISCLOSED, load as load_rubric
 from .batch import clean_domain
 
 # Abuse limits for the only write path. Every accepted request can cost a
@@ -72,6 +73,36 @@ class PendingRequest(BaseModel):
     requested_at: datetime
 
 
+class Evidence(BaseModel):
+    check_id: str
+    question: str
+    status: str
+    meaning: str
+    quotes: list[str] = Field(description="Only quotes confirmed word-for-word in the stored document")
+    explanation: str | None
+    document: Literal["privacy", "terms"]
+    provenance: Literal["machine", "human", "agreed"]
+    model: str
+    reused: bool = Field(description="Copied from an identical document instead of a new analysis")
+
+
+class CategoryScore(BaseModel):
+    key: str
+    name: str
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    findings: list[Evidence]
+
+
+class Scorecard(BaseModel):
+    rubric_version: str
+    scorer_version: str
+    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    headline_categories: list[str] = Field(description="Categories at the headline tier")
+    categories: list[CategoryScore]
+    analyzed_at: datetime
+    documents: list[Literal["privacy", "terms"]]
+
+
 class Site(BaseModel):
     domain: str
     state: SiteState
@@ -81,7 +112,8 @@ class Site(BaseModel):
     pending_request: PendingRequest | None
     recheck_after: datetime | None = Field(
         None, description="For no_policy_found: when a new request will crawl the site again")
-    scores: None = None  # filled in once the rubric scorer exists (M4)
+    scorecard: Scorecard | None = Field(
+        None, description="Ratings and evidence; null until the documents have been analyzed")
 
 
 class ApiError(BaseModel):
@@ -134,6 +166,48 @@ def _last_attempt(conn, domain: str) -> datetime | None:
     return row[0] if row else None
 
 
+def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
+    """Combine the latest analyzed version of each document into one card.
+    Only verified findings appear, and only their verified quotes."""
+    from .analysis import RUBRIC_VERSION
+
+    rubric = load_rubric(RUBRIC_VERSION)
+    per_doc_tiers, evidence, analyzed, covered = [], {c: [] for c in rubric.categories}, [], []
+    for d in docs:
+        rows = conn.execute(
+            """SELECT check_id, status, quotes, quotes_verified, verified, explanation, model,
+                      provenance, reused_from_version_id IS NOT NULL, created_at
+               FROM findings WHERE version_id = %s AND rubric_version = %s""",
+            (d.version_id, rubric.version)).fetchall()
+        if not rows:
+            continue
+        covered.append(d.type)
+        per_doc_tiers.append(scorer.category_tiers(
+            rubric, [scorer.ScoredFinding(r[0], r[1], r[4]) for r in rows]))
+        for (check_id, status, quotes, flags, verified, expl, model, prov, reused, created) in rows:
+            analyzed.append(created)
+            if not verified or status == NOT_DISCLOSED:
+                continue
+            check = rubric.check(check_id)
+            if status not in check.statuses:
+                continue
+            evidence[check.category].append(Evidence(
+                check_id=check_id, question=check.question, status=status,
+                meaning=check.statuses[status].meaning,
+                quotes=[q for q, ok in zip(quotes, flags) if ok], explanation=expl,
+                document=d.type, provenance=prov, model=model, reused=reused))
+    if not per_doc_tiers:
+        return None
+    tiers = scorer.combine(*per_doc_tiers)
+    head = scorer.headline(tiers)
+    return Scorecard(
+        rubric_version=rubric.version, scorer_version=scorer.SCORER_VERSION, headline=head,
+        headline_categories=[rubric.categories[c] for c, t in tiers.items() if t == head],
+        categories=[CategoryScore(key=c, name=rubric.categories[c], tier=tiers[c],
+                                  findings=evidence[c]) for c in rubric.categories],
+        analyzed_at=max(analyzed), documents=covered)
+
+
 def build_site(conn, domain: str) -> Site:
     docs = _documents(conn, domain)
     pending = _pending(conn, domain)
@@ -153,7 +227,8 @@ def build_site(conn, domain: str) -> Site:
                if state == "no_policy_found" and checked_at else None)
     return Site(domain=domain, state=state, checked_at=checked_at, documents=docs,
                 missing=[t for t in ("privacy", "terms") if t not in have],
-                pending_request=pending, recheck_after=recheck)
+                pending_request=pending, recheck_after=recheck,
+                scorecard=_scorecard(conn, docs) if docs else None)
 
 
 @router.get("/sites/{domain}", response_model=Site,

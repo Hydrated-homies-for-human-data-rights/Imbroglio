@@ -9,6 +9,19 @@
   #log { background: #f0f0f0; padding: 10px; min-height: 60px; max-height: 300px;
          overflow-y: auto; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
   #results { font-family: monospace; font-size: 14px; white-space: pre-wrap; }
+  .card-head { display: flex; align-items: center; gap: 12px; margin: 6px 0; font-family: sans-serif; }
+  .card-domain { font-size: 22px; font-weight: bold; }
+  .tier { font-family: sans-serif; font-weight: bold; font-size: 13px; padding: 2px 8px; border: 2px solid; border-radius: 3px; white-space: nowrap; }
+  .t-severe { color: #b00020; } .t-extensive { color: #c25400; } .t-moderate { color: #8a6d00; }
+  .t-limited { color: #1b7a2e; } .t-nd { color: #666; border-style: dashed; }
+  .cats { white-space: normal; font-family: sans-serif; margin-top: 10px; max-width: 760px; }
+  .cat { border-top: 1px solid #ddd; padding: 6px 0; }
+  .cat summary { cursor: pointer; display: flex; gap: 10px; align-items: center; }
+  .cat-name { width: 220px; }
+  .ev { margin: 8px 0 8px 24px; }
+  .ev-claim { font-weight: bold; }
+  .ev blockquote { margin: 4px 0; padding: 4px 10px; border-left: 3px solid #999; background: #f7f7f7; font-family: Georgia, serif; }
+  .muted { color: #666; font-size: 13px; font-family: sans-serif; white-space: normal; }
   .ok { color: green; }
   .bad { color: red; }
   table { border-collapse: collapse; font-size: 14px; }
@@ -161,29 +174,75 @@
   setInterval(loadQueue, 3000);
   document.addEventListener("visibilitychange", loadQueue);
 
+  // --- scorecard (all text set via textContent: quotes come from third-party sites)
+  const TIER = {
+    SEVERE:        { shape: "■", label: "SEVERE",        cls: "t-severe" },
+    EXTENSIVE:     { shape: "▲", label: "EXTENSIVE",     cls: "t-extensive" },
+    MODERATE:      { shape: "●", label: "MODERATE",      cls: "t-moderate" },
+    LIMITED:       { shape: "○", label: "LIMITED",       cls: "t-limited" },
+    NOT_DISCLOSED: { shape: "┄", label: "NOT DISCLOSED", cls: "t-nd" },
+  };
+  const node = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
+  const tierBadge = (tier) => { const t = TIER[tier] || TIER.NOT_DISCLOSED; return node("span", `${t.shape} ${t.label}`, "tier " + t.cls); };
+
+  function renderSite(site, note) {
+    const box = $("results");
+    box.replaceChildren();
+    if (note) box.append(node("div", note, "muted"));
+    const card = site.scorecard;
+    const docs = site.documents.map(d => d.type === "privacy" ? "Privacy Policy" : "Terms of Service").join(" + ");
+    if (!card) {
+      box.append(node("p", `Documents found: ${docs || "none"}. Not analyzed yet — the scorecard appears once the worker has read them.`));
+      for (const d of site.documents) {
+        const p = node("p"); const a = node("a", d.url); a.href = safeHref(d.url); a.target = "_blank"; a.rel = "noopener";
+        p.append(`${d.type}: `, a, ` (${d.chars.toLocaleString()} chars)`); box.append(p);
+      }
+      return;
+    }
+    const head = node("div", null, "card-head");
+    head.append(node("span", site.domain, "card-domain"), tierBadge(card.headline));
+    box.append(head);
+    box.append(node("div", `Headline = worst category (${card.headline_categories.join(", ")}), not an average.`, "muted"));
+    box.append(node("div", `Analyzed ${card.analyzed_at.slice(0, 10)} · ${docs} · rubric ${card.rubric_version}`, "muted"));
+
+    const list = node("div", null, "cats");
+    for (const c of card.categories) {
+      const det = node("details", null, "cat");
+      const sum = node("summary");
+      sum.append(node("span", c.name, "cat-name"), tierBadge(c.tier),
+                 node("span", c.findings.length ? ` ${c.findings.length} finding${c.findings.length > 1 ? "s" : ""}` : "", "muted"));
+      det.append(sum);
+      if (!c.findings.length) {
+        det.append(node("div", c.tier === "NOT_DISCLOSED" ? "The documents don't address this." : "No verified findings.", "muted ev"));
+      }
+      for (const f of c.findings) {
+        const ev = node("div", null, "ev");
+        ev.append(node("div", f.meaning, "ev-claim"));
+        for (const q of f.quotes) ev.append(node("blockquote", `“${q}”`));
+        const meta = node("div", null, "muted");
+        meta.append(`${f.document === "privacy" ? "Privacy Policy" : "Terms of Service"} · `,
+                    node("span", "✓ quote verified", "ok"),
+                    ` · ${f.provenance === "machine" ? "AI-generated" : f.provenance}` + (f.reused ? " · shared text, analyzed once" : ""));
+        ev.append(meta);
+        det.append(ev);
+      }
+      list.append(det);
+    }
+    box.append(list);
+  }
+
+  async function showSite(domain, note) {
+    const r = await fetch("/v1/sites/" + encodeURIComponent(domain));
+    if (!r.ok) { $("results").textContent = "Error loading site"; return null; }
+    const site = await r.json();
+    renderSite(site, note);
+    return site;
+  }
+
   const docName = (t) => (t === "privacy" ? "privacy policy" : "terms of service");
   const safeHref = (u) => (/^https?:\/\//i.test(u || "") ? u : "#");
   const addLog = (msg) => { $("log").textContent += msg + "\n"; $("log").scrollTop = $("log").scrollHeight; };
   let currentDomain = null;
-
-  // Cached result: one database read, no crawling.
-  function renderCached(data) {
-    const last = data.docs.map(d => d.fetched_at).sort().pop();
-    let out = `<b>cached</b> — last checked ${esc((last || "").slice(0, 16).replace("T", " "))} UTC` +
-              ` (press "Re-check now" to crawl again)\n\n`;
-    for (const t of ["privacy", "terms"]) {
-      const d = data.docs.find(x => x.doc_type === t);
-      if (d) {
-        out += `<span class="ok">[FOUND]</span> ${docName(t)}\n` +
-               `        <a href="${esc(safeHref(d.url))}" target="_blank" rel="noopener">${esc(d.url)}</a>\n` +
-               `        ${d.chars.toLocaleString()} chars, via ${esc(d.discovered_via)}, ${esc(d.fetch_method)} fetch\n` +
-               `        sha256 ${esc(d.content_hash.slice(0, 16))}... (version ${d.version_id}, ${d.history.length} stored)\n\n`;
-      } else {
-        out += `<span class="bad">[NOT FOUND]</span> ${docName(t)} (not in cache)\n\n`;
-      }
-    }
-    $("results").innerHTML = out;
-  }
 
   // Fresh result from a finished queue job.
   function renderJob(job) {
@@ -218,6 +277,7 @@
         const secs = job.started_at && job.finished_at ? ((new Date(job.finished_at) - new Date(job.started_at)) / 1000).toFixed(1) : "?";
         addLog(`${job.status} in ${secs}s`);
         renderJob(job);
+        if (job.status === "done") await showSite(job.domain, "Fresh analysis.");
         loadCached();
         return;
       }
@@ -230,13 +290,15 @@
     $("log").textContent = ""; $("results").textContent = "(checking cache...)";
     try {
       if (!force) {
-        const c = await fetch("/api/service/" + encodeURIComponent(domain));
+        const c = await fetch("/v1/sites/" + encodeURIComponent(domain));
         if (c.ok) {
-          const data = await c.json();
-          currentDomain = data.domain;
-          addLog(`${data.domain} is cached — served from the database, no crawl`);
-          renderCached(data);
-          return;
+          const site = await c.json();
+          if (site.state === "ready") {
+            currentDomain = site.domain;
+            addLog(`${site.domain} is cached — served from the database, no crawl`);
+            renderSite(site, "Cached result. Press \"Re-check now\" to crawl again.");
+            return;
+          }
         }
       }
       const r = await fetch("/v1/requests", {
@@ -253,8 +315,8 @@
         return;
       }
       if (data.status === "already_available") {
-        const c = await fetch("/api/service/" + encodeURIComponent(data.domain));
-        if (c.ok) { addLog(`${data.domain} is cached — served from the database, no crawl`); renderCached(await c.json()); }
+        addLog(`${data.domain} is cached — served from the database, no crawl`);
+        await showSite(data.domain, "Cached result.");
         return;
       }
       addLog(data.created ? `queued ${data.domain} (request ${data.request_id})`
