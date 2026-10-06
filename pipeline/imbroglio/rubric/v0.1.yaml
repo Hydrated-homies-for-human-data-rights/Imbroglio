@@ -155,7 +155,7 @@ checks:
     question: Do users grant the company a broad license to their content (for example worldwide, royalty-free, sublicensable)?
     evidence: ["licen", "royalty", "sublicens", "worldwide", "right to use"]
     statuses:
-      broad: {exposure: 2, meaning: A broad, sublicensable license to user content is granted}
+      broad: {exposure: 2, meaning: "A broad, sublicensable license to user content is granted"}
       limited: {exposure: 0, meaning: The license is limited to operating the service}
 
   - id: discloses_to_government
@@ -181,4 +181,4 @@ checks:
     evidence: ["notify", "notice", "inform", "tell", "notif"]
     statuses:
       "yes": {exposure: 0, meaning: Users are notified of government requests where legally allowed}
-      "no": {exposure: 2, meaning: The document states users are not notified, or disclaims notification}
+      "no": {exposure: 2, meaning: "The document states users are not notified, or disclaims notification"}

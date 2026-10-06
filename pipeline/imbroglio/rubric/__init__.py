@@ -84,6 +84,10 @@ def load(version: str = "v0") -> Rubric:
             name = str(name)
             if name == NOT_DISCLOSED:
                 raise RubricError(f"{cid}: {NOT_DISCLOSED} is implicit, don't list it")
+            if not isinstance(s, dict) or set(s) != {"exposure", "meaning"}:
+                # e.g. an unquoted comma inside {meaning: a, b} splits the text into a stray key
+                raise RubricError(f"{cid}.{name}: expected exactly exposure + meaning, got {sorted(s or {})} "
+                                  "(quote meanings that contain commas)")
             if s["exposure"] not in range(len(TIERS)):
                 raise RubricError(f"{cid}.{name}: exposure must be 0-{len(TIERS) - 1}")
             statuses[name] = Status(name, int(s["exposure"]), s["meaning"])
