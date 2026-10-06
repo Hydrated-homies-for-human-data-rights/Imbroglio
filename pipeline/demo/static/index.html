@@ -204,7 +204,7 @@
   async function pollJob(id) {
     let shown = 0;
     while (true) {
-      const r = await fetch("/api/requests/" + id);
+      const r = await fetch("/v1/requests/" + id);
       const job = await r.json();
       if (!r.ok) { $("results").textContent = "Error: " + (job.error || r.status); return; }
       if (job.status === "queued") {
@@ -239,13 +239,18 @@
           return;
         }
       }
-      const r = await fetch("/api/requests", {
+      const r = await fetch("/v1/requests", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain, playwright: $("pw").checked }),
+        body: JSON.stringify({ domain, browser: $("pw").checked, refresh: force }),
       });
       const data = await r.json();
       if (!r.ok) { $("results").textContent = "Error: " + (data.error || r.status); return; }
       currentDomain = data.domain;
+      if (data.status === "already_available") {
+        const c = await fetch("/api/service/" + encodeURIComponent(data.domain));
+        if (c.ok) { addLog(`${data.domain} is cached — served from the database, no crawl`); renderCached(await c.json()); }
+        return;
+      }
       addLog(data.created ? `queued ${data.domain} (request ${data.request_id})`
                           : `${data.domain} is already being analyzed — following that request`);
       await pollJob(data.request_id);

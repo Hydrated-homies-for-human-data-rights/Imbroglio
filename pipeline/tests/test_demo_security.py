@@ -41,8 +41,9 @@ def test_everything_requires_password(client):
         r = client.get(path)
         assert r.status_code == 401, path
         assert "Basic" in r.headers["www-authenticate"]
-    assert client.post("/api/requests", json={"domain": "notion.so"}).status_code == 401
-    assert client.get("/api/requests/1").status_code == 401
+    assert client.post("/v1/requests", json={"domain": "notion.so"}).status_code == 401
+    assert client.get("/v1/requests/1").status_code == 401
+    assert client.get("/v1/lookup/abcd").status_code == 401
 
 
 def test_wrong_credentials_rejected(client):
@@ -75,13 +76,16 @@ def test_api_docs_behind_password(client):
 @pytest.mark.parametrize("domain", ["169.254.169.254", "127.0.0.1", "localhost",
                                     "not a domain", "x" * 300])
 def test_request_rejects_non_domains(client, domain):
-    r = client.post("/api/requests", json={"domain": domain}, headers=AUTH)
+    r = client.post("/v1/requests", json={"domain": domain}, headers=AUTH)
     assert r.status_code in (400, 422)
 
 
-def test_request_needs_database(client):
-    r = client.post("/api/requests", json={"domain": "notion.so"}, headers=AUTH)
-    assert r.status_code == 503  # fixture stubs the DB as unreachable
+def test_request_needs_database(client, app_module, monkeypatch):
+    def down(*a, **k):
+        raise OSError("db down")
+    monkeypatch.setattr("imbroglio.db.connect", down)
+    r = client.post("/v1/requests", json={"domain": "notion.so"}, headers=AUTH)
+    assert r.status_code == 503
 
 
 def test_audit_routes_require_password(client):

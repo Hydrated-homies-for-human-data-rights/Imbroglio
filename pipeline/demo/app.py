@@ -15,7 +15,6 @@ Deployment settings (environment variables):
     EMBEDDED_WORKER      1 = run queue worker threads in this process (default;
                          set 0 in production, where a worker service runs)
     WORKER_CONCURRENCY   embedded worker threads (default 2)
-    MAX_OPEN_REQUESTS    queue size cap (default 200)
 
 Security model for the hosted prototype: one shared password gates every
 route except /healthz; outbound fetches refuse non-public addresses (see
@@ -73,7 +72,6 @@ AUTH_PASSWORD = os.environ.get("IMBROGLIO_PASSWORD", "")
 # separate worker service so Chromium never shares memory with the web server.
 EMBEDDED_WORKER = os.environ.get("EMBEDDED_WORKER", "1") == "1"
 EMBEDDED_WORKER_THREADS = int(os.environ.get("WORKER_CONCURRENCY", "2"))
-MAX_OPEN_REQUESTS = int(os.environ.get("MAX_OPEN_REQUESTS", "200"))  # abuse cap
 OPEN_PATHS = {"/healthz"}  # platform health checks; reveals nothing
 
 
@@ -322,42 +320,6 @@ def audit_summary():
 
 
 # --- analysis requests (queue) ----------------------------------------------
-
-@app.post("/api/requests")
-def create_request(req: AnalyzeRequest):
-    """Queue a domain for analysis. Returns immediately; poll
-    /api/requests/{id}. An open request for the same domain is reused."""
-    domain = clean_domain(req.domain)
-    if not domain:
-        return JSONResponse({"error": "That doesn't look like a domain. Try something like notion.so."},
-                            status_code=400)
-    if not db_reachable():
-        return JSONResponse({"error": "database offline"}, status_code=503)
-    conn = db.connect()
-    try:
-        db.init_schema(conn)
-        open_now = sum(n for st, n in jobs.stats(conn).items() if st in ("queued", "running"))
-        if open_now >= MAX_OPEN_REQUESTS:
-            return JSONResponse({"error": "The analysis queue is full. Try again in a few minutes."},
-                                status_code=429)
-        request_id, status, created = jobs.enqueue(conn, domain, source="web",
-                                                   use_playwright=req.playwright)
-    finally:
-        conn.close()
-    return {"request_id": request_id, "domain": domain, "status": status, "created": created}
-
-
-@app.get("/api/requests/{request_id}")
-def get_request(request_id: int):
-    conn = db.connect()
-    try:
-        job = jobs.get(conn, request_id)
-    finally:
-        conn.close()
-    if job is None:
-        return JSONResponse({"error": "request not found"}, status_code=404)
-    return job
-
 
 @app.get("/api/queue")
 def queue_overview():

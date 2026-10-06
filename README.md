@@ -21,7 +21,12 @@ Working:
   of the sites it can reach.
 - **Job queue + worker:** new sites are queued and analyzed by a separate
   worker service; cached sites are served straight from the database.
-- **Read API v1:** `GET /v1/sites/{domain}`, with generated docs at `/v1/docs`.
+- **Read API v1** (docs generated at `/v1/docs`):
+  - `GET /v1/sites/{domain}`: documents, analysis in progress, state
+  - `POST /v1/requests` + `GET /v1/requests/{id}`: ask for an analysis and
+    follow it (per-client rate limit and a daily cap)
+  - `GET /v1/lookup/{prefix}`: look a site up by a prefix of `sha256(domain)`,
+    so clients like the extension never reveal which site a user is on
 - **Bulk import:** seed from the ToS;DR catalogue and run batches from the CLI.
 - **Audit page:** reviewers mark found documents right or wrong, and misses as
   real misses or "no policy exists", producing a verified accuracy figure.
@@ -37,7 +42,7 @@ evaluation report.
 
 ```text
  website / extension / researchers
-              │  GET /v1/sites/{domain}, POST /api/requests
+              │  GET /v1/sites, /v1/lookup · POST /v1/requests
               ▼
    web service (pipeline/demo/app.py) ──── reads ────►  Postgres (Supabase)
               │ enqueue                                     ▲
@@ -136,7 +141,8 @@ push to `main`:
 | `EMBEDDED_WORKER` | `1` runs worker threads inside the web process (local default); `0` in production |
 | `WORKER_CONCURRENCY` | Worker threads per process (default 2) |
 | `MAX_BROWSERS` | Headless browsers at once per process (default 2; production worker uses 1) |
-| `MAX_OPEN_REQUESTS` | Queue size cap before new requests are refused (default 200) |
+| `REQUESTS_PER_HOUR` | Analysis requests allowed per client per hour (default 30) |
+| `DAILY_REQUEST_CAP` | Analysis requests accepted per 24 hours, all clients (default 300) |
 
 Security: every route except `/healthz` requires the password; outbound fetches
 refuse private, loopback and cloud-metadata addresses, including via redirects

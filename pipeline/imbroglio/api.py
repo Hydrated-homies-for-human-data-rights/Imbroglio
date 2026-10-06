@@ -4,22 +4,37 @@ The same endpoints serve the website, the browser extension, and outside
 researchers. Responses only ever read precomputed data: no request here
 fetches a website or runs a model.
 
-    GET /v1/sites/{domain}    everything we know about one site
+    GET  /v1/sites/{domain}     everything we know about one site
+    POST /v1/requests           ask for a site to be analyzed (rate limited)
+    GET  /v1/requests/{id}      follow an analysis while it runs
+    GET  /v1/lookup/{prefix}    privacy-preserving lookup by hash prefix
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+import threading
+import time
+from collections import defaultdict, deque
 from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from . import db
+from . import db, jobs
 from .batch import clean_domain
+
+# Abuse limits for the only write path. Every accepted request can cost a
+# crawl (and, once extraction exists, LLM tokens), so both a per-client rate
+# and a global daily ceiling apply.
+REQUESTS_PER_HOUR = int(os.environ.get("REQUESTS_PER_HOUR", "30"))
+DAILY_REQUEST_CAP = int(os.environ.get("DAILY_REQUEST_CAP", "300"))
+PUBLIC_SOURCES = ("web", "api", "extension")
 
 router = APIRouter(prefix="/v1", tags=["v1"])
 
@@ -154,3 +169,165 @@ def get_site(domain: str, request: Request, response: Response):
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     return JSONResponse(body, headers=headers)
+
+
+# --- analysis requests ----------------------------------------------------------
+
+class _RateLimiter:
+    """Sliding one-hour window per client. In memory: fine for one web
+    instance; move to the database if the web service is ever scaled out."""
+
+    def __init__(self, per_hour: int) -> None:
+        self.per_hour = per_hour
+        self.hits: dict[str, deque] = defaultdict(deque)
+        self.lock = threading.Lock()
+
+    def allow(self, client: str) -> bool:
+        now = time.monotonic()
+        with self.lock:
+            q = self.hits[client]
+            while q and now - q[0] > 3600:
+                q.popleft()
+            if len(q) >= self.per_hour:
+                return False
+            q.append(now)
+            return True
+
+
+_limiter = _RateLimiter(REQUESTS_PER_HOUR)
+
+
+class NewRequest(BaseModel):
+    domain: str = Field(max_length=253, examples=["notion.so"])
+    browser: bool = Field(True, description="Allow the headless-browser fallback for JavaScript-rendered pages")
+    refresh: bool = Field(False, description="Re-analyze even if the site is already available")
+
+
+class RequestAccepted(BaseModel):
+    request_id: int | None
+    domain: str
+    status: Literal["queued", "running", "already_available"]
+    created: bool
+    status_url: str | None
+
+
+class AnalysisRequest(BaseModel):
+    id: int
+    domain: str
+    status: Literal["queued", "running", "done", "failed"]
+    stage: str | None
+    progress: list[str]
+    result: dict | None
+    error: str | None
+    request_count: int
+    queue_ahead: int
+    requested_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+@router.post("/requests", status_code=202, response_model=RequestAccepted,
+             responses={200: {"model": RequestAccepted}, 400: {"model": ApiError},
+                        429: {"model": ApiError}, 503: {"model": ApiError}},
+             summary="Ask for a site to be analyzed")
+def create_request(body: NewRequest, request: Request):
+    """Queues the site and returns immediately (202); follow it at
+    `status_url`. A site that already has documents returns 200 with status
+    `already_available` and queues nothing, unless `refresh` is true.
+    Duplicate requests for a site already in the queue join that job."""
+    domain = clean_domain(body.domain)
+    if not domain:
+        return JSONResponse({"error": "not a valid domain"}, status_code=400)
+    client = request.client.host if request.client else "unknown"
+    try:
+        conn = db.connect()
+    except Exception:
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        db.init_schema(conn)
+        if not body.refresh and _documents(conn, domain):
+            return JSONResponse(RequestAccepted(request_id=None, domain=domain,
+                                                status="already_available", created=False,
+                                                status_url=None).model_dump(), status_code=200)
+        if not _limiter.allow(client):
+            return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_HOUR} requests per hour."},
+                                status_code=429, headers={"Retry-After": "600"})
+        today = conn.execute(
+            """SELECT count(*) FROM analysis_requests
+               WHERE requested_at > now() - interval '24 hours' AND source = ANY(%s)""",
+            (list(PUBLIC_SOURCES),)).fetchone()[0]
+        if today >= DAILY_REQUEST_CAP:
+            return JSONResponse({"error": "Daily analysis limit reached. Try again tomorrow."},
+                                status_code=429, headers={"Retry-After": "3600"})
+        request_id, status, created = jobs.enqueue(conn, domain, source="api",
+                                                   use_playwright=body.browser)
+    finally:
+        conn.close()
+    return RequestAccepted(request_id=request_id, domain=domain, status=status, created=created,
+                           status_url=f"/v1/requests/{request_id}")
+
+
+@router.get("/requests/{request_id}", response_model=AnalysisRequest,
+            responses={404: {"model": ApiError}}, summary="Follow an analysis")
+def get_request(request_id: int):
+    """Status, current step, and the live progress log. Poll every second or
+    two while `status` is `queued` or `running`."""
+    conn = db.connect()
+    try:
+        job = jobs.get(conn, request_id)
+    finally:
+        conn.close()
+    if job is None:
+        return JSONResponse({"error": "request not found"}, status_code=404)
+    return job
+
+
+# --- privacy-preserving lookup ---------------------------------------------------
+
+HASH_PREFIX = re.compile(r"^[0-9a-f]{4,8}$")
+
+
+class LookupEntry(BaseModel):
+    hash: str
+    documents: list[Literal["privacy", "terms"]]
+    checked_at: datetime | None
+    scores: None = None
+
+
+class LookupResult(BaseModel):
+    prefix: str
+    sites: list[LookupEntry]
+
+
+@router.get("/lookup/{prefix}", response_model=LookupResult,
+            responses={400: {"model": ApiError}},
+            summary="Look up sites by hash prefix, without revealing the domain")
+def lookup(prefix: str, response: Response):
+    """For clients that shouldn't reveal which site a user is on (the
+    browser extension). Compute `sha256(domain)` locally (lowercase, no
+    `www.`), send the first 4-8 hex characters, and find your site in the
+    returned list by its full hash. The server only learns the prefix, which
+    is shared by an enormous number of possible domains.
+
+    Sites appear here once they have at least one stored document."""
+    p = prefix.lower()
+    if not HASH_PREFIX.match(p):
+        return JSONResponse({"error": "prefix must be 4-8 lowercase hex characters"}, status_code=400)
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            """SELECT s.domain_hash, array_agg(DISTINCT d.doc_type ORDER BY d.doc_type),
+                      max(v.fetched_at)
+               FROM services s
+               JOIN documents d ON d.service_id = s.id
+               JOIN document_versions v ON v.document_id = d.id
+               WHERE s.domain_hash LIKE %s
+               GROUP BY s.domain_hash
+               LIMIT 500""",
+            (p + "%",),
+        ).fetchall()
+    finally:
+        conn.close()
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t)
+                                         for h, docs, t in rows])
