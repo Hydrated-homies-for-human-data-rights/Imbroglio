@@ -76,6 +76,150 @@ def test_external_policy_that_names_the_site_is_accepted(web):
     assert result["privacy"].discovered_via == "link-text-external"
 
 
+# --- picking the right page (regressions: 11 of 44 rated sites, Oct 2026) ---
+
+LONG_POLICY = POLICY * 3      # over SUBSTANTIAL_CHARS: a full document
+TERMS = ("Terms of Service. By using the service you agree to these terms. Our liability is "
+         "limited. We may terminate accounts. Governing law applies. ") * 60
+
+
+def test_privacy_and_terms_link_to_terms_page_is_not_the_privacy_policy(web):
+    # dropbox: footer "Privacy & terms" -> /terms was stored as the privacy policy
+    pages, _ = web
+    pages["https://dropbox.com"] = page('<a href="/terms">Privacy &amp; terms</a>')
+    pages["https://dropbox.com/terms"] = page(TERMS + POLICY)
+    pages["https://dropbox.com/privacy"] = page(LONG_POLICY)
+    result = locate.locate_all("dropbox.com", use_playwright=False)
+    assert result["privacy"].url == "https://dropbox.com/privacy"
+    assert result["terms"].url == "https://dropbox.com/terms"
+
+
+def test_short_privacy_hub_is_followed_to_the_full_policy(web):
+    # reddit.com/privacy, apple.com/privacy: a short page that passes validation
+    pages, _ = web
+    pages["https://reddit.com"] = page('<a href="/privacy">Privacy</a>')
+    pages["https://reddit.com/privacy"] = page(
+        POLICY + '<a href="/policies/privacy-policy">Read our Privacy Policy</a>')
+    pages["https://reddit.com/policies/privacy-policy"] = page(LONG_POLICY)
+    result = locate.locate_all("reddit.com", use_playwright=False)
+    assert result["privacy"].url == "https://reddit.com/policies/privacy-policy"
+    assert result["privacy"].discovered_via == "hub-link"
+
+
+def test_too_short_hub_is_followed_too(web):
+    # airbnb, tumblr: the hub is a list of links, too short to validate at all
+    pages, _ = web
+    pages["https://tumblr.com"] = page('<a href="/policy/privacy">Privacy</a>')
+    pages["https://tumblr.com/policy/privacy"] = page(
+        'Choose your language: <a href="/privacy/en">Main Privacy Policy (English)</a> '
+        '<a href="/privacy/de">Deutsch European Privacy Policy</a>')
+    pages["https://tumblr.com/privacy/en"] = page(LONG_POLICY)
+    pages["https://tumblr.com/privacy/de"] = page("Datenschutz " + LONG_POLICY)
+    result = locate.locate_all("tumblr.com", use_playwright=False)
+    assert result["privacy"].url == "https://tumblr.com/privacy/en"
+
+
+def test_a_genuinely_short_policy_is_still_used(web):
+    pages, _ = web
+    pages["https://tiny.dev"] = page('<a href="/privacy">Privacy Policy</a>')
+    pages["https://tiny.dev/privacy"] = page(POLICY)
+    result = locate.locate_all("tiny.dev", use_playwright=False)
+    assert result["privacy"].ok
+    assert result["privacy"].url == "https://tiny.dev/privacy"
+
+
+def test_settings_pages_side_terms_and_articles_rank_below_the_real_document(web):
+    pages, _ = web
+    pages["https://snap.test"] = page(
+        '<a href="/blog/why-privacy">Privacy matters</a>'
+        '<a href="/choices">Your Privacy Choices</a>'
+        '<a href="/geofilter-terms">Community Geofilter Terms</a>'
+        '<a href="/legal/privacy-policy">Privacy Policy</a>'
+        '<a href="/legal/terms">Terms of Service</a>')
+    for path in ("/blog/why-privacy", "/choices"):
+        pages[f"https://snap.test{path}"] = page(LONG_POLICY)
+    pages["https://snap.test/geofilter-terms"] = page(TERMS)
+    pages["https://snap.test/legal/privacy-policy"] = page(LONG_POLICY)
+    pages["https://snap.test/legal/terms"] = page(TERMS)
+    result = locate.locate_all("snap.test", use_playwright=False)
+    assert result["privacy"].url == "https://snap.test/legal/privacy-policy"
+    assert result["terms"].url == "https://snap.test/legal/terms"
+
+
+def test_summary_page_is_not_stored_when_the_full_policy_is_unreachable(web):
+    # reddit: the full policy URL is blocked; the marketing summary must not be rated
+    pages, _ = web
+    pages["https://reddit.com"] = page('<a href="/privacy">Privacy</a>')
+    pages["https://reddit.com/privacy"] = page(
+        POLICY + '<a href="https://www.reddit.com/policies/privacy-policy?__hstc=1&utm_source=x">'
+        'Read the full Privacy Policy</a>'
+        '<a href="https://www.reddit.com/policies/privacy-policy?__hstc=2">Privacy Policy</a>')
+    result = locate.locate_all("reddit.com", use_playwright=False)
+    assert not result["privacy"].ok
+    notes = " ".join(result["privacy"].notes)
+    assert "summary page" in notes
+    assert notes.count("policies/privacy-policy ->") == 1    # tracking params stripped: one probe
+
+
+def test_side_program_document_is_never_stored_but_its_links_are_followed(web):
+    # snapchat's Geofilter terms, paypal's Balance terms: long, valid, wrong
+    pages, _ = web
+    pages["https://pay.test"] = page('<a href="/balance-terms">PayPal Balance Terms and Conditions</a>')
+    pages["https://pay.test/balance-terms"] = page(
+        "PayPal Balance Terms and Conditions. " + TERMS + '<a href="/user-agreement">User Agreement</a>')
+    pages["https://pay.test/user-agreement"] = page("User Agreement. " + TERMS)
+    result = locate.locate_all("pay.test", use_playwright=False)
+    assert result["terms"].url == "https://pay.test/user-agreement"
+
+    pages["https://geo.test"] = page('<a href="/geofilter">Terms</a>')
+    pages["https://geo.test/geofilter"] = page("Community Geofilter Terms. " + TERMS)
+    assert not locate.locate_all("geo.test", use_playwright=False)["terms"].ok
+
+
+def test_missing_document_found_through_the_other_documents_links(web):
+    # twitch: no footer links, terms not on any guessed path, but the privacy
+    # policy links to it
+    pages, _ = web
+    pages["https://tw.test"] = page("welcome")
+    pages["https://tw.test/privacy"] = page(LONG_POLICY + '<a href="/p/legal/tos">Terms of Service</a>')
+    pages["https://tw.test/p/legal/tos"] = page(TERMS)
+    result = locate.locate_all("tw.test", use_playwright=False)
+    assert result["terms"].url == "https://tw.test/p/legal/tos"
+    assert result["terms"].discovered_via == "sibling-link"
+
+
+def test_legal_hub_survives_soft_404(web):
+    # spotify: /terms and /terms-of-service serve the same stub; /legal is the real terms
+    pages, _ = web
+    pages["https://sp.test"] = page("welcome")
+    stub = page("Spotify. Some stub page with an agreement mention. " * 40)
+    pages["https://sp.test/terms"] = stub
+    pages["https://sp.test/terms-of-service"] = stub
+    pages["https://sp.test/legal"] = page(TERMS)
+    assert locate.locate_all("sp.test", use_playwright=False)["terms"].url == "https://sp.test/legal"
+
+
+def test_strip_tracking_keeps_real_parameters():
+    assert (locate._strip_tracking("https://x.com/p?locale.x=en_US&utm_source=a&__hstc=1")
+            == "https://x.com/p?locale.x=en_US")
+    assert locate._strip_tracking("https://x.com/p") == "https://x.com/p"
+
+
+@pytest.mark.parametrize("doc_type,url,via,text,expected", [
+    ("privacy", "https://x.com/help/article/3175", "link-text", "Privacy Policy", 0),  # airbnb
+    ("privacy", "https://x.com/privacy", "link-text", "Privacy Policy", 0),
+    ("privacy", "https://x.com/privacy", "link-text", "Privacy", 2),
+    ("privacy", "https://x.com/privacy", "common-path", "", 5),
+    ("privacy", "https://x.com/terms", "link-text", "Privacy & terms", 7),
+    ("privacy", "https://x.com/opt-out", "link-text", "Your Privacy Choices", 5),
+    ("privacy", "https://x.com/blog/privacy", "link-text", "Privacy", 8),
+    ("terms", "https://x.com/rewards-terms", "link-text", "Rewards Program Terms", 5),
+    ("privacy", "https://other.com/privacy", "link-text-external", "Privacy Policy", 10),
+])
+def test_rank(doc_type, url, via, text, expected):
+    assert locate.rank(doc_type, url, via, text) == expected
+
+
 @pytest.mark.parametrize("host,site", [
     ("policies.google.com", "google.com"),
     ("www.bbc.co.uk", "bbc.co.uk"),

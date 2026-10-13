@@ -46,13 +46,69 @@ HREF_PATTERNS = {
     "terms": re.compile(r"terms|tos\b|conditions|user-?agreement|eula", re.I),
 }
 COMMON_PATHS = {
+    # "/legal" last: a legal hub (spotify) lists both documents by name, and
+    # hub-link following takes it from there.
     "privacy": ["/privacy", "/privacy-policy", "/legal/privacy", "/policies/privacy",
-                "/legal/privacy-policy", "/about/privacy"],
+                "/legal/privacy-policy", "/about/privacy", "/legal"],
     "terms": ["/terms", "/terms-of-service", "/legal/terms", "/policies/terms",
-              "/tos", "/terms-of-use", "/legal/terms-of-service"],
+              "/tos", "/terms-of-use", "/legal/terms-of-service", "/legal"],
 }
 
+# Link text that names the document itself ("Privacy Policy") outranks a bare
+# "Privacy" footer link.
+STRONG_TEXT = {
+    "privacy": re.compile(
+        r"privacy\s*(policy|notice|statement)|datenschutzerkl[äa]rung|politique de confidentialit|"
+        r"pol[íi]tica de privacidad|informativa sulla privacy|privacyverklaring|"
+        r"プライバシーポリシー|隐私政策|개인정보\s*처리방침", re.I),
+    "terms": re.compile(
+        r"terms\s*(of\s*(service|use)|(and|&)\s*conditions)|user\s*agreement|conditions\s*of\s*use|"
+        r"nutzungsbedingungen|\bagb\b|conditions g[ée]n[ée]rales|t[ée]rminos (y condiciones|de (uso|servicio))|"
+        r"利用規約|服务条款|用户协议|이용약관", re.I),
+}
+# Pages about the document rather than the document: settings, opt-out forms,
+# privacy hubs, regional supplements, terms for side programs. Observed on
+# production data: snapchat "Your Privacy Choices", spotify "Safety & Privacy",
+# paypal's Rewards Program terms, snapchat's Geofilter terms.
+SIDE_DOC = {
+    "privacy": re.compile(
+        r"choices|cent(er|re)|settings|preferences|do[- ]not[- ](sell|share)|opt[- ]?out|cookie|safety|"
+        r"supplement|european|\beu\b|\beea\b|\buk\b|california|outside the united states|"
+        r"for (creators|business|enterprise|developers)", re.I),
+    "terms": re.compile(
+        r"reward|program|geofilter|seller|developer|\bapi\b|partner|promo|sweepstake|gift|affiliate|"
+        r"advertis|creator|merchant|supplement|additional|community guidelines|acceptable use|brand|"
+        r"balance|cashback|campaign|credit card|debit card|lens studio|creative tools",
+        re.I),
+}
+# Narrower version for a fetched document's title (its opening characters):
+# real policies often mention cookies or partners in their first sentence.
+# The side word has to be attached to the document's name ("Privacy
+# Supplement", "Geofilter Terms"): airbnb's main policy opens with "For a list
+# of supplements to this Privacy Policy".
+SIDE_TITLE = {
+    "privacy": re.compile(
+        r"privacy (policy |notice )?supplement|supplement(al)? privacy|cookie (policy|notice|statement)|"
+        r"privacy (choices|settings|cent(er|re))|(policy|notice) for (creators|business|enterprise|developers)|"
+        r"california privacy (notice|policy|rights)", re.I),
+    "terms": re.compile(
+        r"(reward|program|geofilter|seller|developer|partner|promo|sweepstake|gift card|affiliate|"
+        r"advertis|creator|merchant|supplement|balance|cashback|campaign|credit card|debit card|"
+        r"lens studio|creative tools|donor|giving fund)\w*[\w\s'’-]{0,25}?\b(terms|agreement|conditions)|"
+        r"community guidelines|acceptable use", re.I),
+}
+# Articles, not policies (observed: proton.me's privacy link led to a blog post).
+# Help-center "articles" are left out on purpose: airbnb and zendesk-hosted
+# sites keep their real policies there.
+NON_DOC_PATH = re.compile(r"/(blog|news|newsroom|press|stories|careers|jobs)(/|$)", re.I)
+
 MIN_CHARS = 1500
+# A valid page shorter than this is often a hub that links to the real policy
+# (apple.com/privacy, reddit.com/privacy, paypal's privacy center). It is kept
+# as a fallback while discovery follows its links; small sites with genuinely
+# short policies still end up with it.
+SUBSTANTIAL_CHARS = 6000
+SIDE_HEAD_CHARS = 150   # how much of a document's opening counts as its title
 MIN_KEYWORD_HITS = 2  # distinct signals, so one stray word can't validate a page
 
 # Each entry is one independent signal; a document must hit MIN_KEYWORD_HITS
@@ -92,7 +148,7 @@ VALIDATION_SIGNALS = {
 LEGAL_URL = re.compile(r"privacy|terms|legal|polic(y|ies)|tos\b|datenschutz|agb", re.I)
 CAPTCHA_URL = re.compile(r"captcha|challenge|cf-chl|perimeterx|px-cdn|datadome", re.I)
 
-MAX_PROBES = 12
+MAX_PROBES = 16   # hub pages add probes; the time budget still caps the total
 
 # Two-label public suffixes common in our data; good enough to tell
 # "policies.google.com" apart from "sololearn.com" without a full suffix list.
@@ -139,39 +195,106 @@ class Located:
     fetch_method: str | None = None
     text: str = ""
     notes: list[str] = field(default_factory=list)
+    html: str = field(default="", repr=False)   # the page itself, for its links to the other document
 
 
-def _candidates(html: str, base_url: str) -> dict[str, list[tuple[str, str]]]:
-    """Policy-looking links, strongest first. Links to another site get a
-    '-external' suffix on their via-label; locate_document tries them only
-    after the site's own links and guessed paths, and only accepts them if
-    the document mentions the site (see _external_ok)."""
+COMMON_PATH_RANK = 5
+_FILLER = re.compile(
+    r"\b(our|the|read|full|view|see|main|legal|global|updated|new|current|here|and|of|a|an|your|"
+    r"website|site|english|en|us|policy|notice)\b|[^\w\s]", re.I)
+
+
+def _qualified(text: str, match: re.Match, host: str) -> bool:
+    """Does link text name something more specific than the document itself?
+    Brand and filler words don't count: 'Read our PayPal User Agreement' is
+    plain, 'PayPal Giving Fund Donor Terms of Service' is qualified."""
+    rest = (text[:match.start()] + " " + text[match.end():]).lower()
+    rest = rest.replace(brand_of(host), " ")
+    return bool(_FILLER.sub(" ", rest).split())
+
+
+def rank(doc_type: str, url: str, via: str, text: str = "") -> int:
+    """Probe order, lower first. A link that names the document beats a bare
+    footer link, which beats a guessed path; settings pages, side-program
+    terms, articles and links to the other document type sink below the
+    guessed paths; another site's link comes last."""
+    other = "terms" if doc_type == "privacy" else "privacy"
+    path = urlparse(url).path
+    if via == "common-path":
+        r = COMMON_PATH_RANK
+    elif via.startswith("href"):
+        r = 4
+    else:  # link text, or a link followed from a hub page
+        m = STRONG_TEXT[doc_type].search(text)
+        r = 0 if m else 2
+        if m and _qualified(text, m, urlparse(url).hostname or ""):
+            r += 1          # "PayPal Giving Fund Donor Terms of Service" vs "User Agreement"
+        if TEXT_PATTERNS[other].search(text):
+            r += 1          # "Privacy & terms": could be either
+    if SIDE_DOC[doc_type].search(text) or SIDE_DOC[doc_type].search(path):
+        r += 3
+    if HREF_PATTERNS[other].search(path) and not HREF_PATTERNS[doc_type].search(path):
+        r += 4              # dropbox: "Privacy & terms" -> /terms
+    if NON_DOC_PATH.search(path):
+        r += 6
+    if via.endswith("-external"):
+        r += 10
+    return r
+
+
+_TRACKING_PARAM = re.compile(r"^(utm_\w+|__hs\w+|_ga|_gl|ref_?|fbclid|gclid|mc_[ce]id)$", re.I)
+
+
+def _strip_tracking(url: str) -> str:
+    """Drop analytics parameters, so one page linked three ways (reddit's
+    HubSpot-tagged links) is one probe, not three."""
+    p = urlparse(url)
+    if not p.query:
+        return url
+    keep = [kv for kv in p.query.split("&") if not _TRACKING_PARAM.match(kv.split("=", 1)[0])]
+    return p._replace(query="&".join(keep)).geturl()
+
+
+def _same_page(a: str, b: str) -> bool:
+    pa, pb = urlparse(a), urlparse(b)
+    host = lambda h: (h or "").lower().removeprefix("www.")
+    return host(pa.hostname) == host(pb.hostname) and pa.path.rstrip("/") == pb.path.rstrip("/")
+
+
+def _candidates(html: str, base_url: str, via_text: str = "link-text"
+                ) -> dict[str, list[tuple[str, str, int]]]:
+    """Policy-looking links as (url, via, rank), best first. Links to another
+    site get a '-external' suffix on their via-label; they rank last and are
+    only accepted if the document mentions the site (see _external_ok)."""
     soup = BeautifulSoup(html, "html.parser")
-    out: dict[str, list[tuple[str, str]]] = {"privacy": [], "terms": []}
-    seen: dict[str, set[str]] = {"privacy": set(), "terms": set()}
+    found: dict[str, dict[str, tuple[str, int]]] = {"privacy": {}, "terms": {}}
     home_site = site_of(urlparse(base_url).hostname or "")
 
-    def add(doc_type: str, href: str, via: str) -> None:
-        url = urljoin(base_url, href)
+    def add(doc_type: str, href: str, via: str, text: str = "") -> None:
+        url = _strip_tracking(urljoin(base_url, href).split("#")[0])
         parsed = urlparse(url)
-        if parsed.scheme in ("http", "https") and url not in seen[doc_type]:
-            seen[doc_type].add(url)
-            if site_of(parsed.hostname or "") != home_site:
-                via += "-external"
-            out[doc_type].append((url, via))
+        if parsed.scheme not in ("http", "https"):
+            return
+        if site_of(parsed.hostname or "") != home_site:
+            via += "-external"
+        r = rank(doc_type, url, via, text)
+        if url not in found[doc_type] or r < found[doc_type][url][1]:
+            found[doc_type][url] = (via, r)   # same URL, better link text: keep the better rank
 
     anchors = soup.find_all("a", href=True)
     for a in anchors:  # link text: strongest signal
         text = a.get_text(" ", strip=True)
-        if text and len(text) <= 60:
+        if text and len(text) <= 80:
             for doc_type, pat in TEXT_PATTERNS.items():
                 if pat.search(text):
-                    add(doc_type, a["href"], "link-text")
+                    add(doc_type, a["href"], via_text, text)
     for a in anchors:  # href fallback
         for doc_type, pat in HREF_PATTERNS.items():
             if pat.search(a["href"]):
                 add(doc_type, a["href"], "href")
-    return out
+    # dicts keep insertion order, and sorted() is stable: page order breaks ties
+    return {dt: sorted(((u, v, r) for u, (v, r) in found[dt].items()), key=lambda c: c[2])
+            for dt in found}
 
 
 def _iframe_srcs(html: str, base_url: str, domain: str) -> tuple[list[str], bool]:
@@ -237,25 +360,25 @@ def _try_url(url: str, doc_type: str, session: requests.Session,
 
 
 def locate_document(domain: str, doc_type: str,
-                    candidates: list[tuple[str, str]],
+                    candidates: list[tuple[str, str, int]],
                     session: requests.Session,
                     use_playwright: bool,
-                    deadline: float | None = None) -> Located:
+                    deadline: float | None = None,
+                    guess_paths: bool = True) -> Located:
     result = Located(doc_type)
-    own = [c for c in candidates if not c[1].endswith("-external")]
-    external = [c for c in candidates if c[1].endswith("-external")]
-    probes = own + [
-        (f"https://{domain}{p}", "common-path") for p in COMMON_PATHS[doc_type]
-    ] + external
+    guesses = [(f"https://{domain}{p}", "common-path", COMMON_PATH_RANK)
+               for p in COMMON_PATHS[doc_type]] if guess_paths else []
+    probes = sorted(candidates + guesses, key=lambda p: p[2])
     tried: set[str] = set()
     seen_texts: set[str] = set()
+    fallback: Located | None = None   # first valid but short page (maybe a hub)
     i = 0
     while i < len(probes) and i < MAX_PROBES:
         if deadline is not None and time.monotonic() > deadline:
             log.info("[%s] time budget spent, giving up", doc_type)
             result.notes.append("time budget exceeded")
             break
-        url, via = probes[i]
+        url, via, _ = probes[i]
         i += 1
         if url in tried:
             continue
@@ -277,20 +400,53 @@ def locate_document(domain: str, doc_type: str,
         ok, reason = _validate(doc_type, text)
         if ok and via.endswith("-external") and not _external_ok(domain, text):
             ok, reason = False, f"another site's document (doesn't mention {brand_of(domain)})"
-        if ok:
+        # Links on this page that name the document ("Privacy Policy", "Main
+        # Privacy Policy (English)") and point somewhere else: on a hub page,
+        # those lead to the real document.
+        named = [(u, v, r) for u, v, r in _candidates(html, url, "hub-link")[doc_type]
+                 if v.startswith("hub-link") and r <= 1 + (10 if v.endswith("-external") else 0)
+                 and not _same_page(u, url)]
+
+        if ok and len(text) >= SUBSTANTIAL_CHARS and not SIDE_TITLE[doc_type].search(text[:SIDE_HEAD_CHARS]):
             log.info("[%s]   got %s chars via %s fetch — looks like a real document",
                      doc_type, f"{len(text):,}", method)
-            result.ok, result.text = True, text
+            result.ok, result.text, result.html = True, text, html
             return result
-        log.info("[%s]   rejected: %s", doc_type, reason)
-        result.notes.append(f"{via} {url} -> {reason}")
+        if ok and SIDE_TITLE[doc_type].search(text[:SIDE_HEAD_CHARS]):
+            # Real, but about a side program ("Community Geofilter Terms",
+            # "PayPal Balance Terms"): never stored as the site's document.
+            reason = "about a side program, not the main document"
+        elif ok and named:
+            # A short page pointing at a full policy is a summary or a hub
+            # (reddit.com/privacy, apple.com/privacy): rating it would be
+            # rating the marketing, so it is never stored either.
+            reason = f"summary page ({len(text)} chars) that links to the full document"
+        elif ok:
+            # Short with no pointer elsewhere: maybe a small site's whole
+            # policy. Used only if nothing fuller turns up.
+            log.info("[%s]   valid but short (%s chars), still looking for a fuller version",
+                     doc_type, f"{len(text):,}")
+            result.notes.append(f"{via} {url} -> short ({len(text)} chars), kept as fallback")
+            if fallback is None:
+                fallback = Located(doc_type, True, url, via, method, text, html=html)
+            reason = ""
+        if reason:
+            log.info("[%s]   rejected: %s", doc_type, reason)
+            result.notes.append(f"{via} {url} -> {reason}")
+
+        new_links = [n for n in named if n[0] not in tried]
+        if new_links:
+            log.info("[%s]   page links to %d named document(s), trying those next", doc_type, len(new_links))
+            probes = probes[:i] + sorted(new_links + probes[i:], key=lambda p: p[2])
 
         # Soft 404: the site serves the same page for any path. Once a guessed
         # path repeats earlier content, the remaining guesses will too.
         if text in seen_texts and via == "common-path":
             log.info("[%s]   same page as an earlier probe (soft 404), skipping guessed paths", doc_type)
             result.notes.append("soft 404: guessed paths all return the same page")
-            probes = probes[:i] + [p for p in probes[i:] if p[1] != "common-path"]
+            # ...except /legal, a hub that soft-404 sites (spotify) still serve for real
+            probes = probes[:i] + [p for p in probes[i:]
+                                   if p[1] != "common-path" or p[0].endswith("/legal")]
             continue
         seen_texts.add(text)
 
@@ -301,9 +457,13 @@ def locate_document(domain: str, doc_type: str,
             break
         for src in frames:  # shell page? follow its iframes
             log.info("[%s]   page embeds an iframe, queueing %s", doc_type, src)
-            probes.append((src, "iframe"))
-    if not result.ok:
-        log.info("[%s] no candidate produced a valid document", doc_type)
+            probes.append((src, "iframe", rank(doc_type, src, "iframe")))
+    if fallback is not None:
+        log.info("[%s] no fuller document found; using the short one (%s chars)",
+                 doc_type, f"{len(fallback.text):,}")
+        fallback.notes = result.notes
+        return fallback
+    log.info("[%s] no candidate produced a valid document", doc_type)
     return result
 
 
@@ -322,7 +482,7 @@ def locate_all(domain: str, use_playwright: bool = True,
     html, home_status = fetch_static(homepage, session)
     home_notes: list[str] = [] if html else [f"homepage static -> {home_status}"]
 
-    cands: dict[str, list[tuple[str, str]]] = {"privacy": [], "terms": []}
+    cands: dict[str, list[tuple[str, str, int]]] = {"privacy": [], "terms": []}
     if html and is_challenge(html):
         log.info("homepage is a bot-challenge page; ignoring its links")
         home_notes.append("homepage static -> blocked: bot challenge")
@@ -349,7 +509,7 @@ def locate_all(domain: str, use_playwright: bool = True,
             rcands = _candidates(rendered, homepage)
             # Merge: keep static finds first, add anything the render revealed.
             for dt in ("privacy", "terms"):
-                have = {u for u, _ in cands[dt]}
+                have = {c[0] for c in cands[dt]}
                 cands[dt] += [c for c in rcands[dt] if c[0] not in have]
             log.info("rendered homepage links: %d privacy, %d terms",
                      len(cands["privacy"]), len(cands["terms"]))
@@ -374,6 +534,23 @@ def locate_all(domain: str, use_playwright: bool = True,
         dt: locate_document(domain, dt, cands[dt], session, use_playwright, deadline)
         for dt in ("privacy", "terms")
     }
+    # Legal pages link to each other: when one document was found and the
+    # other wasn't (twitch: no footer links, terms off the guessed paths),
+    # follow the found page's own link to the missing one.
+    for dt, other in (("terms", "privacy"), ("privacy", "terms")):
+        found = results[other]
+        if results[dt].ok or not found.ok or not found.html:
+            continue
+        siblings = [c for c in _candidates(found.html, found.url, "sibling-link")[dt]
+                    if c[1].startswith("sibling-link") and c[2] <= 1 + (10 if c[1].endswith("-external") else 0)]
+        if siblings:
+            log.info("[%s] trying the %s page's own link(s) to it", dt, other)
+            retry = locate_document(domain, dt, siblings, session, use_playwright, deadline,
+                                    guess_paths=False)
+            if retry.ok:
+                results[dt] = retry
+            else:
+                results[dt].notes += retry.notes
     for loc in results.values():
         if not loc.ok:
             loc.notes[:0] = home_notes  # homepage outcome explains most misses
