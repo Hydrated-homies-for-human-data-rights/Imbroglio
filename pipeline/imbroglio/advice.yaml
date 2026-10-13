@@ -1,0 +1,169 @@
+# What you can do — DRAFT, for Sam and Alex to edit.
+#
+# Shown next to a finding on the scorecard ("What you can do") and on the
+# website's learn pages; the extension's "What can you do?" link goes to
+# /learn#<check_id>. Changing advice never changes a rating, so this file is
+# not versioned with the rubric. It is checked against the current rubric by
+# tests: every key must be a check id, every `applies_to` a status of it.
+#
+# House rules for writing advice:
+#   * concrete steps a regular person can do today, in plain words
+#   * never overstate a law or a tool (e.g. a VPN does nothing about what a
+#     site does with data you give it)
+#   * links only to official or nonprofit sources; no affiliate links here
+
+checks:
+  sells_personal_data:
+    title: When a site sells your data
+    why: Once sold, your data can be resold and combined with other sources. You can't take it back, but you can stop future sales.
+    applies_to: ["yes"]
+    steps:
+      - text: Turn on Global Privacy Control (GPC). Firefox, Brave and DuckDuckGo have it built in. In California, Colorado, Connecticut and several other states, businesses must treat it as a request not to sell or share your data.
+        link: https://globalprivacycontrol.org
+      - text: Use the site's "Do Not Sell or Share My Personal Information" link, usually in the page footer.
+      - text: If you no longer use the service, ask it to delete your data, then close the account.
+
+  shares_for_advertising:
+    title: When your data is shared with advertisers
+    why: Ad partners use it to follow you across other sites and apps and build a profile of your interests.
+    applies_to: ["yes"]
+    steps:
+      - text: In the site's account settings, look for "ad preferences" or "ad personalization" and turn it off.
+      - text: Use a browser that blocks third-party trackers (Firefox, Safari, Brave) or add a content blocker such as uBlock Origin.
+        link: https://ublockorigin.com
+      - text: On your phone, tap "Ask App Not to Track" on iPhone, or delete your advertising ID on Android (Settings > Privacy > Ads).
+
+  collects_sensitive_data:
+    title: When a site collects sensitive data
+    why: Precise location, health, biometric and financial data can reveal where you live, your habits and your health, and causes the most harm if leaked.
+    applies_to: ["yes"]
+    steps:
+      - text: In your phone's settings, give apps location access only "while using" and turn off precise location where the app doesn't need it.
+      - text: Leave optional profile fields empty, and don't connect health or fitness data unless you need the feature.
+
+  collects_from_third_parties:
+    title: When a site gets data about you from other companies
+    why: Data brokers and partners fill in what you never told the site yourself.
+    applies_to: ["yes"]
+    steps:
+      - text: Remove "Log in with Google/Facebook/Apple" connections you no longer use, in each of those accounts' security settings.
+      - text: California residents can ask every registered data broker to delete their data in one request through the state's DROP platform.
+        link: https://cppa.ca.gov
+      - text: Opt out of the largest people-search sites one by one, or use your state's data broker registry to find them.
+
+  retention_period:
+    title: When a site keeps your data for an open-ended time
+    why: Data that is kept longer is exposed longer, to breaches, new uses and new owners if the company is sold.
+    applies_to: [vague, indefinite]
+    steps:
+      - text: Turn on auto-delete for activity and history where the site offers it, and delete old content you no longer need.
+      - text: When you stop using a service, delete the account instead of leaving it dormant.
+
+  deletion_on_request:
+    title: When deletion is only offered in some places
+    why: Your right to delete depends on where you live, and the company only promises it where the law requires.
+    applies_to: [some_jurisdictions, "no"]
+    steps:
+      - text: Ask anyway. Many companies honor deletion requests from everyone, even where the law doesn't require it.
+      - text: The EU and UK (GDPR), California and a growing number of US states (including Colorado, Virginia and Texas) give residents a legal right to deletion.
+
+  access_and_export:
+    title: When access to your data is limited
+    why: Seeing what a company holds about you is the first step to correcting or deleting it.
+    applies_to: [some_jurisdictions, "no"]
+    steps:
+      - text: Look for a "download your data" tool in the account's privacy settings (for example Google Takeout or Facebook's "Download your information").
+      - text: Send an access request. Under GDPR the company must answer within one month; under California law, within 45 days.
+
+  opt_out_of_tracking:
+    title: When opting out of tracking is limited
+    why: Without a working opt-out, tracking for ads and profiling is the default.
+    applies_to: [limited, "no"]
+    steps:
+      - text: Choose "Reject all" on cookie banners, and turn on Global Privacy Control in your browser.
+        link: https://globalprivacycontrol.org
+      - text: Block trackers at the browser level, so you don't depend on each site's settings.
+
+  security_measures:
+    title: When security is described only in general terms
+    why: A promise of "reasonable security" tells you nothing about how your data is protected.
+    applies_to: [generic]
+    steps:
+      - text: Use a unique password for this site (a password manager makes this easy), so a breach here can't unlock your other accounts.
+      - text: Turn on two-factor authentication, preferably with an authenticator app or a passkey rather than text messages.
+
+  breach_notification:
+    title: When the site doesn't promise to tell you about a breach
+    why: You may not find out your data was exposed until it is misused.
+    applies_to: ["no"]
+    steps:
+      - text: Sign up for free breach alerts for your email address at Have I Been Pwned.
+        link: https://haveibeenpwned.com
+      - text: Use a unique password and two-factor authentication, so one breach stays contained.
+
+  trains_ai_on_user_data:
+    title: When your data trains AI
+    why: Your posts, messages or files may be used to build AI models, and that can't be undone once a model is trained.
+    applies_to: ["yes"]
+    steps:
+      - text: Check the privacy or data settings for an AI training opt-out. Many services have added one, often turned on by default.
+      - text: In the EU and UK you can object to this use of your data under GDPR, even without a setting.
+      - text: Keep private content out of public posts and shared files you wouldn't want in a training set.
+
+  content_license:
+    title: When you give the site a broad license to your content
+    why: The site, and companies it licenses to, may copy, modify and distribute what you post.
+    applies_to: [broad]
+    steps:
+      - text: Keep your own originals somewhere else, and think twice before posting work you want to control.
+      - text: Many licenses end when you delete the content, but not all, and copies others have shared can remain. Check the terms.
+
+  discloses_to_government:
+    title: When the site may share data with authorities
+    why: Almost every company complies with valid legal orders. What differs is whether it also shares voluntarily.
+    applies_to: [broad, legal_process_required]
+    steps:
+      - text: Look for the company's transparency report, which shows how many government requests it gets and how often it complies.
+      - text: For sensitive conversations, use end-to-end encrypted apps such as Signal, where the company can't read your messages at all.
+        link: https://signal.org
+
+  notifies_users_of_requests:
+    title: When the site won't tell you about government requests
+    why: You may never learn that your data was handed over.
+    applies_to: ["no"]
+    steps:
+      - text: Check whether the company publishes a transparency report, and prefer services that commit to notifying users where the law allows.
+
+general:
+  - id: vpn
+    title: What a VPN does, and what it doesn't
+    body: >
+      A VPN hides your IP address from the sites you visit and hides which
+      sites you visit from your internet provider or the Wi-Fi network you're
+      on, which is useful on public Wi-Fi. It does nothing about what a site
+      does with data you give it once you log in: a VPN won't stop a site from
+      selling, sharing or training AI on your data. Using a VPN moves your
+      trust from your internet provider to the VPN company, so choose one with
+      an independently audited no-logs policy.
+  - id: passwords
+    title: Passwords and two-factor authentication
+    body: >
+      Use a password manager so every account gets a unique password, and
+      turn on two-factor authentication, preferably with an authenticator
+      app or passkey. Most account takeovers come from passwords reused
+      across sites.
+  - id: trackers
+    title: Blocking trackers
+    body: >
+      Most cross-site tracking runs through third-party cookies and scripts.
+      Firefox, Safari and Brave block many of them by default; a content
+      blocker such as uBlock Origin blocks more. Turning on Global Privacy
+      Control also sends a legal opt-out signal in several US states.
+  - id: rights
+    title: Your privacy rights
+    body: >
+      Depending on where you live, you can ask a company what it holds about
+      you, ask it to correct or delete that data, and opt out of its sale.
+      The EU and UK (GDPR), California and a growing number of US states give
+      these rights by law. A short email to the address in the privacy
+      policy, naming the right you are using, is enough to start.

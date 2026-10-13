@@ -22,6 +22,9 @@
   .ev-claim { font-weight: bold; }
   .ev blockquote { margin: 4px 0; padding: 4px 10px; border-left: 3px solid #999; background: #f7f7f7; font-family: Georgia, serif; }
   .muted { color: #666; font-size: 13px; font-family: sans-serif; white-space: normal; }
+  .todo { margin: 6px 0; font-family: sans-serif; white-space: normal; }
+  .todo summary { cursor: pointer; color: #0645ad; }
+  .todo ul { margin: 4px 0; padding-left: 20px; }
   .ok { color: green; }
   .bad { color: red; }
   table { border-collapse: collapse; font-size: 14px; }
@@ -33,7 +36,7 @@
 </head>
 <body>
   <h1>Imbroglio prototype</h1>
-  <p><a href="/audit">Audit extraction results</a></p>
+  <p><a href="/audit">Audit extraction results</a> · <a href="/learn">What can you do? (learn)</a></p>
   <p>Type a website, it tries to find + extract the privacy policy and terms of service.
      <span id="db"></span></p>
 
@@ -238,6 +241,20 @@
                     node("span", "✓ quote verified", "ok"),
                     ` · ${f.provenance === "machine" ? "AI-generated" : f.provenance}` + (f.reused ? " · shared text, analyzed once" : ""));
         ev.append(meta);
+        if (f.what_you_can_do) {
+          const w = f.what_you_can_do;
+          const todo = node("details", null, "todo");
+          todo.append(node("summary", "What can you do?"));
+          const ul = node("ul");
+          for (const s of w.steps) {
+            const li = node("li", s.text + " ");
+            if (s.link) { const a = node("a", "link"); a.href = safeHref(s.link); a.target = "_blank"; a.rel = "noopener"; li.append(a); }
+            ul.append(li);
+          }
+          const more = node("a", "More on this"); more.href = "/learn#" + encodeURIComponent(w.learn_anchor);
+          todo.append(node("div", w.why, "muted"), ul, more);
+          ev.append(todo);
+        }
         det.append(ev);
       }
       list.append(det);

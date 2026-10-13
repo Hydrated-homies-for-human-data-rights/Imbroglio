@@ -86,6 +86,10 @@ def test_scorecard_shows_only_verified_evidence(conn, fake_llm):
     assert ev["quotes"] == ["We use your content to train our machine learning models."]
     assert ev["document"] == "privacy" and ev["reused"] is False
     assert card["documents"] == ["privacy"]
+    # what the user can do: offered for the AI-training finding, not for "does not sell"
+    assert ev["what_you_can_do"]["learn_anchor"] == "trains_ai_on_user_data"
+    assert ev["what_you_can_do"]["steps"]
+    assert cats["selling_sharing"]["findings"][0]["what_you_can_do"] is None
 
 
 def test_headlines_for_list_view(conn, fake_llm):

@@ -235,6 +235,11 @@ def audit_page() -> FileResponse:
     return FileResponse(STATIC / "audit.html")
 
 
+@app.get("/learn")
+def learn_page() -> FileResponse:
+    return FileResponse(STATIC / "learn.html")
+
+
 @app.get("/api/audit/next")
 def audit_next(kind: Literal["found", "missed", "all"] = "all", skip: str = ""):
     if not db_reachable():

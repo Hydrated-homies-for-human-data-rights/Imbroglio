@@ -8,6 +8,7 @@ fetches a website or runs a model.
     POST /v1/requests           ask for a site to be analyzed (rate limited)
     GET  /v1/requests/{id}      follow an analysis while it runs
     GET  /v1/lookup/{prefix}    privacy-preserving lookup by hash prefix
+    GET  /v1/learn              what users can do about each kind of finding
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import db, jobs, scorer
+from .advice import Advice, load as load_advice
 from .rubric import NOT_DISCLOSED, load as load_rubric
 from .batch import clean_domain
 
@@ -73,6 +75,18 @@ class PendingRequest(BaseModel):
     requested_at: datetime
 
 
+class AdviceStep(BaseModel):
+    text: str
+    link: str | None
+
+
+class WhatYouCanDo(BaseModel):
+    title: str
+    why: str
+    steps: list[AdviceStep]
+    learn_anchor: str = Field(description="Anchor for the website's learn page: /learn#<anchor>")
+
+
 class Evidence(BaseModel):
     check_id: str
     question: str
@@ -84,6 +98,8 @@ class Evidence(BaseModel):
     provenance: Literal["machine", "human", "agreed"]
     model: str
     reused: bool = Field(description="Copied from an identical document instead of a new analysis")
+    what_you_can_do: WhatYouCanDo | None = Field(
+        None, description="Practical steps for this finding; null when the practice needs no action")
 
 
 class CategoryScore(BaseModel):
@@ -166,12 +182,20 @@ def _last_attempt(conn, domain: str) -> datetime | None:
     return row[0] if row else None
 
 
+def _what_you_can_do(a: Advice | None) -> WhatYouCanDo | None:
+    if a is None:
+        return None
+    return WhatYouCanDo(title=a.title, why=a.why, learn_anchor=a.check_id,
+                        steps=[AdviceStep(text=s.text, link=s.link) for s in a.steps])
+
+
 def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
     """Combine the latest analyzed version of each document into one card.
     Only verified findings appear, and only their verified quotes."""
     from .analysis import RUBRIC_VERSION
 
     rubric = load_rubric(RUBRIC_VERSION)
+    book = load_advice(RUBRIC_VERSION)
     per_doc_tiers, evidence, analyzed, covered = [], {c: [] for c in rubric.categories}, [], []
     for d in docs:
         rows = conn.execute(
@@ -195,7 +219,8 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
                 check_id=check_id, question=check.question, status=status,
                 meaning=check.statuses[status].meaning,
                 quotes=[q for q, ok in zip(quotes, flags) if ok], explanation=expl,
-                document=d.type, provenance=prov, model=model, reused=reused))
+                document=d.type, provenance=prov, model=model, reused=reused,
+                what_you_can_do=_what_you_can_do(book.for_finding(check_id, status))))
     if not per_doc_tiers:
         return None
     tiers = scorer.combine(*per_doc_tiers)
@@ -433,3 +458,44 @@ def lookup(prefix: str, response: Response):
     response.headers["Cache-Control"] = "private, max-age=300"
     return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t)
                                          for h, docs, t in rows])
+
+
+# --- learn: what users can do --------------------------------------------------
+
+class LearnTopic(BaseModel):
+    check_id: str
+    category: str
+    question: str
+    title: str
+    why: str
+    applies_to: list[str] = Field(description="Finding statuses this advice is shown for")
+    steps: list[AdviceStep]
+
+
+class Guide(BaseModel):
+    id: str
+    title: str
+    body: str
+
+
+class Learn(BaseModel):
+    topics: list[LearnTopic]
+    guides: list[Guide]
+
+
+@router.get("/learn", response_model=Learn, summary="What users can do about each kind of finding")
+def learn(response: Response):
+    """Everything behind the website's learn pages and the extension's "What
+    can you do?" link: one topic per rubric check (anchor = `check_id`) plus
+    general guides. Static content; never touches the database."""
+    from .analysis import RUBRIC_VERSION
+
+    rubric = load_rubric(RUBRIC_VERSION)
+    book = load_advice(RUBRIC_VERSION)
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    topics = [LearnTopic(check_id=a.check_id, category=rubric.categories[rubric.check(a.check_id).category],
+                         question=rubric.check(a.check_id).question, title=a.title, why=a.why,
+                         applies_to=list(a.applies_to),
+                         steps=[AdviceStep(text=s.text, link=s.link) for s in a.steps])
+              for a in book.checks.values()]
+    return Learn(topics=topics, guides=[Guide(id=g.id, title=g.title, body=g.body) for g in book.general])

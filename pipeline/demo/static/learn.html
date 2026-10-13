@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What can you do? - Imbroglio prototype</title>
+<style>
+  body { max-width: 800px; margin: 20px auto; padding: 0 10px; font-family: sans-serif; line-height: 1.4; }
+  .topic { border-top: 1px solid #ddd; padding: 8px 0; }
+  .topic:target { background: #fffbe0; }
+  .muted { color: #666; font-size: 13px; }
+  ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+  <p><a href="/">&larr; back to the prototype</a></p>
+  <h1>What can you do?</h1>
+  <p class="muted">Draft advice for each kind of finding on the scorecard. The extension's
+     "What can you do?" link opens this page at the matching section.</p>
+
+  <h2>About a finding</h2>
+  <div id="topics">(loading)</div>
+
+  <h2>Protecting yourself in general</h2>
+  <div id="guides"></div>
+
+<script>
+  const node = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
+  const safeHref = (u) => /^https:\/\//i.test(u) ? u : "#";
+
+  fetch("/v1/learn").then(r => r.json()).then(body => {
+    const topics = document.getElementById("topics");
+    topics.replaceChildren();
+    for (const t of body.topics) {
+      const sec = node("div", null, "topic");
+      sec.id = t.check_id;
+      sec.append(node("h3", t.title), node("div", `${t.category} · ${t.question}`, "muted"), node("p", t.why));
+      const ul = node("ul");
+      for (const s of t.steps) {
+        const li = node("li", s.text + " ");
+        if (s.link) { const a = node("a", "link"); a.href = safeHref(s.link); a.target = "_blank"; a.rel = "noopener"; li.append(a); }
+        ul.append(li);
+      }
+      sec.append(ul);
+      topics.append(sec);
+    }
+    const guides = document.getElementById("guides");
+    for (const g of body.guides) {
+      const sec = node("div", null, "topic");
+      sec.id = g.id;
+      sec.append(node("h3", g.title), node("p", g.body));
+      guides.append(sec);
+    }
+    if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+  }).catch(() => { document.getElementById("topics").textContent = "Couldn't load advice."; });
+</script>
+</body>
+</html>

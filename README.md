@@ -27,6 +27,9 @@ Working:
     follow it (per-client rate limit and a daily cap)
   - `GET /v1/lookup/{prefix}`: look a site up by a prefix of `sha256(domain)`,
     so clients like the extension never reveal which site a user is on
+  - `GET /v1/learn`: what users can do about each kind of finding, plus general
+    guides (draft content in `pipeline/imbroglio/advice.yaml`); every scorecard
+    finding also carries its own `what_you_can_do`
 - **Bulk import:** seed from the ToS;DR catalogue and run batches from the CLI.
 - **Audit page:** reviewers mark found documents right or wrong, and misses as
   real misses or "no policy exists", producing a verified accuracy figure.
