@@ -8,6 +8,7 @@ fetches a website or runs a model.
     POST /v1/requests           ask for a site to be analyzed (rate limited)
     GET  /v1/requests/{id}      follow an analysis while it runs
     GET  /v1/lookup/{prefix}    privacy-preserving lookup by hash prefix
+    GET  /v1/search?q=          find sites by name or domain, typos allowed
     GET  /v1/learn              what users can do about each kind of finding
 """
 
@@ -499,3 +500,51 @@ def learn(response: Response):
                          steps=[AdviceStep(text=s.text, link=s.link) for s in a.steps])
               for a in book.checks.values()]
     return Learn(topics=topics, guides=[Guide(id=g.id, title=g.title, body=g.body) for g in book.general])
+
+
+# --- search ----------------------------------------------------------------------
+
+class SearchResult(BaseModel):
+    domain: str
+    name: str | None
+    documents: list[Literal["privacy", "terms"]]
+    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"] | None = Field(
+        description="Null until the site has been analyzed")
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[SearchResult]
+    can_request: str | None = Field(
+        description="When the query is a valid domain we have never seen: the domain to "
+                    "offer for analysis (POST /v1/requests)")
+
+
+@router.get("/search", response_model=SearchResponse,
+            responses={503: {"model": ApiError}},
+            summary="Find sites by name or domain")
+def search_sites(q: str, response: Response, limit: int = 10):
+    """Matches domains and names, best first: exact, prefix, substring, then
+    close spellings (`facebok` finds facebook.com). Analyzed sites win ties.
+    If the query is a domain we don't know, `can_request` offers it for
+    analysis."""
+    from . import search
+    from .analysis import RUBRIC_VERSION
+
+    try:
+        conn = db.connect()
+    except Exception:
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        entries = search.catalogue(conn, RUBRIC_VERSION, scorer.SCORER_VERSION)
+    finally:
+        conn.close()
+    hits = search.search(q, entries, limit=max(1, min(limit, 25)))
+    as_domain = clean_domain(search.normalize(q)) if "." in q else None
+    known = {e.domain for e in entries}
+    response.headers["Cache-Control"] = "private, max-age=30"
+    return SearchResponse(
+        query=q,
+        results=[SearchResult(domain=e.domain, name=e.name, documents=list(e.documents),
+                              headline=e.headline) for e in hits],
+        can_request=as_domain if as_domain and as_domain not in known else None)

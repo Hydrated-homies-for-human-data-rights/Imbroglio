@@ -27,6 +27,7 @@ Working:
     follow it (per-client rate limit and a daily cap)
   - `GET /v1/lookup/{prefix}`: look a site up by a prefix of `sha256(domain)`,
     so clients like the extension never reveal which site a user is on
+  - `GET /v1/search?q=`: find sites by name or domain, typos allowed
   - `GET /v1/learn`: what users can do about each kind of finding, plus general
     guides (draft content in `pipeline/imbroglio/advice.yaml`); every scorecard
     finding also carries its own `what_you_can_do`

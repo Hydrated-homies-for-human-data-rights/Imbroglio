@@ -41,7 +41,8 @@
      <span id="db"></span></p>
 
   <form id="form">
-    <input type="text" id="domain" placeholder="e.g. notion.so" size="30" autofocus>
+    <input type="text" id="domain" placeholder="e.g. notion.so or just notion" size="30" autofocus list="suggest" autocomplete="off">
+    <datalist id="suggest"></datalist>
     <button id="go" type="submit">Analyze</button>
     <button id="recheck" type="button" disabled>Re-check now</button>
     <label><input type="checkbox" id="pw" checked> browser fallback</label>
@@ -367,6 +368,25 @@
     if (domain) analyze(domain, false);
   });
   $("recheck").addEventListener("click", () => { if (currentDomain) analyze(currentDomain, true); });
+
+  // Type-ahead: /v1/search matches names and domains, typos allowed.
+  let suggestTimer;
+  $("domain").addEventListener("input", () => {
+    clearTimeout(suggestTimer);
+    const q = $("domain").value.trim();
+    if (q.length < 2) return;
+    suggestTimer = setTimeout(async () => {
+      const r = await fetch("/v1/search?q=" + encodeURIComponent(q) + "&limit=8").catch(() => null);
+      if (!r || !r.ok) return;
+      const body = await r.json();
+      $("suggest").replaceChildren(...body.results.map(s => {
+        const o = document.createElement("option");
+        o.value = s.domain;
+        o.label = s.headline ? (TIER[s.headline] || TIER.NOT_DISCLOSED).label : "not rated yet";
+        return o;
+      }));
+    }, 200);
+  });
 </script>
 </body>
 </html>
