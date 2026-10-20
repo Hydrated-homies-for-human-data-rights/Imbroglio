@@ -136,7 +136,16 @@ def main() -> int:
     cal.add_argument("--tosdr", type=Path, default=Path("seeds/tosdr_rated.csv"))
     cal.add_argument("--out", type=Path, help="also write the report to this markdown file")
 
+    el = sub.add_parser("export-labels", help="export findings + document texts as classifier training data")
+    el.add_argument("--rubric", default="v0.1")
+    el.add_argument("--out", type=Path, default=Path("exports/labels-v0.1"))
+    el.add_argument("--stdout", action="store_true", help="print JSON lines instead of writing files")
+
     args = ap.parse_args()
+
+    if args.command == "export-labels":
+        from .export import run as export_run
+        return export_run(args.out, args.rubric, args.stdout)
 
     if args.command == "calibrate":
         from .calibrate import run as calibrate_run
