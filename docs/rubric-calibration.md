@@ -1,12 +1,13 @@
 # Rubric calibration: why every site rates SEVERE, and what to do about it
 
-*October 2026. Data: the 44 sites analyzed under rubric v0.1. Rerun any time with
-`python -m imbroglio.cli calibrate --out runs/calibration.md` (read-only, no LLM cost).*
+*October 2026. Data: the 45 sites analyzed under rubric v0.1, after the discovery fix
+(Oct 20). Rerun any time with `python -m imbroglio.cli calibrate --out runs/calibration.md`
+(read-only, no LLM cost).*
 
 ## The problem
 
-Under the current scorer, 42 of 44 sites (95%) get the top two ratings: 22 SEVERE and 20 EXTENSIVE.
-If almost every site is "bad", the rating no longer helps anyone choose.
+Under the current scorer, **all 45 sites get one of the top two ratings: 29 SEVERE and 16 EXTENSIVE.**
+Not one site rates MODERATE or LIMITED. If every site is "bad", the rating doesn't help anyone choose.
 
 There are three causes:
 
@@ -16,33 +17,47 @@ There are three causes:
 
    | Check | Answers (sites) |
    | --- | --- |
-   | collects_from_third_parties | yes 32, no 0 |
-   | content_license | broad 27, limited 1 (any site that hosts user content needs this license) |
-   | collects_sensitive_data | yes 28, no 3 (payment cards count, so every store says yes) |
-   | shares_for_advertising | yes 30, no 5 |
-   | discloses_to_government | broad 21, legal process 9 (standard "we comply with the law" wording) |
-   | security_measures | generic 22, specific 12 |
+   | collects_from_third_parties | yes 39, no 0 |
+   | shares_for_advertising | yes 38, no 6 |
+   | collects_sensitive_data | yes 35, no 4 (payment cards count, so every store says yes) |
+   | content_license | broad 31, limited 1 (any site that hosts user content needs this license) |
+   | discloses_to_government | broad 24, legal process 14 (standard "we comply with the law" wording) |
 
-3. **Two checks are almost never answered.** Notifying users of government requests goes unaddressed
-   by 38 of 44 sites, and breach notification by 35 of 44. They add little.
+3. **Two checks are almost never answered.** Breach notification goes unaddressed by 36 of 45 sites,
+   and notifying users of government requests by 37 of 45. They add little.
 
-## A bigger problem: 1 in 4 sites was rated on the wrong document
+## "Sells your data" mostly means ad cookies
 
-11 of 44 sites answered only 0–4 of the 14 questions. The cause is our document discovery, not the
-rubric:
+10 sites answer "yes" to `sells_personal_data`. Reading the quotes, 9 of them use the **legal**
+meaning of "sale" from California and other state privacy laws: sharing data with ad and tracking
+partners counts as a "sale" even when no money changes hands. For example:
 
-- Apple's "privacy policy" is a Safari marketing page.
-- Reddit's is a "Privacy is your right" landing page.
-- Proton's is a blog post.
-- Dropbox stored its terms of service as the privacy policy.
-- PayPal, Spotify, Twitch and Snapchat stored short "privacy center" hub pages instead of the policy
-  they link to.
-- Airbnb and Tumblr have no privacy policy stored at all.
+- Grammarly: *"These disclosures may be considered 'sales', 'sharing', or use of personal
+  information for 'targeted advertising' under State Privacy Laws."*
+- Tumblr: *"In some US states, this data sharing may be considered a 'sale.'"*
 
-Under the current scorer these sites still rate EXTENSIVE, from boilerplate. Under any fairer scheme
-they would look clean, because silence reads as "nothing bad found." **This needs fixing before any
-weighting decision is final, and before we use our data to train a model.** The coverage gate below
-keeps it from producing misleading ratings in the meantime.
+The tenth, Chipotle, says it sells data "not for monetary consideration". None of the 10 describe
+selling data for money, the way a user reads "sells your data". Today that legal wording triggers our
+harshest red flag, and it overlaps with `shares_for_advertising`. **The check needs separate answers
+for "sold for money" and "ad sharing that state law calls a sale".** It's the biggest single fix
+available.
+
+## Fixed: 1 in 4 sites was rated on the wrong document
+
+The first version of this report (Oct 6) found 11 of 44 sites answering only 0–4 of the 14 questions,
+because discovery had stored the wrong page:
+
+- a Safari marketing page for Apple
+- a blog post for Proton
+- privacy "hub" pages for PayPal, Spotify, Twitch and Snapchat
+- side-program terms for PayPal (Rewards) and Snapchat (Geofilters)
+
+Discovery now follows hub pages through to the real policy and skips side programs and articles.
+The sites were re-crawled on Oct 19–20, for $0.96 of LLM cost:
+
+- **Real policies now:** all except reddit, answering 7–11 of 14 questions.
+- **reddit:** blocks our crawler and is honestly reported as "no policy found".
+- **Coverage:** sites the coverage gate marks as unclear dropped from 11 to 3.
 
 ## Schemes compared
 
@@ -51,14 +66,15 @@ All five run on the same stored findings. Spread runs from 0 (every site gets th
 
 | Scheme | SEVERE | EXTENSIVE | MODERATE | LIMITED | Unclear | Spread |
 | --- | --- | --- | --- | --- | --- | --- |
-| Current (s1): worst category | 22 | 20 | 0 | 1 | 0 | 0.57 |
-| Capped boilerplate | 7 | 24 | 11 | 1 | 0 | 0.76 |
-| Red flags | 2 | 20 | 7 | 14 | 0 | 0.84 |
-| **Red flags + coverage** | 2 | 20 | 7 | 3 | 11 | 0.74 |
-| Concern points | 2 | 13 | 10 | 18 | 0 | 0.87 |
+| Current (s1): worst category | 29 | 16 | 0 | 0 | 0 | 0.47 |
+| Capped boilerplate | 10 | 29 | 6 | 0 | 0 | 0.64 |
+| Red flags | 3 | 26 | 9 | 7 | 0 | 0.80 |
+| **Red flags + coverage** | 3 | 26 | 7 | 6 | 3 | 0.77 |
+| Concern points | 2 | 16 | 14 | 13 | 0 | 0.89 |
 
 - **Capped boilerplate:** keeps the worst-category rule. Near-universal boilerplate is capped at
   MODERATE, government and security can't exceed MODERATE, and AI training tops out at EXTENSIVE.
+  Still no site below MODERATE.
 - **Red flags:** counts practices a user would actually worry about.
   - **High concern:** sells your data, keeps it indefinitely, no deletion, no access, no opt-out,
     trains AI on your data or content.
@@ -72,50 +88,56 @@ All five run on the same stored findings. Spread runs from 0 (every site gets th
   of the 6 high-concern questions were answered. Otherwise it is UNCLEAR, shown as "we couldn't
   confirm enough to rate this." Silence is never read as good.
 - **Concern points:** bad practices add points and good ones subtract. **Rejected.** It is an average
-  in disguise, which the design spec rules out. Khan Academy trains AI on user data yet lands at
-  LIMITED, because credits elsewhere cancel it out.
+  in disguise, which the design spec rules out. Khan Academy trains AI on user data, yet good
+  practices elsewhere pull it down to LIMITED.
 
-Example under red flags:
+Examples under red flags + coverage:
 
-- **Pinterest is SEVERE:** sells personal information and trains AI on user content.
-- **Bitwarden is MODERATE:** three medium concerns, no red flags.
-- **Wikipedia is LIMITED.**
+- **SEVERE:** Pinterest (sells, in the state-law sense; trains AI on user content), Grammarly, Spotify.
+- **LIMITED:** Apple, Proton, Wikipedia, Dropbox and Coursera, the sites most people would expect to
+  come out cleanest.
+- **MODERATE:** Bitwarden, Obsidian, Zoom: no red flags, a few medium concerns.
 
 Each rating comes with its reasons, so the receipts story carries straight through to the headline.
+Once "sells" is split, most of the 26 EXTENSIVE sites will move: right now many reach EXTENSIVE only
+through the ad-cookie sense of "sale".
 
 ## ToS;DR agreement is not a usable target yet
 
-37 of our sites are also graded by ToS;DR, but 30 of those are D or E. The narrow range makes the
-correlation meaningless. Every scheme lands between −0.1 and 0.24. ToS;DR also grades things outside
-privacy, such as arbitration and account termination. Their per-case verdicts ("this service sells
-your data") would be a better check of our *answers* than their letter grade is of our *weights*.
+From the first run: 37 of our sites are also graded by ToS;DR, but 30 of those are D or E. The narrow
+range makes the correlation meaningless (every scheme landed between −0.1 and 0.24). ToS;DR also
+grades things outside privacy, such as arbitration and account termination. Their per-case verdicts
+("this service sells your data") would be a better check of our *answers* than their letter grade is
+of our *weights*.
 
 ## Recommendation
 
 1. **Adopt "red flags + coverage" as scorer s2.** It is explainable ("SEVERE: sells your data, trains
    AI on your content"), keeps the spec's rule that the rating is never an average, and refuses to
    call a site clean on thin evidence.
-2. **Fix discovery** (privacy hub pages, blog posts, sub-program terms), re-crawl the 11 sites, and
-   rerun this comparison.
-3. **Rubric v0.2 question changes (Sam):**
-   - Split `collects_sensitive_data` into payment data (expected) and health, biometric or precise
+2. **Rubric v0.2 question changes (Sam):**
+   - **Split `sells_personal_data`:** `sold_for_money` (high concern), `state_law_sale` (ad sharing
+     that state law calls a sale: medium concern, since it's the same thing as
+     `shares_for_advertising`), and `no`.
+   - **Split `collects_sensitive_data`:** payment data (expected) versus health, biometric or precise
      location data (high concern).
-   - Replace `notifies_users_of_requests` and `breach_notification`, or fold them into one
+   - **Replace `notifies_users_of_requests` and `breach_notification`**, or fold them into one
      "security commitments" question.
    - Consider adding questions users care about: cross-site tracking, data from children, and how
      easy account deletion is.
 
-   Weight changes cost nothing to try. New or changed questions need re-extraction, at about $0.05
-   per document.
+   Weight changes cost nothing to try. New or changed questions need re-extraction for every analyzed
+   document: about $5 for the current 45 sites.
 
 ## Decisions needed from Sam
 
+- Agree with the split of "sells"? It moves more sites than any weighting choice.
 - Are the high-concern and medium-concern lists right? Two open calls in particular:
   - **AI training:** is it high concern, or medium when the site offers an opt-out?
-  - **Sharing with advertisers:** 30 of 35 sites that answer say yes. Is it a red flag, or the norm
+  - **Sharing with advertisers:** 38 of the 45 sites say yes. Is it a red flag, or the norm
     to report without penalty?
-- The thresholds: does SEVERE need 2 red flags, or should one of the worst (selling data, no
-  deletion) be enough?
+- The thresholds: does SEVERE need 2 red flags, or should one of the worst (selling data for money,
+  no deletion) be enough?
 - Is the minimum of 4 of 6 high-concern questions the right bar for calling a site clean?
 - Optional: a 10-minute class survey ranking these practices would give the weights a cited source
   instead of our judgment.
