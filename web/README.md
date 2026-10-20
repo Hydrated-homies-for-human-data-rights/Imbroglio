@@ -1,5 +1,31 @@
 # web
 
-Next.js website + public read API. Scaffolded in weeks 5–6 (vertical slice).
+The public Imbroglio website (Next.js 16, App Router, Tailwind v4), deployed on Vercel.
 
-Planned: `npx create-next-app@latest . --typescript --app --tailwind`
+**Design source:** the UX team's Figma Make file "Website UX Design". Screens are built from it exactly:
+the shared pieces live in `src/components/design.tsx` and `Header.tsx`. Anything the design doesn't
+cover yet (home page, loading and empty states, "What can you do?", the learn page) is deliberately
+plain until the UX team designs it. Don't restyle; design changes come from Figma.
+
+| Route | Screen | Data |
+| --- | --- | --- |
+| `/` | home (plain for now) | none |
+| `/search?q=` | search results, filters, request form | `GET /v1/search`, `POST /v1/requests` |
+| `/site/[domain]` | privacy report | `GET /v1/sites/{domain}` |
+| `/site/[domain]/history` | change history (timeline API not built yet) | `GET /v1/sites/{domain}` |
+| `/learn` | what you can do (plain for now) | `GET /v1/learn` |
+
+All API calls happen on the server (`src/lib/api.ts`), so the API address and password never reach
+the browser.
+
+## Run locally
+
+```bash
+npm install
+IMBROGLIO_API_URL=https://<api host> IMBROGLIO_API_USER=imbroglio IMBROGLIO_API_PASSWORD=... npm run dev
+```
+
+Environment variables (set in Vercel → Project → Settings → Environment Variables):
+
+- `IMBROGLIO_API_URL`: the read API, e.g. `https://api.imbroglio.io`
+- `IMBROGLIO_API_USER`, `IMBROGLIO_API_PASSWORD`: only while the API is password-protected
