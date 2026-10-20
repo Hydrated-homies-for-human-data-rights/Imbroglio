@@ -87,6 +87,7 @@ def test_scorecard_shows_only_verified_evidence(conn, fake_llm):
     assert ev["document"] == "privacy" and ev["reused"] is False
     assert card["documents"] == ["privacy"]
     # what the user can do: offered for the AI-training finding, not for "does not sell"
+    assert ev["exposure"] == 3 and cats["selling_sharing"]["findings"][0]["exposure"] == 0
     assert ev["what_you_can_do"]["learn_anchor"] == "trains_ai_on_user_data"
     assert ev["what_you_can_do"]["steps"]
     assert cats["selling_sharing"]["findings"][0]["what_you_can_do"] is None
@@ -98,6 +99,19 @@ def test_headlines_for_list_view(conn, fake_llm):
     from imbroglio.scorer import SCORER_VERSION
     h = db.headlines(conn, analysis.RUBRIC_VERSION, SCORER_VERSION)
     assert h == {"rated.example": "SEVERE"}       # unrated sites are simply absent
+
+
+def test_search_results_carry_concerns_and_analysis_date(conn, fake_llm):
+    from imbroglio import search
+    search.clear_cache()
+    analysis.ensure_analyzed(conn, _store(conn, "rated.example"))
+    _store(conn, "unrated.example", POLICY + " different")
+    hits = {r["domain"]: r for r in client.get("/v1/search", params={"q": "example"}).json()["results"]}
+    assert hits["rated.example"]["concerns"] == ["AI and model training"]
+    assert hits["rated.example"]["analyzed_at"] is not None
+    assert hits["unrated.example"]["concerns"] == [] and hits["unrated.example"]["analyzed_at"] is None
+    assert hits["rated.example"]["last_changed"] is None
+    search.clear_cache()
 
 
 GOV_POLICY = ("We may investigate your use of the services to determine whether a violation of "

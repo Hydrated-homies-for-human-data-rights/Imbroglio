@@ -15,6 +15,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 
 from .locate import brand_of
 
@@ -29,6 +30,9 @@ class Entry:
     name: str | None
     documents: tuple[str, ...]
     headline: str | None     # None until analyzed
+    concerns: tuple[str, ...] = ()           # category names rated EXTENSIVE or SEVERE
+    analyzed_at: datetime | None = None
+    last_changed: datetime | None = None      # newest detected policy change
 
 
 def normalize(query: str) -> str:
@@ -83,15 +87,38 @@ def catalogue(conn, rubric_version: str, scorer_version: str) -> list[Entry]:
         if _cache and time.monotonic() - _cache[0] < CACHE_SECONDS:
             return _cache[1]
     from . import db
+    from .rubric import load
 
     heads = db.headlines(conn, rubric_version, scorer_version)
+    names = load(rubric_version).categories
+    # per site: categories whose worst tier across its latest documents is
+    # EXTENSIVE or SEVERE, and when it was last analyzed
+    concerns: dict[str, set[str]] = {}
+    analyzed: dict[str, datetime] = {}
+    for domain, category, tier, created in conn.execute(
+            """WITH latest AS (
+                   SELECT DISTINCT ON (d.id) s.domain, v.id AS version_id
+                   FROM documents d JOIN services s ON s.id = d.service_id
+                   JOIN document_versions v ON v.document_id = d.id
+                   ORDER BY d.id, v.fetched_at DESC)
+               SELECT l.domain, sc.category, sc.tier, sc.created_at
+               FROM latest l JOIN scores sc ON sc.version_id = l.version_id
+               WHERE sc.rubric_version = %s AND sc.scorer_version = %s""",
+            (rubric_version, scorer_version)):
+        if tier in ("EXTENSIVE", "SEVERE"):
+            concerns.setdefault(domain, set()).add(names.get(category, category))
+        analyzed[domain] = max(analyzed.get(domain, created), created)
     rows = conn.execute(
         """SELECT s.domain, s.name,
                   coalesce(array_agg(DISTINCT d.doc_type ORDER BY d.doc_type)
-                           FILTER (WHERE d.doc_type IS NOT NULL), '{}')
+                           FILTER (WHERE d.doc_type IS NOT NULL), '{}'),
+                  (SELECT max(c.detected_at) FROM change_events c
+                   JOIN documents d2 ON d2.id = c.document_id WHERE d2.service_id = s.id)
            FROM services s LEFT JOIN documents d ON d.service_id = s.id
-           GROUP BY s.domain, s.name""").fetchall()
-    entries = [Entry(domain, name, tuple(docs), heads.get(domain)) for domain, name, docs in rows]
+           GROUP BY s.id, s.domain, s.name""").fetchall()
+    entries = [Entry(domain, name, tuple(docs), heads.get(domain),
+                     tuple(sorted(concerns.get(domain, ()))), analyzed.get(domain), changed)
+               for domain, name, docs, changed in rows]
     with _lock:
         _cache = (time.monotonic(), entries)
     return entries

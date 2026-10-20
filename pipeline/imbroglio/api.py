@@ -93,6 +93,7 @@ class Evidence(BaseModel):
     question: str
     status: str
     meaning: str
+    exposure: int = Field(description="0 = LIMITED … 3 = SEVERE: how much this practice exposes the user")
     quotes: list[str] = Field(description="Only quotes confirmed word-for-word in the stored document")
     explanation: str | None
     document: Literal["privacy", "terms"]
@@ -218,7 +219,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
                 continue
             evidence[check.category].append(Evidence(
                 check_id=check_id, question=check.question, status=status,
-                meaning=check.statuses[status].meaning,
+                meaning=check.statuses[status].meaning, exposure=check.statuses[status].exposure,
                 quotes=[q for q, ok in zip(quotes, flags) if ok], explanation=expl,
                 document=d.type, provenance=prov, model=model, reused=reused,
                 what_you_can_do=_what_you_can_do(book.for_finding(check_id, status))))
@@ -510,6 +511,9 @@ class SearchResult(BaseModel):
     documents: list[Literal["privacy", "terms"]]
     headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"] | None = Field(
         description="Null until the site has been analyzed")
+    concerns: list[str] = Field(description="Categories rated EXTENSIVE or SEVERE")
+    analyzed_at: datetime | None
+    last_changed: datetime | None = Field(description="When a policy change was last detected")
 
 
 class SearchResponse(BaseModel):
@@ -546,5 +550,6 @@ def search_sites(q: str, response: Response, limit: int = 10):
     return SearchResponse(
         query=q,
         results=[SearchResult(domain=e.domain, name=e.name, documents=list(e.documents),
-                              headline=e.headline) for e in hits],
+                              headline=e.headline, concerns=list(e.concerns),
+                              analyzed_at=e.analyzed_at, last_changed=e.last_changed) for e in hits],
         can_request=as_domain if as_domain and as_domain not in known else None)
