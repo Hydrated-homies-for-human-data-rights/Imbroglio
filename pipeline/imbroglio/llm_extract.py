@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 
 from .rubric import NOT_DISCLOSED, Rubric
-from .verify import verify_quotes
+from .verify import exact_quotes
 
 UNANSWERED = "unanswered"
 MAX_DOCUMENT_CHARS = 400_000   # ~100k tokens; refuse rather than silently truncate
@@ -156,7 +156,11 @@ def check_findings(rubric: Rubric, raw: list[dict], document: str) -> list[Findi
             continue
         # A quote counts only if it is in the document word-for-word AND is
         # about the question (rubric evidence terms). Both checks are code.
-        flags = [found and c.relevant(q) for q, found in zip(quotes, verify_quotes(quotes, document))]
+        # A verified quote is replaced by the document's own words, so a
+        # near-miss copy ("publly" for "publicly") is never what we show.
+        exact = exact_quotes(quotes, document)
+        quotes = [e if e is not None else q for q, e in zip(quotes, exact)]
+        flags = [e is not None and c.relevant(q) for q, e in zip(quotes, exact)]
         out.append(Finding(c.id, c.category, status, quotes, flags, any(flags), explanation))
     return out
 

@@ -6,7 +6,7 @@ import pytest
 from imbroglio import scorer
 from imbroglio.rubric import load
 from imbroglio.scorer import ScoredFinding
-from imbroglio.verify import verify_quote, verify_quotes
+from imbroglio.verify import exact_quote, verify_quote, verify_quotes
 
 DOC = """Privacy Policy
 We collect your email address, device identifiers, and approximate location
@@ -41,6 +41,31 @@ def test_verified(quote):
 ])
 def test_rejected(quote):
     assert not verify_quote(quote, DOC)
+
+
+def test_exact_quote_returns_the_documents_own_words():
+    doc = ("License. You grant us a non-exclusive, transferable, sub-licensable, royalty-free, and worldwide "
+           "license to host, use, distribute, modify, run, copy, publicly perform or display, translate, and "
+           "create derivative works of your content.")
+    # the model dropped two letters ("publly"); the fuzzy pass accepts it, but what we
+    # store and show must be the document's text
+    typo = ("you grant us a non-exclusive, transferable, sub-licensable, royalty-free, and worldwide license "
+            "to host, use, distribute, modify, run, copy, publly perform or display")
+    assert verify_quote(typo, doc)
+    exact = exact_quote(typo, doc)
+    assert exact.startswith("You grant us") and "publicly perform or display" in exact and "publly" not in exact
+
+
+@pytest.mark.parametrize("quote, expected", [
+    ("“We do not sell your personal information.”", "We do not sell your personal information."),
+    ("we collect your email address, device identifiers, and approximate location",
+     "We collect your email address, device identifiers, and approximate location"),   # line break collapsed
+    ("We collect your email address ... approximate location",
+     "We collect your email address ... approximate location"),
+    ("We retain your data for 30 days.", None),
+])
+def test_exact_quote_cases(quote, expected):
+    assert exact_quote(quote, DOC) == expected
 
 
 def test_verify_quotes_batch():
