@@ -1,0 +1,94 @@
+/* popup card */
+#imbrolio-extension-modal {
+    display          : block; 
+    width            : 420px;
+    background       : white;
+    padding          : 20px; 
+    color            : #000;
+    text-align       : left;
+    box-sizing       : border-box;
+}
+
+/* header and subtitle */
+.p-header { 
+    display          : flex;
+    align-items      : center;
+    gap              : 15px;
+    margin-bottom    : 5px;
+}
+.p-header h1 { 
+    font-size        : 24px;
+    margin           : 0;
+    font-weight      : bold;
+}
+.p-subtitle {
+    font-size        : 13px;
+    color            : #6b7280;
+    line-height      : 1.4; 
+    margin           : 0 0 10px 0;
+    padding-bottom   : 15px;
+    border-bottom    : 1px solid #e5e7eb;
+}
+
+/* data rows */
+.p-row {
+    display          : flex;
+    justify-content  : space-between;
+    align-items      : center;
+    padding          : 12px 0;
+    border-bottom    : 1px solid #e5e7eb;
+    font-size        : 15px;
+}
+.p-row:last-child {
+    border-bottom    : none;
+    padding-bottom   : 0;
+}
+.p-right {
+    display          : flex;
+    align-items      : center;
+    gap              : 15px; 
+}
+.p-findings {
+    font-size        : 13px;
+    color            : #6b7280;
+    width            : 70px;
+}
+
+/* badges */
+.p-badge {
+    padding          : 4px 10px;
+    border-radius    : 4px;
+    font-weight      : bold;
+    font-size        : 12px;
+    border           : 2px solid;
+    letter-spacing   : 0.5px;
+    text-transform   : uppercase;
+}
+.p-badge::before {
+    content          : '■ ';
+}
+.p-severe {
+    color            : #9b1c1c;
+    border-color     : #9b1c1c;
+}
+.p-extensive {
+    color            : #c2410c;
+    border-color     : #c2410c;
+}
+.p-extensive::before {
+    content          : '▲ ';
+}
+.p-limited {
+    color            : #047857;
+    border-color     : #047857;
+}
+.p-limited::before {
+    content          : '○ ';
+}
+.p-moderate {
+    color            : #854d0e;
+    border-color     : #854d0e;
+}
+.p-moderate::before {
+    content          : '● ';
+}

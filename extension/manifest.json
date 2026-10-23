@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "imbroglio",
+  "version": "0.1",
+  "permissions": ["storage", "tabs"], 
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "View Privacy Ratings"
+  }
+}
