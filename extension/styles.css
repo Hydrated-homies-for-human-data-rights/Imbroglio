@@ -92,3 +92,11 @@
 .p-moderate::before {
     content          : '● ';
 }
+.p-not_disclosed {
+    color            : #6b7280;
+    border-color     : #6b7280;
+    border-style     : dashed;
+}
+.p-not_disclosed::before {
+    content          : '┄ ';
+}

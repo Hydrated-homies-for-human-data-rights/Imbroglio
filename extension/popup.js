@@ -1,58 +1,81 @@
+const DOC_NAMES = { privacy: "Privacy Policy", terms: "Terms of Service" };
+
+function showMessage(text) {
+  document.getElementById('overall-badge').style.display = 'none';
+  document.getElementById('p-subtitle').style.display = 'none';
+  const p = document.createElement('p');
+  p.textContent = text;
+  document.getElementById('p-list').replaceChildren(p);
+}
+
+function badge(level) {
+  const span = document.createElement('span');
+  span.className = `p-badge p-${level.toLowerCase()}`;
+  span.textContent = level.replace('_', ' ');
+  return span;
+}
+
+function render(siteData) {
+  document.getElementById('domain-name').textContent = siteData.domain;
+
+  const overallBadge = document.getElementById('overall-badge');
+  overallBadge.replaceWith(Object.assign(badge(siteData.overall), { id: 'overall-badge' }));
+
+  const docs = (siteData.documents || []).map((d) => DOC_NAMES[d] || d).join(' + ');
+  const analyzed = siteData.analyzedAt ? siteData.analyzedAt.slice(0, 10) : 'unknown';
+  document.getElementById('p-meta').textContent = `Analyzed ${analyzed} · ${docs} · rubric ${siteData.rubric}`;
+
+  const listContainer = document.getElementById('p-list');
+  for (const [category, data] of Object.entries(siteData.scores)) {
+    const findings = data.findings || 0;
+
+    const row = document.createElement('div');
+    row.className = 'p-row';
+    const name = document.createElement('div');
+    name.textContent = category;
+    const right = document.createElement('div');
+    right.className = 'p-right';
+    const count = document.createElement('span');
+    count.className = 'p-findings';
+    count.textContent = `${findings} finding${findings !== 1 ? 's' : ''}`;
+    right.append(badge(data.level || 'UNKNOWN'), count);
+    row.append(name, right);
+    listContainer.appendChild(row);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    console.log("Popup opened. Searching for domain...");
-
+    // activeTab lets us read this tab's address only because the user clicked the icon.
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    if (!tab || !tab.url) {
-      throw new Error("Could not read tab URL. Did you add 'tabs' to permissions?");
+    const url = tab && tab.url ? new URL(tab.url) : null;
+    if (!url || !['http:', 'https:'].includes(url.protocol)) {
+      document.getElementById('domain-name').textContent = 'Imbroglio';
+      showMessage('Open a website to see its privacy ratings.');
+      return;
     }
+    document.getElementById('domain-name').textContent = url.hostname.replace(/^www\./, '');
 
-    const url = new URL(tab.url);
-    const domain = url.hostname.replace('www.', '');
-    console.log("Detected domain:", domain);
-    
-    document.getElementById('domain-name').textContent = domain;
-
-    chrome.runtime.sendMessage({ action: "getData", domain: domain }, (response) => {
-      if (chrome.runtime.lastError) {
+    chrome.runtime.sendMessage({ action: "getData", domain: url.hostname }, (response) => {
+      if (chrome.runtime.lastError || !response) {
         console.error("Error communicating with background:", chrome.runtime.lastError);
+        showMessage("Something went wrong. Try again.");
         return;
       }
-
-      console.log("Response from background:", response);
-
-      if (response && response.data) {
-        const siteData = response.data;
-        
-        const overallBadge = document.getElementById('overall-badge');
-        overallBadge.textContent = siteData.overall;
-        overallBadge.className = `p-badge p-${siteData.overall.toLowerCase()}`;
-
-        const listContainer = document.getElementById('p-list');
-        for (const [category, data] of Object.entries(siteData.scores)) {
-          if (!data) continue;
-          const level = data.level || "UNKNOWN";
-          const findings = data.findings || 0;
-
-          const row = document.createElement('div');
-          row.className = 'p-row';
-          row.innerHTML = `
-            <div>${category}</div>
-            <div class="p-right">
-              <span class="p-badge p-${level.toLowerCase()}">${level}</span>
-              <span class="p-findings">${findings} finding${findings !== 1 ? 's' : ""}</span>
-            </div>
-          `;
-          listContainer.appendChild(row);
-        }
+      const siteData = response.data;
+      if (siteData.status === 'ready') {
+        render(siteData);
+      } else if (siteData.status === 'not_analyzed') {
+        document.getElementById('domain-name').textContent = siteData.domain;
+        showMessage("We have this site's documents but haven't rated them yet.");
+      } else if (siteData.status === 'error') {
+        showMessage(`Couldn't reach the Imbroglio API (${siteData.error}).`);
       } else {
-        document.getElementById('domain-name').textContent = domain;
-        document.getElementById('overall-badge').style.display = 'none';
-        document.getElementById('p-list').innerHTML = "<p>No privacy data found for this domain.</p>";
+        showMessage("We haven't analyzed this site yet.");
       }
     });
   } catch (error) {
     console.error("Popup initialization failed:", error);
+    showMessage("Something went wrong. Try again.");
   }
 });

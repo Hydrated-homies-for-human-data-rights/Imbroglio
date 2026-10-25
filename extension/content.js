@@ -11,7 +11,7 @@
 
         console.log("imbroglio: Response received from background:", response);
 
-        if (response && response.data) {
+        if (response && response.data && response.data.status === "ready") {
             console.log("imbroglio: Data found! Injecting UI...");
             injectUI(domain, response.data);
         } else {

@@ -1,41 +1,98 @@
-// 1. Save the database as soon as the script loads (safer than onInstalled for testing)
-const mockDatabase = {
-    "facebook.com": {
-        overall: "SEVERE",
-        scores: {
-            "Data Selling & Sharing": { level: "EXTENSIVE", findings: 4 },
-            "Collection Scope": { level: "EXTENSIVE", findings: 2 },
-            "Retention & Deletion": { level: "EXTENSIVE", findings: 4 },
-            "User Rights": { level: "LIMITED", findings: 1 },
-            "Security": { level: "EXTENSIVE", findings: 3 },
-            "AI & Model Training": { level: "SEVERE", findings: 3 },
-            "Government Requests": { level: "MODERATE", findings: 1 }
+// Looks up the current site in the Imbroglio API. Only cached results are
+// shown: this never asks the API to analyze a new site.
+//
+// Privacy: the site's name never leaves the browser. We hash it with
+// sha256, send the first few characters of the hash to /v1/lookup, and pick
+// our site out of the matches by its full hash.
+//
+// API address: defaults to a local API (pipeline/demo/app.py). To point at
+// another one, run this in the service worker console:
+//   chrome.storage.local.set({ apiBase: "https://...", apiUser: "imbroglio", apiPassword: "..." })
+// and add that address to host_permissions in manifest.json.
+
+const DEFAULT_API_BASE = "http://localhost:8765";
+const PREFIX_LENGTH = 5; // the API accepts 4 to 8; shorter shares the prefix with more sites
+
+async function settings() {
+    const s = await chrome.storage.local.get(["apiBase", "apiUser", "apiPassword"]);
+    return {
+        base: (s.apiBase || DEFAULT_API_BASE).replace(/\/+$/, ""),
+        user: s.apiUser || "",
+        password: s.apiPassword || "",
+    };
+}
+
+async function sha256Hex(text) {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// "www.old.reddit.com" -> ["old.reddit.com", "reddit.com"]. We store sites
+// under their main domain, so subdomains fall back to their parents.
+function candidates(hostname) {
+    const labels = hostname.toLowerCase().replace(/^www\./, "").split(".");
+    const out = [];
+    for (let i = 0; i <= labels.length - 2; i++) {
+        out.push(labels.slice(i).join("."));
+    }
+    return out;
+}
+
+async function lookup(domain, api) {
+    const hash = await sha256Hex(domain);
+    const headers = { Accept: "application/json" };
+    if (api.user && api.password) {
+        headers.Authorization = "Basic " + btoa(`${api.user}:${api.password}`);
+    }
+    const res = await fetch(`${api.base}/v1/lookup/${hash.slice(0, PREFIX_LENGTH)}`, { headers });
+    if (!res.ok) {
+        throw new Error(`API returned ${res.status}`);
+    }
+    const body = await res.json();
+    return body.sites.find((s) => s.hash === hash) || null;
+}
+
+// Same shape the popup and content script already use: overall + scores by category name.
+function toSiteData(domain, entry) {
+    if (!entry.scores) {
+        return { status: "not_analyzed", domain, documents: entry.documents };
+    }
+    const scores = {};
+    for (const c of entry.scores.categories) {
+        scores[c.name] = { level: c.tier, findings: c.findings };
+    }
+    return {
+        status: "ready",
+        domain,
+        overall: entry.scores.headline,
+        scores,
+        analyzedAt: entry.scores.analyzed_at,
+        rubric: entry.scores.rubric_version,
+        documents: entry.documents,
+    };
+}
+
+async function getData(hostname) {
+    const api = await settings();
+    for (const domain of candidates(hostname)) {
+        const entry = await lookup(domain, api);
+        if (entry) {
+            console.log(`imbroglio BG: found ${domain}`);
+            return toSiteData(domain, entry);
         }
     }
-};
+    console.log(`imbroglio BG: no data for ${hostname}`);
+    return { status: "unknown" };
+}
 
-chrome.storage.local.get('privacyDatabase', (result) => {
-    if (!result.privacyDatabase) {
-        chrome.storage.local.set({ privacyDatabase: mockDatabase }, () => {
-            console.log("imbroglio BG: Database saved to storage.");
-        });
-    } else {
-        console.log("imbroglio BG: Database already exists in storage.");
-    }
-});
-
-// 2. Listen for messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "getData") {
-        chrome.storage.local.get('privacyDatabase', (result) => {
-            const db = result.privacyDatabase || {};
-            const domain = request.domain.replace('www.', '');
-            
-            // Log exactly what is being requested and found
-            console.log(`imbroglio BG: Requested ${domain}. Data found?`, !!db[domain]);
-            
-            sendResponse({ data: db[domain] || null });
-        });
+        getData(request.domain)
+            .then((data) => sendResponse({ data }))
+            .catch((err) => {
+                console.error("imbroglio BG: lookup failed", err);
+                sendResponse({ data: { status: "error", error: String(err.message || err) } });
+            });
         return true; // Keeps the message channel open
     }
 });
