@@ -442,11 +442,72 @@ def get_request(request_id: int):
 HASH_PREFIX = re.compile(r"^[0-9a-f]{4,8}$")
 
 
+class LookupCategory(BaseModel):
+    key: str
+    name: str
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    findings: int = Field(description="Verified findings behind this rating")
+
+
+class LookupScores(BaseModel):
+    rubric_version: str
+    scorer_version: str
+    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    categories: list[LookupCategory]
+    analyzed_at: datetime
+
+
 class LookupEntry(BaseModel):
     hash: str
     documents: list[Literal["privacy", "terms"]]
     checked_at: datetime | None
-    scores: None = None
+    scores: LookupScores | None = Field(
+        None, description="Ratings without the quotes, the same ones the site's scorecard shows. "
+                          "Null until the site's documents have been analyzed")
+
+
+def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
+    """domain_hash -> ratings for every analyzed site matching the prefix.
+    Same rules as the scorecard: the latest version of each document, worst
+    tier per category across documents, headline = worst category."""
+    from .analysis import RUBRIC_VERSION
+
+    rubric = load_rubric(RUBRIC_VERSION)
+    latest = """WITH latest AS (
+                    SELECT DISTINCT ON (d.id) s.domain_hash, v.id AS version_id
+                    FROM services s JOIN documents d ON d.service_id = s.id
+                    JOIN document_versions v ON v.document_id = d.id
+                    WHERE s.domain_hash LIKE %s
+                    ORDER BY d.id, v.fetched_at DESC)"""
+    per_doc: dict[str, dict[int, dict[str, str]]] = {}
+    analyzed: dict[str, datetime] = {}
+    for h, version_id, category, tier, created in conn.execute(
+            latest + """ SELECT l.domain_hash, l.version_id, sc.category, sc.tier, sc.created_at
+                         FROM latest l JOIN scores sc ON sc.version_id = l.version_id
+                         WHERE sc.rubric_version = %s AND sc.scorer_version = %s""",
+            (pattern, rubric.version, scorer.SCORER_VERSION)):
+        if category in rubric.categories:
+            per_doc.setdefault(h, {}).setdefault(version_id, {})[category] = tier
+            analyzed[h] = max(analyzed.get(h, created), created)
+    counts: dict[tuple[str, str], int] = {}
+    for h, check_id, status in conn.execute(
+            latest + """ SELECT l.domain_hash, f.check_id, f.status
+                         FROM latest l JOIN findings f ON f.version_id = l.version_id
+                         WHERE f.rubric_version = %s AND f.verified AND f.status <> %s""",
+            (pattern, rubric.version, NOT_DISCLOSED)):
+        check = rubric.check(check_id)
+        if status in check.statuses:  # same filter as the scorecard's evidence
+            counts[h, check.category] = counts.get((h, check.category), 0) + 1
+    out = {}
+    for h, docs in per_doc.items():
+        tiers = scorer.combine(*docs.values())
+        out[h] = LookupScores(
+            rubric_version=rubric.version, scorer_version=scorer.SCORER_VERSION,
+            headline=scorer.headline(tiers), analyzed_at=analyzed[h],
+            categories=[LookupCategory(key=c, name=name, tier=tiers.get(c, scorer.NOT_DISCLOSED_TIER),
+                                       findings=counts.get((h, c), 0))
+                        for c, name in rubric.categories.items()])
+    return out
 
 
 class LookupResult(BaseModel):
@@ -464,7 +525,10 @@ def lookup(prefix: str, response: Response):
     returned list by its full hash. The server only learns the prefix, which
     is shared by an enormous number of possible domains.
 
-    Sites appear here once they have at least one stored document."""
+    Sites appear here once they have at least one stored document, and carry
+    `scores` once those documents have been analyzed. The quotes behind each
+    rating are on the site's scorecard (`/v1/sites/{domain}`); fetch that only
+    when the user asks to see them, since it names the domain."""
     p = prefix.lower()
     if not HASH_PREFIX.match(p):
         return JSONResponse({"error": "prefix must be 4-8 lowercase hex characters"}, status_code=400)
@@ -481,10 +545,12 @@ def lookup(prefix: str, response: Response):
                LIMIT 500""",
             (p + "%",),
         ).fetchall()
+        scores = _lookup_scores(conn, p + "%") if rows else {}
     finally:
         conn.close()
     response.headers["Cache-Control"] = "private, max-age=300"
-    return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t)
+    return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t,
+                                                     scores=scores.get(h))
                                          for h, docs, t in rows])
 
 

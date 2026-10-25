@@ -35,7 +35,9 @@ Working:
   - `POST /v1/requests` + `GET /v1/requests/{id}`: ask for an analysis and
     follow it (per-client rate limit and a daily cap)
   - `GET /v1/lookup/{prefix}`: look a site up by a prefix of `sha256(domain)`,
-    so clients like the extension never reveal which site a user is on
+    so clients like the extension never reveal which site a user is on. Each
+    match carries its ratings (headline, tier and finding count per category)
+    once analyzed
   - `GET /v1/search?q=`: find sites by name or domain, typos allowed
   - `GET /v1/learn`: what users can do about each kind of finding, plus general
     guides (draft content in `pipeline/imbroglio/advice.yaml`); every scorecard
@@ -57,7 +59,6 @@ Not built yet:
 - rubric v1 (25 checks) and the scoring scheme that replaces `s1`
 - the classifier in the live pipeline, clause retrieval, confidence calibration
 - daily change monitor and change feed (versions are already hashed and stored)
-- scores in `GET /v1/lookup` (it lists matching sites but returns no ratings yet)
 - browser extension (early work on the `feature/extension` branch)
 - ToS;DR grade comparison, request voting, dispute path, public "how we score"
   page, evaluation report
