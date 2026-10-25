@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import threading
 import time
 from collections import defaultdict, deque
@@ -315,6 +316,31 @@ class _RateLimiter:
 
 _limiter = _RateLimiter(REQUESTS_PER_HOUR)
 
+# Who is asking, for the per-client limit. Anyone can type an
+# X-Forwarded-For header, so the API only believes two sources:
+#   * CLIENT_IP_HEADER: a header the hosting platform sets itself, replacing
+#     whatever the caller sent ("x-real-ip" on Railway). Empty means use the
+#     address of the connection.
+#   * our own website's server, which passes the visitor's address in
+#     X-Imbroglio-Visitor-IP along with the shared WEB_CLIENT_KEY. Without
+#     this every website visitor would share the website server's limit.
+CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", "").strip().lower()
+WEB_CLIENT_KEY = os.environ.get("WEB_CLIENT_KEY", "")
+
+
+def client_address(request: Request) -> str:
+    if WEB_CLIENT_KEY:
+        key = request.headers.get("x-imbroglio-web-key", "")
+        visitor = request.headers.get("x-imbroglio-visitor-ip", "").strip()
+        if visitor and secrets.compare_digest(key.encode(), WEB_CLIENT_KEY.encode()):
+            return "visitor " + visitor[:64]
+    if CLIENT_IP_HEADER:
+        # If the platform appends to a list, the last entry is the one it added.
+        value = request.headers.get(CLIENT_IP_HEADER, "").split(",")[-1].strip()
+        if value:
+            return value[:64]
+    return request.client.host if request.client else "unknown"
+
 
 class NewRequest(BaseModel):
     domain: str = Field(max_length=253, examples=["notion.so"])
@@ -360,7 +386,7 @@ def create_request(body: NewRequest, request: Request):
     domain = clean_domain(body.domain)
     if not domain:
         return JSONResponse({"error": "not a valid domain"}, status_code=400)
-    client = request.client.host if request.client else "unknown"
+    client = client_address(request)
     try:
         conn = db.connect()
     except Exception:

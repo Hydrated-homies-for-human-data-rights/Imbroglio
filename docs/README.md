@@ -1,9 +1,17 @@
 # docs
 
-- `proposal.md` — project proposal (copy in from course submission)
-- `rubric.md` — versioned rubric specification (frozen v1 at week 6)
-- `evaluation.md` — accuracy measurements (classifier F1, quote verification
-  rate, run-to-run consistency, change-detection audit)
-- `competitive-review.md` — full 12-project competitive and literature review
-- `rubric-calibration.md` — why v0.1 rates nearly every site SEVERE, scoring
-  schemes compared on real data, recommendation for scorer s2
+What's here now:
+
+- `rubric-calibration.md`: why rubric v0.1 rates nearly every site SEVERE or
+  EXTENSIVE, five scoring schemes compared on real findings, and which one we
+  recommend
+
+Planned:
+
+- `rubric.md`: the versioned rubric spec (v1, 25 checks). Until then the rubric
+  itself is `pipeline/imbroglio/rubric/v0.1.yaml`
+- `evaluation.md`: accuracy figures (classifier F1, quote verification rate,
+  run-to-run consistency, ToS;DR agreement, change detection audit)
+- `competitive-review.md`: the full review of the 12 earlier projects
+
+The proposal, requirements and design spec live in the team Notes repo.
