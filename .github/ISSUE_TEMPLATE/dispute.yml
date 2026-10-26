@@ -1,0 +1,36 @@
+name: Dispute a finding
+description: Tell us a rating or finding on imbroglio.io is wrong
+title: "Dispute: "
+labels: ["dispute"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for checking our work. A team member rereads the finding against the stored policy text.
+        If the quote doesn't support it, we withdraw the finding rather than defend it.
+  - type: input
+    id: site
+    attributes:
+      label: Website
+      description: The site whose report is wrong, for example example.com
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Which finding or rating
+      description: Copy the category, the finding, or the quote you mean.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong
+      description: Why it's wrong, and what the document actually says if you know.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Link to the right document (optional)
+      description: If we read the wrong page, where is the real policy or terms?

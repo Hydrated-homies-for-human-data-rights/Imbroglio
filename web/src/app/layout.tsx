@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import Footer from "@/components/Footer"
 import "./globals.css"
 
 // The design's font stack starts with Inter (Figma Make src/index.css).
@@ -14,7 +15,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="min-h-screen bg-[#f5f7f9] text-[#11253a]">{children}</body>
+      <body className="min-h-screen bg-[#f5f7f9] text-[#11253a]">
+        {children}
+        <Footer />
+      </body>
     </html>
   )
 }

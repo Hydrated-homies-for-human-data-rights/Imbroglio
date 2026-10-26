@@ -84,6 +84,18 @@ export type LearnTopic = {
 }
 export type Learn = { topics: LearnTopic[]; guides: { id: string; title: string; body: string }[] }
 
+export type RubricInfo = {
+  rubric_version: string
+  scorer_version: string
+  rules: string[]
+  tiers: { tier: Tier; meaning: string }[]
+  categories: {
+    key: string
+    name: string
+    checks: { check_id: string; question: string; statuses: { status: string; meaning: string; tier: Tier }[] }[]
+  }[]
+}
+
 export type RequestAccepted = {
   request_id: number | null
   domain: string
@@ -123,6 +135,7 @@ async function get<T>(path: string): Promise<T> {
 export const getSite = (domain: string) => get<Site>(`/v1/sites/${encodeURIComponent(domain)}`)
 export const search = (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=25`)
 export const getLearn = () => get<Learn>("/v1/learn")
+export const getRubric = () => get<RubricInfo>("/v1/rubric")
 
 // Ask for a site to be analyzed. `clientIp` is passed on with the shared
 // IMBROGLIO_WEB_KEY so the API's per-visitor rate limit applies to the

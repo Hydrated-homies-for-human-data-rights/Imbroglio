@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import type { Evidence, Site, WhatYouCanDo } from "@/lib/api"
 import { docName, shortDate } from "@/lib/format"
+import { disputeUrl } from "@/lib/links"
 import { Chevron, DetailCard, RatingMark, ratingOf, ratingStyles } from "./design"
 
 // Privacy report page from the UX team's design, fed with /v1/sites/{domain}.
@@ -82,6 +83,16 @@ export default function Report({ site }: { site: Site }) {
           </div>
         </div>
       </section>
+
+      {/* Not in the design yet: plain until the UX team designs it (proposal risk 8). */}
+      <p className="mt-4 max-w-3xl text-xs leading-5 text-[#5a6b7e]">
+        Automated analysis of this site&apos;s own documents, last run {shortDate(card.analyzed_at)}. Every quote
+        below was checked word for word against the stored text. This describes what the documents say and is
+        not legal advice.{" "}
+        <a className="underline" href={disputeUrl(site.domain)} target="_blank" rel="noopener noreferrer">
+          Something wrong? Report a problem
+        </a>
+      </p>
 
       <div className="mt-5 flex flex-wrap gap-x-2 gap-y-1 text-sm text-[#607186]">
         {site.documents.map((d, i) => (
@@ -216,7 +227,10 @@ export default function Report({ site }: { site: Site }) {
       {showScoring && (
         <aside className="mt-4 max-w-2xl rounded-xl border border-[#dbe2e8] bg-white p-5 text-sm leading-6 text-[#5b6d80]">
           Each category is scored from limited to severe using verified policy language. The overall score always
-          reflects the highest-risk category.
+          reflects the highest-risk category.{" "}
+          <Link className="underline" href="/how-we-score">
+            See every question, answer and rule
+          </Link>
         </aside>
       )}
     </main>

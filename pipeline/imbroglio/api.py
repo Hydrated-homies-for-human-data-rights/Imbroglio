@@ -10,6 +10,7 @@ fetches a website or runs a model.
     GET  /v1/lookup/{prefix}    privacy-preserving lookup by hash prefix
     GET  /v1/search?q=          find sites by name or domain, typos allowed
     GET  /v1/learn              what users can do about each kind of finding
+    GET  /v1/rubric             the published rubric and scoring rules
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from . import db, jobs, scorer
 from .advice import Advice, load as load_advice
-from .rubric import NOT_DISCLOSED, load as load_rubric
+from .rubric import NOT_DISCLOSED, TIERS, load as load_rubric
 from .batch import clean_domain
 
 # Abuse limits for the only write path. Every accepted request can cost a
@@ -593,6 +594,59 @@ def learn(response: Response):
                          steps=[AdviceStep(text=s.text, link=s.link) for s in a.steps])
               for a in book.checks.values()]
     return Learn(topics=topics, guides=[Guide(id=g.id, title=g.title, body=g.body) for g in book.general])
+
+
+# --- rubric: how we score --------------------------------------------------------
+
+class RubricStatus(BaseModel):
+    status: str
+    meaning: str
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE"]
+
+
+class RubricCheck(BaseModel):
+    check_id: str
+    question: str
+    statuses: list[RubricStatus] = Field(description="Every answer allowed, plus not_disclosed")
+
+
+class RubricCategory(BaseModel):
+    key: str
+    name: str
+    checks: list[RubricCheck]
+
+
+class TierMeaning(BaseModel):
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    meaning: str
+
+
+class RubricInfo(BaseModel):
+    rubric_version: str
+    scorer_version: str
+    rules: list[str] = Field(description="The scoring rules, in the order the scorer applies them")
+    tiers: list[TierMeaning]
+    categories: list[RubricCategory]
+
+
+@router.get("/rubric", response_model=RubricInfo, summary="The published rubric and scoring rules")
+def rubric_info(response: Response):
+    """Every question each document is checked against, every allowed answer
+    with the rating it leads to, and the rules that turn answers into ratings
+    (F5). Static content; never touches the database."""
+    from .analysis import RUBRIC_VERSION
+
+    rubric = load_rubric(RUBRIC_VERSION)
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return RubricInfo(
+        rubric_version=rubric.version, scorer_version=scorer.SCORER_VERSION, rules=scorer.RULES,
+        tiers=[TierMeaning(tier=t, meaning=m) for t, m in scorer.TIER_MEANINGS.items()],
+        categories=[RubricCategory(key=key, name=name, checks=[
+            RubricCheck(check_id=c.id, question=c.question,
+                        statuses=[RubricStatus(status=s.name, meaning=s.meaning,
+                                               tier=TIERS[s.exposure]) for s in c.statuses.values()])
+            for c in rubric.checks if c.category == key])
+            for key, name in rubric.categories.items()])
 
 
 # --- search ----------------------------------------------------------------------
