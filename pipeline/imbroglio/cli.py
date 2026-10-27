@@ -6,6 +6,7 @@
 
     python -m imbroglio.cli seed-tosdr seeds/tosdr_rated.csv --rated-only
     python -m imbroglio.cli batch seeds/tosdr_rated.csv --limit 100 --workers 6
+    python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100 --dry-run
     python -m imbroglio.cli report                # latest batch
     python -m imbroglio.cli report 3 --out runs/batch-3.md
 """
@@ -109,6 +110,11 @@ def main() -> int:
     b.add_argument("--no-playwright", action="store_true")
     b.add_argument("--skip-done", action="store_true", help="skip domains that already have a privacy policy")
 
+    q = sub.add_parser("enqueue", help="queue new domains from a file for the worker (no local crawling)")
+    q.add_argument("file", type=Path, help=".txt (one domain per line) or .csv (domain column)")
+    q.add_argument("--limit", type=int, required=True, help="queue at most N new domains")
+    q.add_argument("--dry-run", action="store_true", help="show what would be queued, change nothing")
+
     r = sub.add_parser("report", help="summarize a batch (default: latest)")
     r.add_argument("batch_id", nargs="?", type=int)
     r.add_argument("--out", type=Path, help="also write the report to this markdown file")
@@ -200,6 +206,25 @@ def main() -> int:
                              time_budget=args.time_budget, skip_done=args.skip_done)
         print()
         print(f"report: python -m imbroglio.cli report {batch_id}")
+        return 0
+
+    if args.command == "enqueue":
+        from psycopg.conninfo import conninfo_to_dict
+
+        from . import db, jobs
+        from .batch import load_domains
+        domains = load_domains(args.file)
+        target = conninfo_to_dict(db.database_url())
+        print(f"database: {target.get('host', 'localhost')}/{target.get('dbname', '')}")
+        conn = db.connect()
+        db.init_schema(conn)
+        out = jobs.enqueue_batch(conn, domains, limit=args.limit, dry_run=args.dry_run)
+        print(f"{len(domains)} domains in {args.file.name}: {len(out['already_stored'])} already stored, "
+              f"{len(out['already_requested'])} already requested")
+        print(f"{'would queue' if args.dry_run else 'queued'} {len(out['queued'])}: "
+              + ", ".join(out["queued"][:10]) + (" ..." if len(out["queued"]) > 10 else ""))
+        print(f"queue now: {jobs.stats(conn)}")
+        conn.close()
         return 0
 
     if args.command == "report":

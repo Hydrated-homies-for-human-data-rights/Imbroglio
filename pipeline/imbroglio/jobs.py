@@ -1,6 +1,7 @@
 """Analysis request queue (Postgres-backed jobs).
 
     enqueue()  — add a domain, or bump priority if it's already open
+    enqueue_batch() — queue a list of new domains behind every visitor request
     claim()    — a worker takes the highest-priority job, safely
     progress() — worker heartbeat + one line of live log
     finish()   — mark done / failed with a result summary
@@ -37,6 +38,34 @@ def enqueue(conn: psycopg.Connection, domain: str, source: str = "web",
     ).fetchone()
     conn.commit()
     return row[0], row[1], row[2]
+
+
+def enqueue_batch(conn: psycopg.Connection, domains: list[str],
+                  limit: int | None = None, dry_run: bool = False) -> dict[str, list[str]]:
+    """Queue domains we know nothing about yet, in list order. Batch jobs get
+    request_count 0, so every visitor request (1+) is claimed first; a visitor
+    asking for a queued batch domain bumps it up like any duplicate request.
+    Skips domains with stored documents and domains already requested (open
+    or finished), so rerunning with the same file only adds new ones."""
+    stored = {r[0] for r in conn.execute(
+        """SELECT DISTINCT s.domain FROM services s JOIN documents d ON d.service_id = s.id
+           WHERE s.domain = ANY(%s)""", (domains,))}
+    requested = {r[0] for r in conn.execute(
+        "SELECT DISTINCT domain FROM analysis_requests WHERE domain = ANY(%s)", (domains,))}
+    new = [d for d in domains if d not in stored and d not in requested][:limit]
+    if new and not dry_run:
+        with conn.cursor() as cur:
+            # clock_timestamp() rather than now(): one transaction, but each row
+            # needs its own time so the worker claims them in list order.
+            cur.executemany(
+                """INSERT INTO analysis_requests (domain, source, request_count, requested_at)
+                   VALUES (%s, 'batch', 0, clock_timestamp())
+                   ON CONFLICT (domain) WHERE status IN ('queued', 'running') DO NOTHING""",
+                [(d,) for d in new])
+    conn.commit()
+    return {"queued": new,
+            "already_stored": [d for d in domains if d in stored],
+            "already_requested": [d for d in domains if d in requested and d not in stored]}
 
 
 def claim(conn: psycopg.Connection, worker_id: str) -> tuple[int, str, bool] | None:
@@ -102,7 +131,10 @@ def get(conn: psycopg.Connection, request_id: int) -> dict | None:
         """SELECT id, domain, status, stage, progress, result, error, request_count,
                   requested_at, started_at, finished_at,
                   (SELECT count(*) FROM analysis_requests q
-                   WHERE q.status = 'queued' AND q.requested_at < r.requested_at) AS ahead
+                   WHERE q.status = 'queued'
+                     AND (q.request_count > r.request_count
+                          OR (q.request_count = r.request_count
+                              AND q.requested_at < r.requested_at))) AS ahead
            FROM analysis_requests r WHERE id = %s""",
         (request_id,),
     ).fetchone()

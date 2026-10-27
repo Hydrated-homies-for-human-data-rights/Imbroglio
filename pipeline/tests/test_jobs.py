@@ -4,7 +4,7 @@ local docker-compose server; skipped when that server isn't running."""
 
 import psycopg
 
-from imbroglio import jobs
+from imbroglio import db, jobs
 
 
 def test_duplicate_requests_merge(conn):
@@ -82,3 +82,37 @@ def test_overview_lists_open_and_recent(conn):
     assert [j["domain"] for j in ov["open"]] == ["busy.com", "waiting.com"]  # running first
     assert ov["recent"][0]["domain"] == "done.com" and ov["recent"][0]["found"] == ["privacy"]
     assert ov["counts"] == {"done": 1, "running": 1, "queued": 1}
+
+
+def test_batch_jobs_wait_behind_visitors(conn):
+    jobs.enqueue_batch(conn, ["a.com", "b.com"])
+    rid, *_ = jobs.enqueue(conn, "visitor.com")
+    assert jobs.get(conn, rid)["queue_ahead"] == 0
+    assert jobs.claim(conn, "w")[1] == "visitor.com"
+    assert jobs.claim(conn, "w")[1] == "a.com"  # then batch jobs, in file order
+
+
+def test_visitor_request_bumps_a_queued_batch_job(conn):
+    jobs.enqueue_batch(conn, ["a.com", "b.com"])
+    jobs.enqueue(conn, "b.com")
+    assert jobs.claim(conn, "w")[1] == "b.com"
+    assert jobs.stats(conn) == {"queued": 1, "running": 1}
+
+
+def test_enqueue_batch_skips_known_domains_and_respects_limit(conn):
+    service = db.upsert_service(conn, "stored.com")
+    db.upsert_document(conn, service, "privacy", "https://stored.com/privacy", "link")
+    conn.commit()
+    done, *_ = jobs.enqueue(conn, "tried.com")
+    jobs.claim(conn, "w")
+    jobs.finish(conn, done, True, {"documents": []})
+    jobs.enqueue(conn, "waiting.com")
+
+    out = jobs.enqueue_batch(conn, ["stored.com", "tried.com", "waiting.com",
+                                    "new1.com", "new2.com", "new3.com"], limit=2)
+    assert out == {"queued": ["new1.com", "new2.com"],
+                   "already_stored": ["stored.com"],
+                   "already_requested": ["tried.com", "waiting.com"]}
+    assert jobs.enqueue_batch(conn, ["new1.com", "new3.com"], dry_run=True)["queued"] == ["new3.com"]
+    assert jobs.stats(conn) == {"queued": 3, "done": 1}  # dry run added nothing
+    assert jobs.enqueue_batch(conn, ["new1.com", "new3.com"])["queued"] == ["new3.com"]
