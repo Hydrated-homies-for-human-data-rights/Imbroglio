@@ -15,6 +15,10 @@ Deployment settings (environment variables):
     EMBEDDED_WORKER      1 = run queue worker threads in this process (default;
                          set 0 in production, where a worker service runs)
     WORKER_CONCURRENCY   embedded worker threads (default 2)
+    CLIENT_IP_HEADER     header the platform sets with the caller's address
+                         ("x-real-ip" on Railway); empty = connection address
+    WEB_CLIENT_KEY       shared secret that lets the website pass on its
+                         visitor's address for the rate limit
 
 Security model for the hosted prototype: one shared password gates every
 route except /healthz; outbound fetches refuse non-public addresses (see
@@ -349,4 +353,7 @@ if __name__ == "__main__":
         sys.exit("Refusing to listen on a public interface without IMBROGLIO_PASSWORD set.")
     if AUTH_PASSWORD and len(AUTH_PASSWORD) < 12:
         sys.exit("IMBROGLIO_PASSWORD must be at least 12 characters.")
-    uvicorn.run(app, host=host, port=port, proxy_headers=True, forwarded_allow_ips="*")
+    # proxy_headers off: uvicorn would otherwise take the client address from
+    # X-Forwarded-For, which any caller can fake. api.client_address() decides
+    # which headers to believe (CLIENT_IP_HEADER, WEB_CLIENT_KEY).
+    uvicorn.run(app, host=host, port=port, proxy_headers=False)

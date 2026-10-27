@@ -29,3 +29,6 @@ Environment variables (set in Vercel → Project → Settings → Environment Va
 
 - `IMBROGLIO_API_URL`: the read API, e.g. `https://api.imbroglio.io`
 - `IMBROGLIO_API_USER`, `IMBROGLIO_API_PASSWORD`: only while the API is password-protected
+- `IMBROGLIO_WEB_KEY`: the same value as the API's `WEB_CLIENT_KEY`. It lets the site pass on
+  each visitor's address, so the API's rate limit counts visitors one by one. Without it, every
+  visitor shares this server's limit
