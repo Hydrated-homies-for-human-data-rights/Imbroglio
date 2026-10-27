@@ -133,6 +133,10 @@ python -m imbroglio.cli seed-tosdr seeds/tosdr_rated.csv --rated-only
 python -m imbroglio.cli batch seeds/tosdr_rated.csv --sample 100 --workers 4
 python -m imbroglio.cli report
 
+# Queue new sites for the production worker (crawls nothing locally; batch
+# jobs wait behind every visitor request). Try --dry-run first.
+python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100
+
 # Compare scoring schemes on stored findings (read-only, no LLM cost)
 python -m imbroglio.cli calibrate --out runs/calibration.md
 
