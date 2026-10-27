@@ -7,6 +7,7 @@ import "server-only"
 //   IMBROGLIO_API_URL       e.g. https://api.imbroglio.io (no trailing slash)
 //   IMBROGLIO_API_USER      optional basic-auth user while the API is password-protected
 //   IMBROGLIO_API_PASSWORD  optional basic-auth password
+//   IMBROGLIO_WEB_KEY       must match the API's WEB_CLIENT_KEY (for rate limits)
 
 export type Tier = "LIMITED" | "MODERATE" | "EXTENSIVE" | "SEVERE" | "NOT_DISCLOSED"
 export type DocType = "privacy" | "terms"
@@ -83,6 +84,18 @@ export type LearnTopic = {
 }
 export type Learn = { topics: LearnTopic[]; guides: { id: string; title: string; body: string }[] }
 
+export type RubricInfo = {
+  rubric_version: string
+  scorer_version: string
+  rules: string[]
+  tiers: { tier: Tier; meaning: string }[]
+  categories: {
+    key: string
+    name: string
+    checks: { check_id: string; question: string; statuses: { status: string; meaning: string; tier: Tier }[] }[]
+  }[]
+}
+
 export type RequestAccepted = {
   request_id: number | null
   domain: string
@@ -122,16 +135,19 @@ async function get<T>(path: string): Promise<T> {
 export const getSite = (domain: string) => get<Site>(`/v1/sites/${encodeURIComponent(domain)}`)
 export const search = (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=25`)
 export const getLearn = () => get<Learn>("/v1/learn")
+export const getRubric = () => get<RubricInfo>("/v1/rubric")
 
-// Ask for a site to be analyzed. `clientIp` is forwarded so the API's
-// per-visitor rate limit applies to the visitor, not to this server.
+// Ask for a site to be analyzed. `clientIp` is passed on with the shared
+// IMBROGLIO_WEB_KEY so the API's per-visitor rate limit applies to the
+// visitor, not to this server. The API ignores the address without the key.
 export async function requestAnalysis(domain: string, clientIp: string | null): Promise<RequestAccepted> {
+  const key = process.env.IMBROGLIO_WEB_KEY
   const res = await fetch(base() + "/v1/requests", {
     method: "POST",
     cache: "no-store",
     headers: headers({
       "Content-Type": "application/json",
-      ...(clientIp ? { "X-Forwarded-For": clientIp } : {}),
+      ...(clientIp && key ? { "X-Imbroglio-Web-Key": key, "X-Imbroglio-Visitor-IP": clientIp } : {}),
     }),
     body: JSON.stringify({ domain }),
   })

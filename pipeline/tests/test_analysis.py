@@ -114,6 +114,40 @@ def test_search_results_carry_concerns_and_analysis_date(conn, fake_llm):
     search.clear_cache()
 
 
+def _lookup(domain):
+    import hashlib
+    full = hashlib.sha256(domain.encode()).hexdigest()
+    body = client.get(f"/v1/lookup/{full[:6]}").json()
+    assert domain not in str(body)                 # still only hashes, never the domain
+    return next(s for s in body["sites"] if s["hash"] == full)
+
+
+def test_lookup_carries_the_same_ratings_as_the_scorecard(conn, fake_llm):
+    analysis.ensure_analyzed(conn, _store(conn, "lookup.example"))
+    entry = _lookup("lookup.example")
+    card = client.get("/v1/sites/lookup.example").json()["scorecard"]
+    scores = entry["scores"]
+    assert scores["headline"] == card["headline"] == "SEVERE"
+    assert scores["rubric_version"] == card["rubric_version"]
+    assert [(c["key"], c["tier"]) for c in scores["categories"]] == \
+           [(c["key"], c["tier"]) for c in card["categories"]]
+    counts = {c["key"]: c["findings"] for c in scores["categories"]}
+    assert counts == {c["key"]: len(c["findings"]) for c in card["categories"]}
+    assert counts["ai_training"] == 1 and counts["retention"] == 0   # unverified isn't counted
+    assert "quotes" not in str(scores)                                # ratings only, no evidence
+
+
+def test_lookup_scores_combine_documents_and_wait_for_analysis(conn, fake_llm):
+    _store(conn, "pending.example", POLICY + " pending")
+    assert _lookup("pending.example")["scores"] is None               # stored, not analyzed yet
+    analysis.ensure_analyzed(conn, _store(conn, "both.example"))
+    analysis.ensure_analyzed(conn, _store(conn, "both.example", POLICY + " terms", doc_type="terms"))
+    entry = _lookup("both.example")
+    assert entry["documents"] == ["privacy", "terms"]
+    counts = {c["key"]: c["findings"] for c in entry["scores"]["categories"]}
+    assert counts["ai_training"] == 2                                 # one finding per document
+
+
 GOV_POLICY = ("We may investigate your use of the services to determine whether a violation of "
               "these Terms has occurred. We may disclose information to law enforcement in response "
               "to a valid subpoena or court order. ") * 15
