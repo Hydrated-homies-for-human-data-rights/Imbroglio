@@ -35,13 +35,23 @@ Working:
   - `POST /v1/requests` + `GET /v1/requests/{id}`: ask for an analysis and
     follow it (per-client rate limit and a daily cap)
   - `GET /v1/lookup/{prefix}`: look a site up by a prefix of `sha256(domain)`,
-    so clients like the extension never reveal which site a user is on
+    so clients like the extension never reveal which site a user is on. Each
+    match carries its ratings (headline, tier and finding count per category)
+    once analyzed
   - `GET /v1/search?q=`: find sites by name or domain, typos allowed
   - `GET /v1/learn`: what users can do about each kind of finding, plus general
     guides (draft content in `pipeline/imbroglio/advice.yaml`); every scorecard
     finding also carries its own `what_you_can_do`
-- **Website:** Next.js app in `web/` with the report, search and change history
-  screens from the UX team's Figma design. See [web/README.md](web/README.md).
+  - `GET /v1/rubric`: every question, every allowed answer and the rating it
+    leads to, and the scoring rules ([docs/rubric.md](docs/rubric.md))
+- **Website:** Next.js app in `web/`, live at imbroglio.io, with the report,
+  search and change history screens from the UX team's Figma design, a "How we
+  score" page with the rubric and measured accuracy, and a disclaimer and
+  "Report a problem" link on every page. See [web/README.md](web/README.md).
+- **Disputes:** "Report a problem" opens a GitHub issue from a template
+  (`.github/ISSUE_TEMPLATE/dispute.yml`) with the site filled in.
+- **Docs:** the rubric spec, an evaluation page with every measured figure, and
+  a record of how the build differs from the design spec ([docs/](docs/README.md)).
 - **Bulk import:** seed from the ToS;DR catalogue and run batches from the CLI.
 - **Audit page:** reviewers mark found documents right or wrong, and misses as
   real misses or "no policy exists", producing a verified accuracy figure.
@@ -54,13 +64,11 @@ Working:
 
 Not built yet:
 
-- rubric v1 (25 checks) and the scoring scheme that replaces `s1`
+- rubric v0.2 and scorer s2 (chosen, see [docs/rubric.md](docs/rubric.md)), then rubric v1
 - the classifier in the live pipeline, clause retrieval, confidence calibration
 - daily change monitor and change feed (versions are already hashed and stored)
-- scores in `GET /v1/lookup` (it lists matching sites but returns no ratings yet)
-- browser extension (early work on the `feature/extension` branch)
-- ToS;DR grade comparison, request voting, dispute path, public "how we score"
-  page, evaluation report
+- browser extension (in progress on the `feature/extension-lookup` branch)
+- ToS;DR comparison, request voting, run-to-run consistency measurement
 
 ## How it fits together
 
