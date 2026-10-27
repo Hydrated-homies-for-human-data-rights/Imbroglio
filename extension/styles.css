@@ -48,6 +48,12 @@
     align-items      : center;
     gap              : 15px; 
 }
+.p-link {
+    display          : inline-block;
+    margin-top       : 12px;
+    font-size        : 14px;
+    color            : #2563eb;
+}
 .p-findings {
     font-size        : 13px;
     color            : #6b7280;

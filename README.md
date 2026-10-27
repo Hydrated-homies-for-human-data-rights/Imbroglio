@@ -48,6 +48,10 @@ Working:
   search and change history screens from the UX team's Figma design, a "How we
   score" page with the rubric and measured accuracy, and a disclaimer and
   "Report a problem" link on every page. See [web/README.md](web/README.md).
+- **Browser extension:** `extension/`, Chrome (Manifest V3). Click the icon to
+  see the current site's ratings. It looks sites up by hash prefix through
+  `imbroglio.io/api/v1/lookup`, which adds the API password on the server, and
+  only reads cached results; new sites are requested on the website.
 - **Disputes:** "Report a problem" opens a GitHub issue from a template
   (`.github/ISSUE_TEMPLATE/dispute.yml`) with the site filled in.
 - **Docs:** the rubric spec, an evaluation page with every measured figure, and
@@ -67,7 +71,6 @@ Not built yet:
 - rubric v0.2 and scorer s2 (chosen, see [docs/rubric.md](docs/rubric.md)), then rubric v1
 - the classifier in the live pipeline, clause retrieval, confidence calibration
 - daily change monitor and change feed (versions are already hashed and stored)
-- browser extension (in progress on the `feature/extension-lookup` branch)
 - ToS;DR comparison, request voting, run-to-run consistency measurement
 
 ## How it fits together
@@ -97,7 +100,7 @@ The web service never fetches a website or runs a browser; only workers do.
 | `pipeline/tests/` | pytest suite |
 | `pipeline/spike_a/`, `spike_b/` | Early feasibility spikes |
 | `web/` | Next.js website |
-| `extension/` | Browser extension (work in progress on `feature/extension`) |
+| `extension/` | Chrome extension: ratings for the site you're on |
 | `docs/` | Rubric calibration report; evaluation reports later |
 
 ## Setup
@@ -183,6 +186,7 @@ push to `main`:
 | `WORKER_CONCURRENCY` | Worker threads per process (default 2) |
 | `MAX_BROWSERS` | Headless browsers at once per process (default 2; production worker uses 1) |
 | `REQUESTS_PER_HOUR` | Analysis requests allowed per client per hour (default 30) |
+| `LOOKUPS_PER_HOUR` | Hash-prefix lookups allowed per client per hour (default 600) |
 | `DAILY_REQUEST_CAP` | Analysis requests accepted per 24 hours, all clients (default 300) |
 | `CLIENT_IP_HEADER` | Header the platform sets with the caller's real address, used for the per-client limit. Set to `x-real-ip` on Railway (web). Empty means the connection's address |
 | `WEB_CLIENT_KEY` | Shared secret, 32+ random characters. Lets the website pass on each visitor's address so visitors get their own limit. Must match `IMBROGLIO_WEB_KEY` on Vercel (web) |

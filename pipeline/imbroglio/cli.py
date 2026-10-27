@@ -7,6 +7,7 @@
     python -m imbroglio.cli seed-tosdr seeds/tosdr_rated.csv --rated-only
     python -m imbroglio.cli batch seeds/tosdr_rated.csv --limit 100 --workers 6
     python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100 --dry-run
+    python -m imbroglio.cli consistency --sample 50 --runs 3
     python -m imbroglio.cli report                # latest batch
     python -m imbroglio.cli report 3 --out runs/batch-3.md
 """
@@ -133,6 +134,14 @@ def main() -> int:
     ex.add_argument("--force", action="store_true", help="re-analyze even if findings exist")
     ex.add_argument("--workers", type=int, default=3)
 
+    cs = sub.add_parser("consistency", help="run-to-run consistency study (N2), read-only")
+    cs.add_argument("--sample", type=int, default=50)
+    cs.add_argument("--runs", type=int, default=3)
+    cs.add_argument("--seed", type=int, default=1)
+    cs.add_argument("--model", help="override EXTRACTION_MODEL")
+    cs.add_argument("--rubric", help="override RUBRIC_VERSION")
+    cs.add_argument("--out", type=Path, default=Path("runs/consistency.md"))
+
     rb = sub.add_parser("rebase-rubric", help="move findings to a new rubric version without new LLM calls")
     rb.add_argument("--from", dest="from_version", required=True)
     rb.add_argument("--to", dest="to_version", required=True)
@@ -176,6 +185,18 @@ def main() -> int:
 
     if args.command == "extract":
         return _extract_cmd(args)
+
+    if args.command == "consistency":
+        from .analysis import EXTRACTION_MODEL, RUBRIC_VERSION, extraction_enabled
+        from .consistency import run as consistency_run
+        if not extraction_enabled():
+            print("ANTHROPIC_API_KEY not set (put it in pipeline/.env)")
+            return 1
+        print(consistency_run(args.sample, args.runs, args.model or EXTRACTION_MODEL,
+                              args.rubric or RUBRIC_VERSION, seed=args.seed, out=args.out))
+        print()
+        print(f"report: {args.out}  details: {args.out.with_suffix('.json')}")
+        return 0
 
     if args.command == "compare-models":
         from .compare import run as compare_run

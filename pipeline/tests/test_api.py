@@ -83,6 +83,7 @@ from imbroglio import api
 @pytest.fixture(autouse=True)
 def fresh_limits(monkeypatch):
     monkeypatch.setattr(api, "_limiter", api._RateLimiter(api.REQUESTS_PER_HOUR))
+    monkeypatch.setattr(api, "_lookup_limiter", api._RateLimiter(api.LOOKUPS_PER_HOUR))
 
 
 def test_request_lifecycle(conn):
@@ -139,6 +140,24 @@ def test_lookup_validates_prefix(conn):
     for bad in ("abc", "ZZZZ", "abcd1234ef", "not-hex!"):
         assert client.get(f"/v1/lookup/{bad}").status_code == 400
     assert client.get("/v1/lookup/0000").json()["sites"] == []
+
+
+def test_lookup_rate_limit_is_per_visitor(conn, monkeypatch):
+    monkeypatch.setattr(api, "_lookup_limiter", api._RateLimiter(2))
+    monkeypatch.setattr(api, "WEB_CLIENT_KEY", "k" * 32)
+
+    def visitor(ip):
+        return {"X-Imbroglio-Web-Key": "k" * 32, "X-Imbroglio-Visitor-IP": ip}
+
+    assert client.get("/v1/lookup/0000", headers=visitor("1.1.1.1")).status_code == 200
+    assert client.get("/v1/lookup/0001", headers=visitor("1.1.1.1")).status_code == 200
+    r = client.get("/v1/lookup/0002", headers=visitor("1.1.1.1"))
+    assert r.status_code == 429 and "Retry-After" in r.headers
+    # another visitor coming through the same website server has their own limit
+    assert client.get("/v1/lookup/0002", headers=visitor("2.2.2.2")).status_code == 200
+    # a bad prefix is rejected before it counts
+    assert client.get("/v1/lookup/zz", headers=visitor("2.2.2.2")).status_code == 400
+    assert client.get("/v1/lookup/0003", headers=visitor("2.2.2.2")).status_code == 200
 
 
 # --- M3: negative caching and identical-text detection ---
