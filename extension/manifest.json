@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "imbroglio",
+  "version": "0.1",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["http://localhost:8765/*", "http://127.0.0.1:8765/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "View Privacy Ratings"
+  }
+}
