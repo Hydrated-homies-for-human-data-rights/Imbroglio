@@ -3,7 +3,7 @@
   "name": "imbroglio",
   "version": "0.1",
   "permissions": ["storage", "activeTab"],
-  "host_permissions": ["http://localhost:8765/*", "http://127.0.0.1:8765/*"],
+  "host_permissions": ["https://imbroglio.io/*", "http://localhost:8765/*", "http://127.0.0.1:8765/*"],
   "background": {
     "service_worker": "background.js"
   },
