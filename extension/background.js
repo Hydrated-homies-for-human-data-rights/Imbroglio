@@ -13,7 +13,7 @@
 // (and chrome.storage.local.remove("apiBase") to go back).
 
 const DEFAULT_API_BASE = "https://imbroglio.io/api";
-const PREFIX_LENGTH = 5; // the API accepts 4 to 8; shorter shares the prefix with more sites
+const PREFIX_LENGTH = 5; // the website's lookup route only accepts 5 (the API itself takes 4 to 8)
 
 async function settings() {
     const s = await chrome.storage.local.get(["apiBase", "apiUser", "apiPassword"]);

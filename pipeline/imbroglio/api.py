@@ -41,6 +41,10 @@ from .batch import clean_domain
 REQUESTS_PER_HOUR = int(os.environ.get("REQUESTS_PER_HOUR", "30"))
 DAILY_REQUEST_CAP = int(os.environ.get("DAILY_REQUEST_CAP", "300"))
 PUBLIC_SOURCES = ("web", "api", "extension")
+# Lookups only read, but each one is a database query, so a client sweeping
+# hash prefixes gets cut off too. An extension user opens the popup a few
+# times an hour; 600 leaves plenty of room.
+LOOKUPS_PER_HOUR = int(os.environ.get("LOOKUPS_PER_HOUR", "600"))
 
 # "No policy found" is itself a result (design goal 4) and is remembered:
 # re-requesting such a site within this window answers from the database
@@ -316,6 +320,7 @@ class _RateLimiter:
 
 
 _limiter = _RateLimiter(REQUESTS_PER_HOUR)
+_lookup_limiter = _RateLimiter(LOOKUPS_PER_HOUR)
 
 # Who is asking, for the per-client limit. Anyone can type an
 # X-Forwarded-For header, so the API only believes two sources:
@@ -517,9 +522,9 @@ class LookupResult(BaseModel):
 
 
 @router.get("/lookup/{prefix}", response_model=LookupResult,
-            responses={400: {"model": ApiError}},
+            responses={400: {"model": ApiError}, 429: {"model": ApiError}},
             summary="Look up sites by hash prefix, without revealing the domain")
-def lookup(prefix: str, response: Response):
+def lookup(prefix: str, request: Request, response: Response):
     """For clients that shouldn't reveal which site a user is on (the
     browser extension). Compute `sha256(domain)` locally (lowercase, no
     `www.`), send the first 4-8 hex characters, and find your site in the
@@ -533,6 +538,9 @@ def lookup(prefix: str, response: Response):
     p = prefix.lower()
     if not HASH_PREFIX.match(p):
         return JSONResponse({"error": "prefix must be 4-8 lowercase hex characters"}, status_code=400)
+    if not _lookup_limiter.allow(client_address(request)):
+        return JSONResponse({"error": f"Rate limit: at most {LOOKUPS_PER_HOUR} lookups per hour."},
+                            status_code=429, headers={"Retry-After": "600"})
     conn = db.connect()
     try:
         rows = conn.execute(
