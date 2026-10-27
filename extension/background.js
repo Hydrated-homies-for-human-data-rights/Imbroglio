@@ -5,12 +5,14 @@
 // sha256, send the first few characters of the hash to /v1/lookup, and pick
 // our site out of the matches by its full hash.
 //
-// API address: defaults to a local API (pipeline/demo/app.py). To point at
-// another one, run this in the service worker console:
-//   chrome.storage.local.set({ apiBase: "https://...", apiUser: "imbroglio", apiPassword: "..." })
-// and add that address to host_permissions in manifest.json.
+// API address: defaults to the website, which forwards lookups to the API and
+// adds the API's password on its server, so nothing secret ships in the
+// extension. Lookups only read cached results; they never start an analysis.
+// For local development, run this in the service worker console:
+//   chrome.storage.local.set({ apiBase: "http://localhost:8765" })
+// (and chrome.storage.local.remove("apiBase") to go back).
 
-const DEFAULT_API_BASE = "http://localhost:8765";
+const DEFAULT_API_BASE = "https://imbroglio.io/api";
 const PREFIX_LENGTH = 5; // the API accepts 4 to 8; shorter shares the prefix with more sites
 
 async function settings() {

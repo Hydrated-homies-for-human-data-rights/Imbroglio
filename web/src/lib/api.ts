@@ -136,6 +136,8 @@ export const getSite = (domain: string) => get<Site>(`/v1/sites/${encodeURICompo
 export const search = (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=25`)
 export const getLearn = () => get<Learn>("/v1/learn")
 export const getRubric = () => get<RubricInfo>("/v1/rubric")
+// Passed through untouched to the browser extension (see app/api/v1/lookup).
+export const lookup = (prefix: string) => get<unknown>(`/v1/lookup/${encodeURIComponent(prefix)}`)
 
 // Ask for a site to be analyzed. `clientIp` is passed on with the shared
 // IMBROGLIO_WEB_KEY so the API's per-visitor rate limit applies to the
