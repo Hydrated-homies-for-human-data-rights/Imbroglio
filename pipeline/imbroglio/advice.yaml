@@ -4,7 +4,8 @@
 # website's learn pages; the extension's "What can you do?" link goes to
 # /learn#<check_id>. Changing advice never changes a rating, so this file is
 # not versioned with the rubric. It is checked against the current rubric by
-# tests: every key must be a check id, every `applies_to` a status of it.
+# tests: every key must be a check id, every `applies_to` a status of it in
+# at least one rubric version (each version uses the statuses it has).
 #
 # House rules for writing advice:
 #   * concrete steps a regular person can do today, in plain words
@@ -15,8 +16,8 @@
 checks:
   sells_personal_data:
     title: When a site sells your data
-    why: Once sold, your data can be resold and combined with other sources. You can't take it back, but you can stop future sales.
-    applies_to: ["yes"]
+    why: Once sold, your data can be resold and combined with other sources. You can't take it back, but you can stop future sales, including the "sales" that state privacy laws count when advertising partners collect your data.
+    applies_to: ["yes", sold_for_money, state_law_sale]
     steps:
       - text: Turn on Global Privacy Control (GPC). Firefox, Brave and DuckDuckGo have it built in. In California, Colorado, Connecticut and several other states, businesses must treat it as a request not to sell or share your data.
         link: https://globalprivacycontrol.org
@@ -104,7 +105,7 @@ checks:
   trains_ai_on_user_data:
     title: When your data trains AI
     why: Your posts, messages or files may be used to build AI models, and that can't be undone once a model is trained.
-    applies_to: ["yes"]
+    applies_to: ["yes", yes_with_opt_out]
     steps:
       - text: Check the privacy or data settings for an AI training opt-out. Many services have added one, often turned on by default.
       - text: In the EU and UK you can object to this use of your data under GDPR, even without a setting.

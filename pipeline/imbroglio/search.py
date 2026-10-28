@@ -81,33 +81,24 @@ _cache: tuple[float, list[Entry]] | None = None
 _lock = threading.Lock()
 
 
-def catalogue(conn, rubric_version: str, scorer_version: str) -> list[Entry]:
+def catalogue(conn, rubric_version: str) -> list[Entry]:
     global _cache
     with _lock:
         if _cache and time.monotonic() - _cache[0] < CACHE_SECONDS:
             return _cache[1]
-    from . import db
+    from . import db, scorer
     from .rubric import load
 
-    heads = db.headlines(conn, rubric_version, scorer_version)
-    names = load(rubric_version).categories
-    # per site: categories whose worst tier across its latest documents is
-    # EXTENSIVE or SEVERE, and when it was last analyzed
+    rubric = load(rubric_version)
+    # per analyzed site: its headline, the categories rated EXTENSIVE or SEVERE
+    # across its latest documents, and when it was last analyzed
+    heads: dict[str, str] = {}
     concerns: dict[str, set[str]] = {}
     analyzed: dict[str, datetime] = {}
-    for domain, category, tier, created in conn.execute(
-            """WITH latest AS (
-                   SELECT DISTINCT ON (d.id) s.domain, v.id AS version_id
-                   FROM documents d JOIN services s ON s.id = d.service_id
-                   JOIN document_versions v ON v.document_id = d.id
-                   ORDER BY d.id, v.fetched_at DESC)
-               SELECT l.domain, sc.category, sc.tier, sc.created_at
-               FROM latest l JOIN scores sc ON sc.version_id = l.version_id
-               WHERE sc.rubric_version = %s AND sc.scorer_version = %s""",
-            (rubric_version, scorer_version)):
-        if tier in ("EXTENSIVE", "SEVERE"):
-            concerns.setdefault(domain, set()).add(names.get(category, category))
-        analyzed[domain] = max(analyzed.get(domain, created), created)
+    for domain, found in db.site_findings(conn, rubric_version).items():
+        tiers, heads[domain] = scorer.rate(rubric, [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found])
+        concerns[domain] = {rubric.categories[c] for c, t in tiers.items() if t in ("EXTENSIVE", "SEVERE")}
+        analyzed[domain] = max(created for *_, created in found)
     rows = conn.execute(
         """SELECT s.domain, s.name,
                   coalesce(array_agg(DISTINCT d.doc_type ORDER BY d.doc_type)

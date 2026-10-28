@@ -17,7 +17,7 @@ def test_rubric_lists_every_check_and_answer():
     body = client.get("/v1/rubric").json()
     rubric = load(RUBRIC_VERSION)
     assert body["rubric_version"] == rubric.version
-    assert body["scorer_version"] == scorer.SCORER_VERSION
+    assert body["scorer_version"] == scorer.version_for(rubric)
     assert [c["key"] for c in body["categories"]] == list(rubric.categories)
     published = {k["check_id"]: k for c in body["categories"] for k in c["checks"]}
     assert set(published) == {c.id for c in rubric.checks}
@@ -27,5 +27,5 @@ def test_rubric_lists_every_check_and_answer():
 
 def test_rubric_publishes_rules_and_every_tier():
     body = client.get("/v1/rubric").json()
-    assert body["rules"] == scorer.RULES
+    assert body["rules"] == scorer.rules_for(load(RUBRIC_VERSION))
     assert [t["tier"] for t in body["tiers"]] == ["SEVERE", "EXTENSIVE", "MODERATE", "LIMITED", "NOT_DISCLOSED"]

@@ -71,6 +71,7 @@ export default function SearchResults({
             <option>Extensive</option>
             <option>Moderate</option>
             <option>Limited</option>
+            <option>Unclear</option>
           </select>
         </label>
         <button
