@@ -76,6 +76,44 @@ def test_external_policy_that_names_the_site_is_accepted(web):
     assert result["privacy"].discovered_via == "link-text-external"
 
 
+def test_links_on_another_sites_page_are_still_external(web):
+    # keepassxc.org: "Privacy" -> GitHub's policy was rejected (it never names
+    # KeePassXC), but GitHub's own links from that page were then taken as
+    # same-site, and GitHub's privacy policy and terms were stored for it.
+    pages, fetched = web
+    pages["https://keepassxc.org"] = page(
+        '<a href="https://docs.github.com/site-policy">Privacy</a>'
+        '<a href="/about">About</a>')
+    pages["https://docs.github.com/site-policy"] = page(
+        "GitHub site policy. " + POLICY
+        + '<a href="https://docs.github.com/privacy-statement">GitHub General Privacy Statement</a>'
+        + '<a href="https://docs.github.com/terms">Terms of Service</a>')
+    pages["https://docs.github.com/privacy-statement"] = page("GitHub " + LONG_POLICY)
+    pages["https://docs.github.com/terms"] = page("GitHub " + TERMS)
+    result = locate.locate_all("keepassxc.org", use_playwright=False)
+    assert not result["privacy"].ok and not result["terms"].ok
+    assert "another site's document" in " ".join(result["privacy"].notes)
+
+
+def test_another_sites_document_reached_through_a_sibling_link_is_checked(web):
+    # A parent company's privacy policy that names the site is fine, but its
+    # link to the parent's own terms doesn't make those the site's terms.
+    pages, _ = web
+    pages["https://brand.test"] = page('<a href="https://parent.test/privacy">Privacy Policy</a>')
+    pages["https://parent.test/privacy"] = page(
+        "Parent Co. and Brand " + LONG_POLICY + '<a href="/terms">Terms of Service</a>')
+    pages["https://parent.test/terms"] = page("Parent Co. website " + TERMS)
+    result = locate.locate_all("brand.test", use_playwright=False)
+    assert result["privacy"].ok and result["privacy"].discovered_via == "link-text-external"
+    assert not result["terms"].ok
+
+
+def test_a_spaced_out_name_still_names_the_site():
+    assert locate.names_site("powerapps.com", "Microsoft Power Apps privacy statement")
+    assert locate.names_site("leagueoflegends.com", "Riot Games runs League of Legends")
+    assert not locate.names_site("keepassxc.org", "GitHub General Privacy Statement")
+
+
 # --- picking the right page (regressions: 11 of 44 rated sites, Oct 2026) ---
 
 LONG_POLICY = POLICY * 3      # over SUBSTANTIAL_CHARS: a full document

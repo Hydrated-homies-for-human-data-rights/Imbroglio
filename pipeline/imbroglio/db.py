@@ -327,3 +327,25 @@ def headlines(conn: psycopg.Connection, rubric_version: str, scorer_version: str
     ).fetchall()
     names = {3: "SEVERE", 2: "EXTENSIVE", 1: "MODERATE", 0: "LIMITED", -1: "NOT_DISCLOSED"}
     return {domain: names[rank] for domain, rank in rows}
+
+
+def offsite_documents(conn: psycopg.Connection) -> list[tuple]:
+    """(document_id, domain, doc_type, url, analyzed) for every stored document
+    hosted on another site whose latest text never names this one: the rule
+    discovery applies to other sites' documents (locate.names_site), checked
+    against documents stored before it covered links found on those sites'
+    own pages (keepassxc.org stored GitHub's terms, liberapay.com PayPal's)."""
+    from urllib.parse import urlparse
+
+    from .locate import names_site, site_of
+
+    rows = conn.execute(
+        """SELECT DISTINCT ON (d.id) d.id, s.domain, d.doc_type, d.url, v.normalized_text,
+                  EXISTS (SELECT 1 FROM findings f JOIN document_versions v2 ON v2.id = f.version_id
+                          WHERE v2.document_id = d.id)
+           FROM documents d JOIN services s ON s.id = d.service_id
+           JOIN document_versions v ON v.document_id = d.id
+           ORDER BY d.id, v.fetched_at DESC""").fetchall()
+    return [(doc_id, domain, doc_type, url, analyzed)
+            for doc_id, domain, doc_type, url, text, analyzed in rows
+            if site_of(urlparse(url).hostname or "") != site_of(domain) and not names_site(domain, text)]
