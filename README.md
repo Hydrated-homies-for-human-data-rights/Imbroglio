@@ -197,7 +197,7 @@ push to `main`:
 | `ANTHROPIC_API_KEY` | Turns on LLM analysis (worker) |
 | `EXTRACTION_MODEL` | Model that reads the documents, default `claude-sonnet-5` (worker) |
 | `EXTRACTION_DAILY_BUDGET_USD` | LLM spend allowed per 24 hours, default 5 (worker) |
-| `RUBRIC_VERSION` | Rubric used for new analyses, default `v0.1` |
+| `RUBRIC_VERSION` | Rubric used for new analyses and for the ratings shown, default `v0.1`. `v0.2` switches to scorer s2 (set it on both services) |
 
 Security: every route except `/healthz` requires the password; outbound fetches
 refuse private, loopback and cloud-metadata addresses, including via redirects

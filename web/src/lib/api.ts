@@ -9,7 +9,10 @@ import "server-only"
 //   IMBROGLIO_API_PASSWORD  optional basic-auth password
 //   IMBROGLIO_WEB_KEY       must match the API's WEB_CLIENT_KEY (for rate limits)
 
-export type Tier = "LIMITED" | "MODERATE" | "EXTENSIVE" | "SEVERE" | "NOT_DISCLOSED"
+// UNCLEAR (scorer s2) only ever appears as an overall rating: too few of the
+// key questions were answered to call a site's practices limited. INFO (s2)
+// only ever rates a category or an answer: the practice is reported, not rated.
+export type Tier = "LIMITED" | "MODERATE" | "EXTENSIVE" | "SEVERE" | "NOT_DISCLOSED" | "UNCLEAR" | "INFO"
 export type DocType = "privacy" | "terms"
 
 export type Step = { text: string; link: string | null }
@@ -21,6 +24,8 @@ export type Evidence = {
   status: string
   meaning: string
   exposure: number
+  // scorer s2: "info" = reported but not rated, null = protective (or rubric v0.1)
+  concern: "severe" | "high" | "medium" | "info" | null
   quotes: string[]
   explanation: string | null
   document: DocType

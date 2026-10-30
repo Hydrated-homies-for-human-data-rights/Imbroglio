@@ -114,10 +114,11 @@ def run(n: int, runs: int, model: str, rubric_version: str, seed: int = 1,
         by_doc.setdefault(doc[1], []).append(ex)
     complete = {v: exs for v, exs in by_doc.items() if all(e.status == "ok" for e in exs)}
     answers = {v: [{f.check_id: f.status for f in e.findings} for e in exs] for v, exs in complete.items()}
-    tiers = {v: [scorer.category_tiers(rubric, [scorer.ScoredFinding(f.check_id, f.status, f.verified)
-                                                for f in e.findings]) for e in exs]
+    rated = {v: [scorer.rate(rubric, [scorer.ScoredFinding(f.check_id, f.status, f.verified)
+                                      for f in e.findings]) for e in exs]
              for v, exs in complete.items()}
-    headlines = {v: [{"headline": scorer.headline(t)} for t in ts] for v, ts in tiers.items()}
+    tiers = {v: [t for t, _ in rs] for v, rs in rated.items()}
+    headlines = {v: [{"headline": h} for _, h in rs] for v, rs in rated.items()}
 
     def pct(x):
         return "n/a" if x is None else f"{100 * x:.1f}%"
@@ -146,7 +147,7 @@ def run(n: int, runs: int, model: str, rubric_version: str, seed: int = 1,
              f"| Same answer in every run, per (document, check) | {pct(overall)}{ci(answers)} | at least 90% |",
              f"| Same answer, average over pairs of runs | "
              f"{pct(sum(map(pairwise_agreement, status_pairs)) / len(status_pairs) if status_pairs else None)} | |",
-             f"| Same rating in every run, per (document, category), scorer {scorer.SCORER_VERSION} | "
+             f"| Same rating in every run, per (document, category), scorer {scorer.version_for(rubric)} | "
              f"{pct(agreement(tiers))}{ci(tiers)} | |",
              f"| Same headline rating in every run, per document | {pct(agreement(headlines))}{ci(headlines)} | |",
              "",

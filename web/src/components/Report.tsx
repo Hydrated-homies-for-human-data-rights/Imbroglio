@@ -69,7 +69,9 @@ export default function Report({ site }: { site: Site }) {
                 {headline}
               </p>
               <p className={`mt-1 text-sm ${severe ? "text-[#9f4b44]" : "text-[#5a6b7e]"}`}>
-                {card.headline_categories.join(", ")}
+                {card.headline === "UNCLEAR"
+                  ? "Too few of the key questions were answered to rate this site."
+                  : card.headline_categories.join(", ")}
               </p>
             </div>
           </div>
@@ -167,7 +169,7 @@ export default function Report({ site }: { site: Site }) {
               {current.findings.map((f, i) => (
                 <DetailCard
                   key={`${f.check_id}-${f.document}-${i}`}
-                  tone={f.exposure > 0 ? "orange" : "green"}
+                  tone={f.concern === "info" ? "grey" : f.exposure > 0 ? "orange" : "green"}
                   title={f.meaning}
                   quotes={f.quotes}
                   source={docName(f.document)}

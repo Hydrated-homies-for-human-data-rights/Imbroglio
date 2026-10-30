@@ -4,8 +4,10 @@ This is the published spec for how Imbroglio rates a site (requirement F5). The 
 served by `GET /v1/rubric` and shown on the website's "How we score" page.
 
 - **Live now:** rubric v0.1 (14 questions, 2 per category), scorer s1
-- **Chosen next:** scorer s2, "red flags + coverage", with rubric v0.2 (see the end of this page)
-- **Source files:** `pipeline/imbroglio/rubric/v0.1.yaml` (the questions) and
+- **Built, switching on next:** scorer s2, "red flags + coverage", with rubric v0.2 (see the end of
+  this page). It goes live once the documents have been analyzed under v0.2, by setting
+  `RUBRIC_VERSION=v0.2`; the scorer version follows the rubric.
+- **Source files:** `pipeline/imbroglio/rubric/v0.1.yaml` and `v0.2.yaml` (the questions) and
   `pipeline/imbroglio/scorer.py` (the rules)
 
 ## How a rating is made
@@ -201,7 +203,7 @@ A supporting quote must contain one of: `government`, `law enforcement`, `subpoe
 
 A supporting quote must contain one of: `notify`, `notice`, `inform`, `tell`, `notif`
 
-## Next: scorer s2 and rubric v0.2 (chosen Oct 25, 2026, not built yet)
+## Next: scorer s2 and rubric v0.2 (chosen Oct 25, 2026, built Oct 27)
 
 Under s1, all 45 analyzed sites rated SEVERE or EXTENSIVE, so the rating didn't help anyone choose.
 [rubric-calibration.md](rubric-calibration.md) compared five schemes on the same findings. The team
@@ -230,5 +232,34 @@ Informational only, never setting the rating: government requests, generic secur
 content license, data from third parties, and sensitive data until payment data is split from
 health, biometric and location data.
 
-Building it needs: the new answers in rubric v0.2, a re-extraction of the analyzed documents (about $5
-for 45 sites), scorer s2, and support for the UNCLEAR rating in the API, website and extension.
+Built on Oct 27, 2026:
+
+- **Rubric v0.2** (`v0.2.yaml`) adds the two new answers and gives every answer a concern level:
+  `severe`, `high`, `medium`, `info` (the practice is present but not rated), or none
+  (protective). Selling for money and no deletion are `severe`. Each answer's rating follows its
+  concern (severe SEVERE, high EXTENSIVE, medium MODERATE, info INFO, none LIMITED), so a
+  category's rating is its most concerning answer. Changing a concern level later is a calibration
+  change: no new AI run.
+- **Scorer s2** applies the rules above, with one addition the team chose: the overall rating is
+  never below an EXTENSIVE or SEVERE category (design goal 5), so two high concerns make a site
+  SEVERE even when no single category is. A lone medium concern shows in its category but doesn't
+  stop a site being LIMITED.
+- **UNCLEAR** is an overall rating only. The API, website and extension show it as a grey "?"
+  until the UX team designs it.
+- **Preview** on the 52 sites rated under v0.1, treating their "sells data" answers as the
+  state-law sense: s1 gave 33 SEVERE and 19 EXTENSIVE; s2 gives 26 EXTENSIVE, 14 MODERATE,
+  10 LIMITED and 2 UNCLEAR. The real numbers come from the v0.2 analysis.
+
+Changed the same day, after checking the first build against those 52 sites:
+
+| Problem | Change |
+| --- | --- |
+| The floor made one medium concern enough for MODERATE, so the "two or more" rule never applied. "Kept as long as necessary" alone (31 of 52 sites) blocked LIMITED | The floor only counts EXTENSIVE and SEVERE categories |
+| Informational answers rated their category LIMITED ("narrow, absent, or protected"): 37 sites that collect sensitive data showed Collection as LIMITED | New category rating **INFO** ("reported, not rated"), shown as a grey "i"; a category is LIMITED only when every answer is protective |
+| UNCLEAR replaced ratings backed by confirmed concerns (otsutilities.com had three) | The coverage gate only applies to LIMITED |
+| `state_law_sale` and ad sharing are the same practice, counted twice | `same_concern_as: shares_for_advertising` counts them once |
+| Breach notification `no` read "does not commit", inviting the model to read silence as `no` | `no` now needs a refusal or disclaimer; silence is `not_disclosed` |
+| AI training `yes` was given for content licenses that only allow training (khanacademy.org) | Guidance: the document has to say the data is used for models, and only the company's own use counts |
+
+Every one of the 26 EXTENSIVE sites gets there on AI training alone. Whether training on user data
+should stay a high concern is a team decision to revisit after the v0.2 analysis.
