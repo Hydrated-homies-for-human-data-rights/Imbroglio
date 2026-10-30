@@ -70,12 +70,16 @@ def parse(raw: dict, rubric: Rubric) -> AdviceBook:
             check = rubric.check(check_id)
         except KeyError:
             raise AdviceError(f"{check_id}: not a check in rubric {rubric.version}") from None
-        applies = tuple(str(s) for s in a.get("applies_to") or [])
-        if not applies:
+        listed = tuple(str(s) for s in a.get("applies_to") or [])
+        if not listed:
             raise AdviceError(f"{check_id}: applies_to is empty")
-        for s in applies:
-            if s not in check.statuses:
-                raise AdviceError(f"{check_id}: applies_to has {s!r}, not a status of this check")
+        # One advice file serves every rubric version, so it may name answers
+        # another version has (v0.1's "yes" to selling, v0.2's sold_for_money).
+        # Each version keeps its own; tests check every name exists somewhere.
+        applies = tuple(s for s in listed if s in check.statuses)
+        if not applies:
+            raise AdviceError(f"{check_id}: applies_to {list(listed)} is not a status of this check "
+                              f"in rubric {rubric.version}")
         steps = tuple(Step(str(s["text"]).strip(), _link(check_id, s.get("link")))
                       for s in a.get("steps") or [])
         if not steps or any(not s.text for s in steps):

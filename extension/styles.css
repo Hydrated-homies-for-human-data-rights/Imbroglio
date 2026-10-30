@@ -106,3 +106,19 @@
 .p-not_disclosed::before {
     content          : '┄ ';
 }
+/* overall rating only: too few key questions answered to rate the site */
+.p-unclear {
+    color            : #6b7280;
+    border-color     : #6b7280;
+}
+.p-unclear::before {
+    content          : '? ';
+}
+/* categories only: the practice is reported but not rated as a concern */
+.p-info {
+    color            : #6b7280;
+    border-color     : #6b7280;
+}
+.p-info::before {
+    content          : 'i ';
+}

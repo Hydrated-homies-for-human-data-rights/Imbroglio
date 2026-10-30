@@ -74,7 +74,7 @@ def _write_scores(conn, version_id: int, rubric_version: str) -> dict[str, str]:
                VALUES (%s, %s, %s, %s, %s)
                ON CONFLICT (version_id, rubric_version, scorer_version, category)
                DO UPDATE SET tier = EXCLUDED.tier, created_at = now()""",
-            (version_id, rubric_version, scorer.SCORER_VERSION, category, tier),
+            (version_id, rubric_version, scorer.version_for(rubric), category, tier),
         )
     return tiers
 

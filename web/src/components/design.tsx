@@ -5,7 +5,7 @@
 
 import type { Tier } from "@/lib/api"
 
-export type Rating = "Severe" | "Extensive" | "Moderate" | "Not disclosed" | "Limited"
+export type Rating = "Severe" | "Extensive" | "Moderate" | "Not disclosed" | "Limited" | "Unclear" | "Info"
 
 export const ratingOf: Record<Tier, Rating> = {
   SEVERE: "Severe",
@@ -13,14 +13,20 @@ export const ratingOf: Record<Tier, Rating> = {
   MODERATE: "Moderate",
   LIMITED: "Limited",
   NOT_DISCLOSED: "Not disclosed",
+  UNCLEAR: "Unclear",
+  INFO: "Info",
 }
 
+// "Unclear" and "Info" aren't in the Figma file yet: plain placeholders (grey,
+// a "?" or "i" mark, the word) until the UX team designs them.
 export const ratingStyles: Record<Rating, string> = {
   Severe: "text-[#b73329]",
   Extensive: "text-[#c76017]",
   Moderate: "text-[#546579]",
   "Not disclosed": "text-[#8b95a4]",
   Limited: "text-[#39704e]",
+  Unclear: "text-[#6b7280]",
+  Info: "text-[#6b7280]",
 }
 
 export function SearchIcon() {
@@ -65,6 +71,20 @@ export function RatingMark({ rating }: { rating: Rating }) {
   }
   if (rating === "Limited") {
     return <span className="h-[18px] w-[18px] rounded-full border-2 border-[#4d8b65]" />
+  }
+  if (rating === "Unclear") {
+    return (
+      <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-[#8b95a4] text-[11px] font-bold leading-none text-[#6b7280]">
+        ?
+      </span>
+    )
+  }
+  if (rating === "Info") {
+    return (
+      <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-[#8b95a4] font-serif text-[11px] font-bold italic leading-none text-[#6b7280]">
+        i
+      </span>
+    )
   }
   return <span className="h-4 w-4 rounded-full bg-[#697b8f]" />
 }
@@ -113,18 +133,20 @@ export function DetailCard({
   source,
   tag,
 }: {
-  tone: "orange" | "green"
+  // "grey" (an informational answer) isn't in the Figma file yet: a placeholder
+  tone: "orange" | "green" | "grey"
   title: string
   quotes: string[]
   source: string
   tag: string
 }) {
   const green = tone === "green"
+  const grey = tone === "grey"
 
   return (
     <article className="relative overflow-hidden rounded-xl border border-[#dfe4ea] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,31,47,0.02)] sm:px-6">
       <div
-        className={`absolute inset-y-0 left-0 w-1.5 ${green ? "bg-[#4c8a65]" : "bg-[#dc721f]"}`}
+        className={`absolute inset-y-0 left-0 w-1.5 ${green ? "bg-[#4c8a65]" : grey ? "bg-[#99a4b2]" : "bg-[#dc721f]"}`}
       />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
