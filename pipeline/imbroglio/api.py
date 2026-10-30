@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from . import db, jobs, scorer
 from .advice import Advice, load as load_advice
-from .rubric import NOT_DISCLOSED, TIERS, load as load_rubric
+from .rubric import NOT_DISCLOSED, load as load_rubric
 from .batch import clean_domain
 
 # Abuse limits for the only write path. Every accepted request can cost a
@@ -100,6 +100,8 @@ class Evidence(BaseModel):
     status: str
     meaning: str
     exposure: int = Field(description="0 = LIMITED … 3 = SEVERE: how much this practice exposes the user")
+    concern: Literal["severe", "high", "medium", "info"] | None = Field(
+        None, description="Scorer s2: info = the practice is reported but not rated; null = protective")
     quotes: list[str] = Field(description="Only quotes confirmed word-for-word in the stored document")
     explanation: str | None
     document: Literal["privacy", "terms"]
@@ -113,14 +115,14 @@ class Evidence(BaseModel):
 class CategoryScore(BaseModel):
     key: str
     name: str
-    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "INFO"]
     findings: list[Evidence]
 
 
 class Scorecard(BaseModel):
     rubric_version: str
     scorer_version: str
-    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
     headline_categories: list[str] = Field(description="Categories at the headline tier")
     categories: list[CategoryScore]
     analyzed_at: datetime
@@ -204,7 +206,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
 
     rubric = load_rubric(RUBRIC_VERSION)
     book = load_advice(RUBRIC_VERSION)
-    per_doc_tiers, evidence, analyzed, covered = [], {c: [] for c in rubric.categories}, [], []
+    scored, evidence, analyzed, covered = [], {c: [] for c in rubric.categories}, [], []
     for d in docs:
         rows = conn.execute(
             """SELECT check_id, status, quotes, quotes_verified, verified, explanation, model,
@@ -214,8 +216,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
         if not rows:
             continue
         covered.append(d.type)
-        per_doc_tiers.append(scorer.category_tiers(
-            rubric, [scorer.ScoredFinding(r[0], r[1], r[4]) for r in rows]))
+        scored += [scorer.ScoredFinding(r[0], r[1], r[4]) for r in rows]
         for (check_id, status, quotes, flags, verified, expl, model, prov, reused, created) in rows:
             analyzed.append(created)
             if not verified or status == NOT_DISCLOSED:
@@ -226,16 +227,19 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
             evidence[check.category].append(Evidence(
                 check_id=check_id, question=check.question, status=status,
                 meaning=check.statuses[status].meaning, exposure=check.statuses[status].exposure,
+                concern=check.statuses[status].concern,
                 quotes=[q for q, ok in zip(quotes, flags) if ok], explanation=expl,
                 document=d.type, provenance=prov, model=model, reused=reused,
                 what_you_can_do=_what_you_can_do(book.for_finding(check_id, status))))
-    if not per_doc_tiers:
+    if not covered:
         return None
-    tiers = scorer.combine(*per_doc_tiers)
-    head = scorer.headline(tiers)
+    tiers, head = scorer.rate(rubric, scored)
     return Scorecard(
-        rubric_version=rubric.version, scorer_version=scorer.SCORER_VERSION, headline=head,
-        headline_categories=[rubric.categories[c] for c, t in tiers.items() if t == head],
+        rubric_version=rubric.version, scorer_version=scorer.version_for(rubric), headline=head,
+        # s2 can rate a site above any one category (two high concerns make it
+        # SEVERE); then the categories behind it are the EXTENSIVE/SEVERE ones
+        headline_categories=[rubric.categories[c] for c, t in tiers.items() if t == head]
+        or [rubric.categories[c] for c, t in tiers.items() if t in ("EXTENSIVE", "SEVERE")],
         categories=[CategoryScore(key=c, name=rubric.categories[c], tier=tiers[c],
                                   findings=evidence[c]) for c in rubric.categories],
         analyzed_at=max(analyzed), documents=covered)
@@ -451,14 +455,14 @@ HASH_PREFIX = re.compile(r"^[0-9a-f]{4,8}$")
 class LookupCategory(BaseModel):
     key: str
     name: str
-    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "INFO"]
     findings: int = Field(description="Verified findings behind this rating")
 
 
 class LookupScores(BaseModel):
     rubric_version: str
     scorer_version: str
-    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
     categories: list[LookupCategory]
     analyzed_at: datetime
 
@@ -474,44 +478,23 @@ class LookupEntry(BaseModel):
 
 def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
     """domain_hash -> ratings for every analyzed site matching the prefix.
-    Same rules as the scorecard: the latest version of each document, worst
-    tier per category across documents, headline = worst category."""
+    Same rules as the scorecard (scorer.rate over the latest version of each
+    document), plus how many findings back each category."""
     from .analysis import RUBRIC_VERSION
 
     rubric = load_rubric(RUBRIC_VERSION)
-    latest = """WITH latest AS (
-                    SELECT DISTINCT ON (d.id) s.domain_hash, v.id AS version_id
-                    FROM services s JOIN documents d ON d.service_id = s.id
-                    JOIN document_versions v ON v.document_id = d.id
-                    WHERE s.domain_hash LIKE %s
-                    ORDER BY d.id, v.fetched_at DESC)"""
-    per_doc: dict[str, dict[int, dict[str, str]]] = {}
-    analyzed: dict[str, datetime] = {}
-    for h, version_id, category, tier, created in conn.execute(
-            latest + """ SELECT l.domain_hash, l.version_id, sc.category, sc.tier, sc.created_at
-                         FROM latest l JOIN scores sc ON sc.version_id = l.version_id
-                         WHERE sc.rubric_version = %s AND sc.scorer_version = %s""",
-            (pattern, rubric.version, scorer.SCORER_VERSION)):
-        if category in rubric.categories:
-            per_doc.setdefault(h, {}).setdefault(version_id, {})[category] = tier
-            analyzed[h] = max(analyzed.get(h, created), created)
-    counts: dict[tuple[str, str], int] = {}
-    for h, check_id, status in conn.execute(
-            latest + """ SELECT l.domain_hash, f.check_id, f.status
-                         FROM latest l JOIN findings f ON f.version_id = l.version_id
-                         WHERE f.rubric_version = %s AND f.verified AND f.status <> %s""",
-            (pattern, rubric.version, NOT_DISCLOSED)):
-        check = rubric.check(check_id)
-        if status in check.statuses:  # same filter as the scorecard's evidence
-            counts[h, check.category] = counts.get((h, check.category), 0) + 1
     out = {}
-    for h, docs in per_doc.items():
-        tiers = scorer.combine(*docs.values())
-        out[h] = LookupScores(
-            rubric_version=rubric.version, scorer_version=scorer.SCORER_VERSION,
-            headline=scorer.headline(tiers), analyzed_at=analyzed[h],
-            categories=[LookupCategory(key=c, name=name, tier=tiers.get(c, scorer.NOT_DISCLOSED_TIER),
-                                       findings=counts.get((h, c), 0))
+    for found in db.site_findings(conn, rubric.version, hash_like=pattern).values():
+        tiers, head = scorer.rate(rubric, [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found])
+        counts: dict[str, int] = {}
+        for _, check_id, status, verified, _ in found:
+            check = rubric.check(check_id)
+            if verified and status != NOT_DISCLOSED and status in check.statuses:  # as the scorecard shows them
+                counts[check.category] = counts.get(check.category, 0) + 1
+        out[found[0][0]] = LookupScores(
+            rubric_version=rubric.version, scorer_version=scorer.version_for(rubric),
+            headline=head, analyzed_at=max(created for *_, created in found),
+            categories=[LookupCategory(key=c, name=name, tier=tiers[c], findings=counts.get(c, 0))
                         for c, name in rubric.categories.items()])
     return out
 
@@ -609,7 +592,10 @@ def learn(response: Response):
 class RubricStatus(BaseModel):
     status: str
     meaning: str
-    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE"]
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "INFO"]
+    concern: Literal["severe", "high", "medium", "info"] | None = Field(
+        None, description="Scorer s2: how much this answer counts toward the overall rating; "
+                          "info = reported but not rated, null = protective")
 
 
 class RubricCheck(BaseModel):
@@ -625,7 +611,7 @@ class RubricCategory(BaseModel):
 
 
 class TierMeaning(BaseModel):
-    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"]
+    tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR", "INFO"]
     meaning: str
 
 
@@ -647,12 +633,13 @@ def rubric_info(response: Response):
     rubric = load_rubric(RUBRIC_VERSION)
     response.headers["Cache-Control"] = "public, max-age=3600"
     return RubricInfo(
-        rubric_version=rubric.version, scorer_version=scorer.SCORER_VERSION, rules=scorer.RULES,
-        tiers=[TierMeaning(tier=t, meaning=m) for t, m in scorer.TIER_MEANINGS.items()],
+        rubric_version=rubric.version, scorer_version=scorer.version_for(rubric),
+        rules=scorer.rules_for(rubric),
+        tiers=[TierMeaning(tier=t, meaning=m) for t, m in scorer.tier_meanings(rubric).items()],
         categories=[RubricCategory(key=key, name=name, checks=[
             RubricCheck(check_id=c.id, question=c.question,
-                        statuses=[RubricStatus(status=s.name, meaning=s.meaning,
-                                               tier=TIERS[s.exposure]) for s in c.statuses.values()])
+                        statuses=[RubricStatus(status=s.name, meaning=s.meaning, tier=scorer.answer_tier(s),
+                                               concern=s.concern) for s in c.statuses.values()])
             for c in rubric.checks if c.category == key])
             for key, name in rubric.categories.items()])
 
@@ -663,7 +650,7 @@ class SearchResult(BaseModel):
     domain: str
     name: str | None
     documents: list[Literal["privacy", "terms"]]
-    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED"] | None = Field(
+    headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"] | None = Field(
         description="Null until the site has been analyzed")
     concerns: list[str] = Field(description="Categories rated EXTENSIVE or SEVERE")
     analyzed_at: datetime | None
@@ -694,7 +681,7 @@ def search_sites(q: str, response: Response, limit: int = 10):
     except Exception:
         return JSONResponse({"error": "database unavailable"}, status_code=503)
     try:
-        entries = search.catalogue(conn, RUBRIC_VERSION, scorer.SCORER_VERSION)
+        entries = search.catalogue(conn, RUBRIC_VERSION)
     finally:
         conn.close()
     hits = search.search(q, entries, limit=max(1, min(limit, 25)))

@@ -140,6 +140,10 @@ python -m imbroglio.cli report
 # jobs wait behind every visitor request). Try --dry-run first.
 python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100
 
+# Stored documents that are another site's (they never name this one).
+# Read-only; --remove keepassxc.org ... deletes those sites' listed documents
+python -m imbroglio.cli offsite-documents
+
 # Compare scoring schemes on stored findings (read-only, no LLM cost)
 python -m imbroglio.cli calibrate --out runs/calibration.md
 
@@ -193,7 +197,7 @@ push to `main`:
 | `ANTHROPIC_API_KEY` | Turns on LLM analysis (worker) |
 | `EXTRACTION_MODEL` | Model that reads the documents, default `claude-sonnet-5` (worker) |
 | `EXTRACTION_DAILY_BUDGET_USD` | LLM spend allowed per 24 hours, default 5 (worker) |
-| `RUBRIC_VERSION` | Rubric used for new analyses, default `v0.1` |
+| `RUBRIC_VERSION` | Rubric used for new analyses and for the ratings shown, default `v0.1`. `v0.2` switches to scorer s2 (set it on both services) |
 
 Security: every route except `/healthz` requires the password; outbound fetches
 refuse private, loopback and cloud-metadata addresses, including via redirects

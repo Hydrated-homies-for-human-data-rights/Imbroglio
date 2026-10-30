@@ -308,22 +308,57 @@ def audit_counts(conn: psycopg.Connection) -> dict:
     return {"totals": totals, "verdicts": counts}
 
 
-def headlines(conn: psycopg.Connection, rubric_version: str, scorer_version: str) -> dict[str, str]:
-    """domain -> headline tier (worst category across the site's latest
-    analyzed documents), for list views. Mirrors scorer.combine/headline."""
+def site_findings(conn: psycopg.Connection, rubric_version: str,
+                  hash_like: str | None = None) -> dict[str, list[tuple]]:
+    """domain -> (domain_hash, check_id, status, verified, created_at) for
+    every finding on the latest version of each of the site's documents. Only
+    analyzed sites appear. `hash_like` narrows it to a domain_hash pattern."""
     rows = conn.execute(
-        """WITH latest AS (
-               SELECT DISTINCT ON (d.id) s.domain, v.id AS version_id
-               FROM documents d JOIN services s ON s.id = d.service_id
-               JOIN document_versions v ON v.document_id = d.id
-               ORDER BY d.id, v.fetched_at DESC)
-           SELECT l.domain,
-                  max(CASE sc.tier WHEN 'SEVERE' THEN 3 WHEN 'EXTENSIVE' THEN 2
-                                   WHEN 'MODERATE' THEN 1 WHEN 'LIMITED' THEN 0 ELSE -1 END)
-           FROM latest l JOIN scores sc ON sc.version_id = l.version_id
-           WHERE sc.rubric_version = %s AND sc.scorer_version = %s
-           GROUP BY l.domain""",
-        (rubric_version, scorer_version),
+        f"""WITH latest AS (
+                SELECT DISTINCT ON (d.id) s.domain, s.domain_hash, v.id AS version_id
+                FROM documents d JOIN services s ON s.id = d.service_id
+                JOIN document_versions v ON v.document_id = d.id
+                {"WHERE s.domain_hash LIKE %(hash)s" if hash_like else ""}
+                ORDER BY d.id, v.fetched_at DESC)
+            SELECT l.domain, l.domain_hash, f.check_id, f.status, f.verified, f.created_at
+            FROM latest l JOIN findings f ON f.version_id = l.version_id
+            WHERE f.rubric_version = %(rubric)s""",
+        {"rubric": rubric_version, "hash": hash_like},
     ).fetchall()
-    names = {3: "SEVERE", 2: "EXTENSIVE", 1: "MODERATE", 0: "LIMITED", -1: "NOT_DISCLOSED"}
-    return {domain: names[rank] for domain, rank in rows}
+    out: dict[str, list[tuple]] = {}
+    for domain, *rest in rows:
+        out.setdefault(domain, []).append(tuple(rest))
+    return out
+
+
+def headlines(conn: psycopg.Connection, rubric_version: str) -> dict[str, str]:
+    """domain -> headline rating across the site's latest analyzed documents,
+    for list views. The same scorer.rate the scorecard uses."""
+    from . import scorer
+    from .rubric import load
+
+    rubric = load(rubric_version)
+    return {domain: scorer.rate(rubric, [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in rows])[1]
+            for domain, rows in site_findings(conn, rubric_version).items()}
+
+
+def offsite_documents(conn: psycopg.Connection) -> list[tuple]:
+    """(document_id, domain, doc_type, url, analyzed) for every stored document
+    hosted on another site whose latest text never names this one: the rule
+    discovery applies to other sites' documents (locate.names_site), checked
+    against documents stored before it covered links found on those sites'
+    own pages (keepassxc.org stored GitHub's terms, liberapay.com PayPal's)."""
+    from urllib.parse import urlparse
+
+    from .locate import names_site, site_of
+
+    rows = conn.execute(
+        """SELECT DISTINCT ON (d.id) d.id, s.domain, d.doc_type, d.url, v.normalized_text,
+                  EXISTS (SELECT 1 FROM findings f JOIN document_versions v2 ON v2.id = f.version_id
+                          WHERE v2.document_id = d.id)
+           FROM documents d JOIN services s ON s.id = d.service_id
+           JOIN document_versions v ON v.document_id = d.id
+           ORDER BY d.id, v.fetched_at DESC""").fetchall()
+    return [(doc_id, domain, doc_type, url, analyzed)
+            for doc_id, domain, doc_type, url, text, analyzed in rows
+            if site_of(urlparse(url).hostname or "") != site_of(domain) and not names_site(domain, text)]

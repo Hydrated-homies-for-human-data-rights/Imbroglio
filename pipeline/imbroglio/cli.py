@@ -8,6 +8,7 @@
     python -m imbroglio.cli batch seeds/tosdr_rated.csv --limit 100 --workers 6
     python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100 --dry-run
     python -m imbroglio.cli consistency --sample 50 --runs 3
+    python -m imbroglio.cli offsite-documents     # --remove keepassxc.org ... deletes those
     python -m imbroglio.cli report                # latest batch
     python -m imbroglio.cli report 3 --out runs/batch-3.md
 """
@@ -151,12 +152,41 @@ def main() -> int:
     cal.add_argument("--tosdr", type=Path, default=Path("seeds/tosdr_rated.csv"))
     cal.add_argument("--out", type=Path, help="also write the report to this markdown file")
 
+    od = sub.add_parser("offsite-documents",
+                        help="list stored documents that are another site's (they never name this one)")
+    # A parent company's own policy (riotgames.com for leagueoflegends.com) can
+    # be the right one without naming the site, so removal is per site.
+    od.add_argument("--remove", nargs="+", metavar="DOMAIN", default=[],
+                    help="delete these sites' listed documents with their findings and scores, "
+                         "so a new crawl can look for the right ones")
+
     el = sub.add_parser("export-labels", help="export findings + document texts as classifier training data")
     el.add_argument("--rubric", default="v0.1")
     el.add_argument("--out", type=Path, default=Path("exports/labels-v0.1"))
     el.add_argument("--stdout", action="store_true", help="print JSON lines instead of writing files")
 
     args = ap.parse_args()
+
+    if args.command == "offsite-documents":
+        from . import db
+        conn = db.connect()
+        db.init_schema(conn)
+        found = db.offsite_documents(conn)
+        for _, domain, doc_type, url, analyzed in found:
+            print(f"{domain:<28} {doc_type:<8} {'analyzed' if analyzed else '':<9} {url}")
+        print(f"{len(found)} documents belong to another site "
+              f"({sum(1 for *_, a in found if a)} analyzed)")
+        unknown = set(args.remove) - {f[1] for f in found}
+        if unknown:
+            print(f"not in the list, nothing removed: {' '.join(sorted(unknown))}")
+            return 1
+        doomed = [f for f in found if f[1] in args.remove]
+        if doomed:
+            conn.execute("DELETE FROM documents WHERE id = ANY(%s)", ([f[0] for f in doomed],))
+            conn.commit()
+            print(f"removed {len(doomed)} documents; crawl these sites again to look for their own: "
+                  f"{' '.join(sorted(args.remove))}")
+        return 0
 
     if args.command == "export-labels":
         from .export import run as export_run

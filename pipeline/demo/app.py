@@ -155,8 +155,7 @@ def services() -> dict:
         db.init_schema(conn)
         rows = db.list_services(conn)
         from imbroglio.analysis import RUBRIC_VERSION
-        from imbroglio.scorer import SCORER_VERSION
-        ratings = db.headlines(conn, RUBRIC_VERSION, SCORER_VERSION)
+        ratings = db.headlines(conn, RUBRIC_VERSION)
     finally:
         conn.close()
 
