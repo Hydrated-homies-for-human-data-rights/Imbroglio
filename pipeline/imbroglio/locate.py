@@ -261,14 +261,17 @@ def _same_page(a: str, b: str) -> bool:
     return host(pa.hostname) == host(pb.hostname) and pa.path.rstrip("/") == pb.path.rstrip("/")
 
 
-def _candidates(html: str, base_url: str, via_text: str = "link-text"
+def _candidates(html: str, base_url: str, via_text: str = "link-text", home: str | None = None
                 ) -> dict[str, list[tuple[str, str, int]]]:
-    """Policy-looking links as (url, via, rank), best first. Links to another
-    site get a '-external' suffix on their via-label; they rank last and are
-    only accepted if the document mentions the site (see _external_ok)."""
+    """Policy-looking links as (url, via, rank), best first. Links off `home`
+    (the site being crawled; by default the page's own site) get a '-external'
+    suffix on their via-label; they rank last and are only accepted if the
+    document mentions the site (see names_site). Pass `home` for links
+    found on a page that may itself be on another site: GitHub's privacy page
+    links to GitHub's terms, which are still not keepassxc.org's."""
     soup = BeautifulSoup(html, "html.parser")
     found: dict[str, dict[str, tuple[str, int]]] = {"privacy": {}, "terms": {}}
-    home_site = site_of(urlparse(base_url).hostname or "")
+    home_site = site_of(home or urlparse(base_url).hostname or "")
 
     def add(doc_type: str, href: str, via: str, text: str = "") -> None:
         url = _strip_tracking(urljoin(base_url, href).split("#")[0])
@@ -316,12 +319,16 @@ def _iframe_srcs(html: str, base_url: str, domain: str) -> tuple[list[str], bool
     return follow, captcha
 
 
-def _external_ok(domain: str, text: str) -> bool:
+_NAME_GAPS = re.compile(r"[\s\-.]+")
+
+
+def names_site(domain: str, text: str) -> bool:
     """A policy hosted on another site counts only if it names this site.
     Google's policy names YouTube (legit: youtube.com uses it); Cloudflare's
-    and reCAPTCHA's links lead to policies that never name the site."""
-    brand = brand_of(domain)
-    return len(brand) >= 3 and brand.lower() in text.lower()
+    and reCAPTCHA's links lead to policies that never name the site. Spaces
+    and hyphens are ignored, so "Power Apps" names powerapps.com."""
+    brand = brand_of(domain).lower()
+    return len(brand) >= 3 and brand in _NAME_GAPS.sub("", text.lower())
 
 
 def _validate(doc_type: str, text: str) -> tuple[bool, str]:
@@ -398,12 +405,12 @@ def locate_document(domain: str, doc_type: str,
 
         result.url, result.discovered_via, result.fetch_method = url, via, method
         ok, reason = _validate(doc_type, text)
-        if ok and via.endswith("-external") and not _external_ok(domain, text):
+        if ok and via.endswith("-external") and not names_site(domain, text):
             ok, reason = False, f"another site's document (doesn't mention {brand_of(domain)})"
         # Links on this page that name the document ("Privacy Policy", "Main
         # Privacy Policy (English)") and point somewhere else: on a hub page,
         # those lead to the real document.
-        named = [(u, v, r) for u, v, r in _candidates(html, url, "hub-link")[doc_type]
+        named = [(u, v, r) for u, v, r in _candidates(html, url, "hub-link", home=domain)[doc_type]
                  if v.startswith("hub-link") and r <= 1 + (10 if v.endswith("-external") else 0)
                  and not _same_page(u, url)]
 
@@ -457,7 +464,8 @@ def locate_document(domain: str, doc_type: str,
             break
         for src in frames:  # shell page? follow its iframes
             log.info("[%s]   page embeds an iframe, queueing %s", doc_type, src)
-            probes.append((src, "iframe", rank(doc_type, src, "iframe")))
+            via = "iframe" if site_of(urlparse(src).hostname or "") == site_of(domain) else "iframe-external"
+            probes.append((src, via, rank(doc_type, src, via)))
     if fallback is not None:
         log.info("[%s] no fuller document found; using the short one (%s chars)",
                  doc_type, f"{len(fallback.text):,}")
@@ -541,7 +549,7 @@ def locate_all(domain: str, use_playwright: bool = True,
         found = results[other]
         if results[dt].ok or not found.ok or not found.html:
             continue
-        siblings = [c for c in _candidates(found.html, found.url, "sibling-link")[dt]
+        siblings = [c for c in _candidates(found.html, found.url, "sibling-link", home=domain)[dt]
                     if c[1].startswith("sibling-link") and c[2] <= 1 + (10 if c[1].endswith("-external") else 0)]
         if siblings:
             log.info("[%s] trying the %s page's own link(s) to it", dt, other)

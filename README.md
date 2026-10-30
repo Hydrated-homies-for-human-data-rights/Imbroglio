@@ -140,6 +140,10 @@ python -m imbroglio.cli report
 # jobs wait behind every visitor request). Try --dry-run first.
 python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100
 
+# Stored documents that are another site's (they never name this one).
+# Read-only; --remove keepassxc.org ... deletes those sites' listed documents
+python -m imbroglio.cli offsite-documents
+
 # Compare scoring schemes on stored findings (read-only, no LLM cost)
 python -m imbroglio.cli calibrate --out runs/calibration.md
 
