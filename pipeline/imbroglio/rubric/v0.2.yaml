@@ -106,28 +106,48 @@ checks:
     guidance: >
       `all_users` if any user can request deletion; `some_jurisdictions` if the
       right is limited to residents of certain places (for example the EU or California).
+      `no_user_data` if the company says it can't delete data because it holds
+      none linked to the user (anonymized or unlinked logs, or data kept only on
+      the user's device or by operators it doesn't control). `no` only if the
+      company holds the user's information and says it can't be deleted or
+      won't honor deletion requests. Keeping some information after an account
+      is deleted, or removal from one listing such as a directory, is not `no`:
+      answer from what the document says about deleting the rest, or
+      `not_disclosed` if it doesn't say.
     statuses:
       all_users: {exposure: 0, meaning: Any user can request deletion}
       some_jurisdictions: {exposure: 1, concern: medium, meaning: Deletion is offered only to residents of certain jurisdictions}
-      "no": {exposure: 3, concern: severe, meaning: Deletion is not offered}
+      no_user_data: {exposure: 0, meaning: "The company says it holds no data linked to users, so there is nothing to delete"}
+      "no": {exposure: 3, concern: severe, meaning: The document says users' information can't be deleted}
 
   - id: access_and_export
     category: user_rights
     question: Can users access or export the personal information held about them?
     evidence: ["access", "copy", "export", "portab", "download"]
+    guidance: >
+      `no_user_data` if the company says it can't provide data because it holds
+      none linked to the user (anonymized or unlinked logs, or data kept only on
+      the user's device or by operators it doesn't control).
     statuses:
       all_users: {exposure: 0, meaning: Any user can access or export their information}
       some_jurisdictions: {exposure: 1, concern: medium, meaning: Offered only to residents of certain jurisdictions}
+      no_user_data: {exposure: 0, meaning: "The company says it holds no data linked to users, so there is nothing to provide"}
       "no": {exposure: 2, concern: high, meaning: Access or export is not offered}
 
   - id: opt_out_of_tracking
     category: user_rights
     question: Can users opt out of tracking, targeted advertising, or the sale or sharing of their information?
     evidence: ["opt out", "opt-out", "unsubscribe", "do not sell", "do not track", "preference", "choice", "settings", "withdraw", "disable", "cookie", "object"]
+    guidance: >
+      `no` only if the document says users can't opt out of tracking, targeted
+      advertising, or the sale or sharing of their information. Not responding
+      to browser "Do Not Track" signals is not `no` on its own. If the company
+      says it doesn't track users for advertising or sell or share their
+      information, and so offers no opt-out, answer `not_disclosed`.
     statuses:
       "yes": {exposure: 0, meaning: An opt-out is offered to users}
       limited: {exposure: 1, concern: medium, meaning: An opt-out exists but is narrow or only for some users}
-      "no": {exposure: 2, concern: high, meaning: The document indicates no opt-out is offered}
+      "no": {exposure: 2, concern: high, meaning: The document says users can't opt out}
 
   - id: security_measures
     category: security
