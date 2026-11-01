@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "imbroglio",
-  "version": "0.1",
+  "name": "Imbroglio",
+  "version": "0.2",
+  "description": "The privacy rating for the site you're on, from its own privacy policy and terms.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": ["https://imbroglio.io/*", "http://localhost:8765/*", "http://127.0.0.1:8765/*"],
   "background": {
@@ -15,7 +16,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "View Privacy Ratings",
+    "default_title": "Imbroglio: this site's privacy rating",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"

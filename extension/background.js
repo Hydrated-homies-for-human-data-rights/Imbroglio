@@ -54,22 +54,21 @@ async function lookup(domain, api) {
     return body.sites.find((s) => s.hash === hash) || null;
 }
 
-// Same shape the popup and content script already use: overall + scores by category name.
+// What the popup renders: the overall rating, one entry per rubric category
+// in the rubric's order, and when and from which documents it was made.
 function toSiteData(domain, entry) {
     if (!entry.scores) {
         return { status: "not_analyzed", domain, documents: entry.documents };
     }
-    const scores = {};
-    for (const c of entry.scores.categories) {
-        scores[c.name] = { level: c.tier, findings: c.findings };
-    }
+    const s = entry.scores;
     return {
         status: "ready",
         domain,
-        overall: entry.scores.headline,
-        scores,
-        analyzedAt: entry.scores.analyzed_at,
-        rubric: entry.scores.rubric_version,
+        headline: s.headline,
+        categories: s.categories.map((c) => ({ key: c.key, name: c.name, tier: c.tier, findings: c.findings })),
+        analyzedAt: s.analyzed_at,
+        rubric: s.rubric_version,
+        scorer: s.scorer_version,
         documents: entry.documents,
     };
 }
