@@ -11,13 +11,13 @@ import { REPO_URL, disputeUrl } from "@/lib/links"
 // Measured figures, with when they were measured. Update these with each new
 // measurement; docs/evaluation.md has the details behind each one.
 const MEASUREMENTS: { figure: string; what: string; when: string }[] = [
-  { figure: "99.7%", what: "of 627 quotes the AI cited were found word for word in the policy. The rest were never shown.", when: "Oct 6, 2026" },
+  { figure: "91.9%", what: "of 13,496 quotes the AI cited across 550 sites were found word for word in the document (target 95%). The rest were never shown.", when: "Oct 30, 2026" },
+  { figure: "88.4%", what: "of answers came out the same in all three runs when 50 privacy policies were analyzed three times each (target 90%). Overall ratings matched in 66% of documents.", when: "Oct 30, 2026" },
   { figure: "19 of 20", what: "sites in our test sample had their privacy policy found and extracted correctly.", when: "Sep 2026" },
   { figure: "79%", what: "of 86 reachable sites from a random sample of 100 had their privacy policy found.", when: "Oct 2026" },
   { figure: "0.765", what: "macro F1 for our baseline policy text classifier on the OPP-115 benchmark (target 0.70). Not yet used in live ratings.", when: "Oct 2026" },
 ]
 const NOT_YET = [
-  "Run-to-run consistency: whether analyzing the same document three times gives the same answers.",
   "Agreement with ToS;DR's human reviewers on individual findings.",
 ]
 

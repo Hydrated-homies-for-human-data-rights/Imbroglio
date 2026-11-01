@@ -12,9 +12,10 @@ Each figure says when it was measured. Rerun them as the system changes and upda
 | --- | --- | --- | --- |
 | Discovery on the 20-site feasibility sample | 19 of 20 privacy policies found and extracted | 16 of 20 | Sep 2026 |
 | Discovery on 100 random ToS;DR services | Privacy policy found on 68 of 86 reachable sites (79%) | | Oct 2026 |
-| Quote verification | 99.7% of 627 cited quotes found word for word | 95% | Oct 6, 2026 |
+| Quote verification, rubric v0.2, 550 sites | 91.9% of 13,496 cited quotes found word for word | 95% | Oct 30, 2026 |
+| Quote verification, rubric v0, first 40 sites | 99.7% of 627 cited quotes found word for word | 95% | Oct 6, 2026 |
 | Classifier (TF-IDF + logistic regression, OPP-115 test split) | Macro F1 0.765 | 0.70 | Oct 2026 |
-| Run-to-run consistency | Not measured yet | 90% agreement | |
+| Run-to-run consistency (N2), rubric v0.2 | 88.4% of answers the same in all 3 runs (95% CI 85.9% to 91.0%) | 90% | Oct 30, 2026 |
 | Agreement with ToS;DR | Not usable yet (see below) | | |
 
 ## Discovery
@@ -42,8 +43,11 @@ strict fuzzy match for one-character typos. It never accepts a quote whose negat
 "no") differ from the document. Quotes must also contain one of the question's evidence words, so a
 real quote about a different topic doesn't count.
 
-Across the first 40 rated sites, 99.7% of 627 cited quotes verified. Unverified quotes are stored for
-review but never shown, and a finding with none is never scored.
+Across the first 40 rated sites (rubric v0, October 6), 99.7% of 627 cited quotes verified. Across
+all 550 sites under rubric v0.2 (October 30), 91.9% of 13,496 cited quotes verified, below the 95%
+target; the v0.1 run on the same documents was at 96.5%. We haven't yet broken the drop down by
+question. Unverified quotes are stored for review but never shown, and a finding with none is never
+scored, so a missed quote costs coverage, not correctness.
 
 **Model choice.** We ran Claude Haiku 4.5 and Claude Sonnet 5 on the same policies. Haiku verified
 100% of its quotes at $0.064 per document; Sonnet verified 98.5% at $0.036 per document and was more
@@ -68,12 +72,33 @@ sites apart. Five scoring schemes were compared on the same stored findings:
 [rubric-calibration.md](rubric-calibration.md). The chosen replacement, scorer s2, is described in
 [rubric.md](rubric.md).
 
+Under rubric v0.2 and scorer s2, the 550 sites analyzed on October 30 spread across every tier:
+MODERATE 239, UNCLEAR 118, LIMITED 84, EXTENSIVE 79, SEVERE 18, NOT DISCLOSED 12. 65 of the 79
+EXTENSIVE sites are there for one answer, training AI on user data; whether that alone should be a
+red flag is an open rubric question.
+
+## Run-to-run consistency (N2)
+
+50 privacy policies (random, seed 1) were analyzed three times each under rubric v0.2 with Claude
+Sonnet 5, 14 questions per run, on October 30 ($5.89). The model doesn't accept a temperature
+setting, so this measures how much its answers vary rather than assuming they don't.
+
+| Measure | Result | Target |
+| --- | --- | --- |
+| Same answer in every run, per document and question | 88.4% (95% CI 85.9% to 91.0%) | 90% |
+| Same answer, averaged over pairs of runs | 92.1% | |
+| Same category rating in every run (scorer s2) | 88.6% (95% CI 84.9% to 92.0%) | |
+| Same overall rating in every run | 66.0% (95% CI 54.0% to 80.0%) | |
+
+Just under the target. The steadiest questions were breach notification, content license and
+notification of government requests (100%, mostly "not disclosed"); the least steady was access and
+export (72%), where runs moved between "all users" and "some jurisdictions". A single changed answer
+can move the overall rating, which is why it agrees far less often than the answers do. Rerun with
+`cli consistency` after any rubric or model change; the full per-question table is written by that
+command.
+
 ## Not measured yet
 
-- **Run-to-run consistency (N2).** Analyze 50 documents three times each with the same rubric and
-  model, and count how often the answers match. Target: 90% agreement. Sonnet 5 doesn't accept a
-  temperature setting, so consistency has to be measured rather than configured. Estimated cost:
-  about $7.50.
 - **Agreement with ToS;DR.** 37 of our sites are also graded by ToS;DR, but 30 of those are D or E,
   so their letter grades are too narrow to compare against (every scheme correlated between -0.1 and
   0.24). They also grade things outside privacy, like arbitration. We plan to compare against their
