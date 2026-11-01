@@ -261,5 +261,15 @@ Changed the same day, after checking the first build against those 52 sites:
 | Breach notification `no` read "does not commit", inviting the model to read silence as `no` | `no` now needs a refusal or disclaimer; silence is `not_disclosed` |
 | AI training `yes` was given for content licenses that only allow training (khanacademy.org) | Guidance: the document has to say the data is used for models, and only the company's own use counts |
 
+Changed after the full v0.2 analysis (550 sites, October 30):
+
+| Problem | Change |
+| --- | --- |
+| Deletion `no` was given for removal from a campus directory (msudenver.edu), making it SEVERE. The model's own explanation said deletion wasn't addressed; the meaning "Deletion is not offered" fit silence too | `no` now means "The document says users' information can't be deleted", and the guidance says a directory listing or data kept after account deletion isn't `no` |
+| Sites that hold nothing linked to users (panopticlick.eff.org, pussthecat.org) were SEVERE for saying they can't delete or export it | New answer `no_user_data` for deletion and access, with no concern |
+| Tracking opt-out `no` was given for not honoring Do Not Track (8 of 9 documents), including sites that don't track for advertising (wikipedia.org, pypi.org) | Not honoring Do Not Track isn't `no` on its own; a site with nothing to opt out of is `not_disclosed`. `no` now means "The document says users can't opt out" |
+
+All three only narrow `no` answers, so only the 17 documents answered `no` on either check were analyzed again. A `partial` deletion answer (some information can't be deleted) was tried and dropped: on a sample of documents answered `all_users`, about 4 in 10 moved to `partial`, mostly for retention the law requires.
+
 Every one of the 26 EXTENSIVE sites gets there on AI training alone. Whether training on user data
 should stay a high concern is a team decision to revisit after the v0.2 analysis.
