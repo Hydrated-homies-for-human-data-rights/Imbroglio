@@ -160,12 +160,44 @@ def main() -> int:
                     help="delete these sites' listed documents with their findings and scores, "
                          "so a new crawl can look for the right ones")
 
+    sd = sub.add_parser("store-document",
+                        help="store a policy you fetched by hand, for sites that block the crawler")
+    sd.add_argument("domain")
+    sd.add_argument("doc_type", choices=["privacy", "terms"])
+    sd.add_argument("url", help="where the document lives, shown on the scorecard")
+    sd.add_argument("file", type=Path,
+                    help="the document, as UTF-8 text or the page saved as HTML (- for stdin)")
+    sd.add_argument("--analyze", action="store_true", help="run the LLM analysis right away")
+
     el = sub.add_parser("export-labels", help="export findings + document texts as classifier training data")
     el.add_argument("--rubric", default="v0.1")
     el.add_argument("--out", type=Path, default=Path("exports/labels-v0.1"))
     el.add_argument("--stdout", action="store_true", help="print JSON lines instead of writing files")
 
     args = ap.parse_args()
+
+    if args.command == "store-document":
+        import sys
+
+        from .analyze import store_manual
+        raw = sys.stdin.read() if str(args.file) == "-" else args.file.read_text(encoding="utf-8")
+        o = store_manual(args.domain, args.doc_type, args.url, raw)
+        print(f"{args.domain} {o.doc_type:8s} {o.status:11s} {o.chars:>7,} chars"
+              + (f"  version {o.version_id}" if o.version_id else "")
+              + (f"  {o.notes}" if o.notes else ""))
+        if o.status == "failed":
+            return 1
+        if args.analyze:
+            from . import db
+            from .analysis import ensure_analyzed
+            conn = db.connect()
+            try:
+                print(f"analysis: {ensure_analyzed(conn, o.version_id)}")
+            finally:
+                conn.close()
+        else:
+            print(f"next: python -m imbroglio.cli extract {args.domain}")
+        return 0
 
     if args.command == "offsite-documents":
         from . import db

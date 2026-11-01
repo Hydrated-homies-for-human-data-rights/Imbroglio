@@ -140,6 +140,10 @@ python -m imbroglio.cli report
 # jobs wait behind every visitor request). Try --dry-run first.
 python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100
 
+# A policy you fetched by hand, for a site whose bot protection blocks the
+# crawler: save the page (Ctrl+S, HTML or text), then (--analyze rates it now)
+python -m imbroglio.cli store-document canva.com privacy https://www.canva.com/policies/privacy-policy/ canva.html
+
 # Stored documents that are another site's (they never name this one).
 # Read-only; --remove keepassxc.org ... deletes those sites' listed documents
 python -m imbroglio.cli offsite-documents
