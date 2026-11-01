@@ -1,0 +1,253 @@
+/* Popup styles. Colors, type and the rating marks follow the website
+   (web/src/components/design.tsx, from the UX team's Figma Make design) so
+   the extension and the site read as one product. Unclear and Info aren't in
+   the Figma yet, so they are grey placeholders here as well. */
+
+:root {
+  --text: #11253a;
+  --heading: #102338;
+  --muted: #68778a;
+  --faint: #8b95a4;
+  --border: #dfe4ea;
+  --page: #f5f7f9;
+  --card: #ffffff;
+  --button: #172635;
+  --button-hover: #25445e;
+
+  --severe: #b73329;
+  --severe-mark: #c34135;
+  --extensive: #c76017;
+  --extensive-mark: #d36b20;
+  --moderate: #546579;
+  --moderate-mark: #697b8f;
+  --limited: #39704e;
+  --limited-mark: #4d8b65;
+  --not-disclosed: #8b95a4;
+  --not-disclosed-mark: #99a4b2;
+  --grey: #6b7280;
+  --grey-mark: #8b95a4;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+[hidden] {
+  display: none !important;
+}
+body {
+  width: 380px;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--page);
+}
+#popup {
+  padding: 12px 14px 14px;
+}
+
+/* brand line */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.top img {
+  width: 18px;
+  height: 18px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(15, 31, 47, 0.02);
+}
+
+/* headline */
+.domain {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--heading);
+  word-break: break-all;
+}
+.rating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.because {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* one row per category */
+.categories {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.categories li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.categories li:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+.cat-name {
+  flex: 1;
+  min-width: 0;
+}
+.cat-tier {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cat-count {
+  width: 60px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.message {
+  margin: 10px 0 2px;
+}
+
+/* footer */
+.foot {
+  margin-top: 12px;
+}
+.meta {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--button);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.button:hover {
+  background: var(--button-hover);
+}
+
+/* tier colors, for the rating word */
+.t-severe { color: var(--severe); }
+.t-extensive { color: var(--extensive); }
+.t-moderate { color: var(--moderate); }
+.t-limited { color: var(--limited); }
+.t-not_disclosed { color: var(--not-disclosed); }
+.t-unclear,
+.t-info { color: var(--grey); }
+
+/* rating marks: the same shapes as the website, 16 to 18px */
+.mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+.mark::before {
+  content: "";
+  box-sizing: border-box;
+}
+.m-severe::before {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--severe-mark);
+}
+.m-extensive::before {
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 17px solid var(--extensive-mark);
+}
+.m-moderate::before {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--moderate-mark);
+}
+.m-limited::before {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--limited-mark);
+}
+.m-not_disclosed::before {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 2px dashed var(--not-disclosed-mark);
+}
+.m-unclear::before,
+.m-info::before {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--grey-mark);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--grey);
+}
+.m-unclear::before {
+  content: "?";
+}
+.m-info::before {
+  content: "i";
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+}
+
+/* placeholders while the lookup runs */
+.skeleton {
+  display: inline-block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e9edf1 25%, #f4f6f8 50%, #e9edf1 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+  vertical-align: middle;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
