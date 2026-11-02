@@ -1,4 +1,5 @@
 import Link from "next/link"
+import LogoGlyph from "./LogoGlyph"
 import { SearchIcon } from "./design"
 
 // Header from the UX team's design. The search box is a plain GET form to
@@ -17,11 +18,12 @@ export default function Header({
       <div className="mx-auto flex min-h-[72px] max-w-[1180px] items-center gap-5 px-5 py-3 sm:px-8">
         <Link
           href="/"
-          className="shrink-0 text-[28px] font-bold tracking-[-0.03em] text-black"
+          className="inline-flex shrink-0 items-center gap-px text-[28px] font-bold tracking-[-0.03em] text-black"
           style={{ fontSize: "28px", fontWeight: 700 }}
           aria-label="Imbroglio home"
         >
-          imbroglio<span className="text-[#d64d3f]">.</span>
+          <LogoGlyph className="mt-[0.14em] h-[0.74em] w-auto" />
+          mbroglio<span className="text-[#c0392b]">.</span>
         </Link>
 
         {view === "history" ? (

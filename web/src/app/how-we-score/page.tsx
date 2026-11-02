@@ -21,10 +21,14 @@ export const metadata: Metadata = {
 // measurement; docs/evaluation.md has the details behind each one.
 const MEASUREMENTS: { figure: string; miss?: boolean; what: string; when: string }[] = [
   {
-    figure: "91.9%",
-    miss: true,
-    what: `of the ${FIGURES.quotes.toLocaleString("en-US")} quotes the model cited across ${FIGURES.sites} sites were found word for word in the stored document. The target is 95%. The rest were never shown.`,
-    when: "Oct 30, 2026",
+    figure: `${FIGURES.found}%`,
+    what: `of the ${FIGURES.quotes.toLocaleString("en-US")} quotes the model cited across ${FIGURES.sites} sites were found word for word in the stored document. The target is 95%.`,
+    when: "Nov 2, 2026",
+  },
+  {
+    figure: `${FIGURES.onTopic}%`,
+    what: "of those quotes also contained one of the question’s evidence words, so they are about the question asked. Only quotes that pass both checks are shown; the rest are kept for review.",
+    when: "Nov 2, 2026",
   },
   {
     figure: "88.4%",

@@ -60,7 +60,7 @@ export default function AboutPage() {
         </p>
         <p className="note">
           As of {FIGURES.measured}: {FIGURES.sites} sites rated, {FIGURES.quotes.toLocaleString("en-US")} quotes cited,{" "}
-          {FIGURES.verified} percent of them found word for word. The figures, and how they were measured, are on{" "}
+          {FIGURES.found} percent of them found word for word. The figures, and how they were measured, are on{" "}
           <Link href="/how-we-score">how we score</Link>.
         </p>
       </Chapter>
