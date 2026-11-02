@@ -11,6 +11,7 @@ fetches a website or runs a model.
     GET  /v1/search?q=          find sites by name or domain, typos allowed
     GET  /v1/learn              what users can do about each kind of finding
     GET  /v1/rubric             the published rubric and scoring rules
+    POST /v1/reports            report a wrong rating, quote, or document (rate limited)
 """
 
 from __future__ import annotations
@@ -45,6 +46,12 @@ PUBLIC_SOURCES = ("web", "api", "extension")
 # hash prefixes gets cut off too. An extension user opens the popup a few
 # times an hour; 600 leaves plenty of room.
 LOOKUPS_PER_HOUR = int(os.environ.get("LOOKUPS_PER_HOUR", "600"))
+# Problem reports are the other write path. Each one costs nothing to store
+# but a person reads every one, so the limits are tight: a reader has a
+# handful of things to say about a site, not dozens, and the daily cap keeps
+# a flood from burying the real reports.
+REPORTS_PER_HOUR = int(os.environ.get("REPORTS_PER_HOUR", "5"))
+REPORTS_PER_DAY = int(os.environ.get("REPORTS_PER_DAY", "200"))
 
 # "No policy found" is itself a result (design goal 4) and is remembered:
 # re-requesting such a site within this window answers from the database
@@ -325,6 +332,7 @@ class _RateLimiter:
 
 _limiter = _RateLimiter(REQUESTS_PER_HOUR)
 _lookup_limiter = _RateLimiter(LOOKUPS_PER_HOUR)
+_report_limiter = _RateLimiter(REPORTS_PER_HOUR)
 
 # Who is asking, for the per-client limit. Anyone can type an
 # X-Forwarded-For header, so the API only believes two sources:
@@ -445,6 +453,89 @@ def get_request(request_id: int):
     if job is None:
         return JSONResponse({"error": "request not found"}, status_code=404)
     return job
+
+
+# --- problem reports -------------------------------------------------------------
+
+ReportKind = Literal["rating", "quote", "wrong_document", "missing", "other"]
+# Control characters other than newline and tab: they never belong in a
+# message and can hide text or break the terminal the reports are read in.
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _clean_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _CONTROL_CHARS.sub("", value).strip() or None
+
+
+def _site_page(value: str | None) -> str | None:
+    """Only a path on our own site is worth keeping; anything else is noise
+    or a link someone wants a reviewer to click."""
+    if value and (value.startswith("/") or value.startswith("https://imbroglio.io/")):
+        return value
+    return None
+
+
+class NewReport(BaseModel):
+    domain: str | None = Field(None, max_length=253, examples=["notion.so"])
+    kind: ReportKind
+    message: str = Field(min_length=10, max_length=4000)
+    contact: str | None = Field(None, max_length=200, description="Email or handle, if a reply is wanted")
+    page: str | None = Field(None, max_length=500, description="The page the report was sent from")
+    website: str = Field("", description="Leave empty. Filled in by bots, not by people.")
+
+
+class ReportReceived(BaseModel):
+    id: int
+    received_at: datetime
+
+
+@router.post("/reports", status_code=201, response_model=ReportReceived,
+             responses={400: {"model": ApiError}, 429: {"model": ApiError}, 503: {"model": ApiError}},
+             summary="Report a wrong rating, quote, or document")
+def create_report(body: NewReport, request: Request):
+    """Tells the team that a finding looks wrong. A person rereads it against
+    the stored document and withdraws it if the quote does not support it;
+    nothing changes automatically. Reports are never shown publicly."""
+    received = datetime.now(timezone.utc)
+    if body.website:
+        # A filled honeypot means a bot. Pretend it worked so it does not
+        # learn to leave the field empty.
+        return ReportReceived(id=0, received_at=received)
+    domain = None
+    if body.domain is not None and body.domain.strip():
+        domain = clean_domain(body.domain)
+        if not domain:
+            return JSONResponse({"error": "not a valid domain"}, status_code=400)
+    message = _clean_text(body.message) or ""
+    if len(message) < 10:
+        return JSONResponse({"error": "message is too short"}, status_code=400)
+    client = client_address(request)
+    if not _report_limiter.allow(client):
+        return JSONResponse({"error": f"Rate limit: at most {REPORTS_PER_HOUR} reports per hour."},
+                            status_code=429, headers={"Retry-After": "600"})
+    try:
+        conn = db.connect()
+    except Exception:
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        db.init_schema(conn)
+        today = conn.execute(
+            "SELECT count(*) FROM reports WHERE created_at > now() - interval '24 hours'"
+        ).fetchone()[0]
+        if today >= REPORTS_PER_DAY:
+            return JSONResponse({"error": "Daily report limit reached. Try again tomorrow."},
+                                status_code=429, headers={"Retry-After": "3600"})
+        row = conn.execute(
+            """INSERT INTO reports (domain, kind, message, contact, page, client)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id, created_at""",
+            (domain, body.kind, message, _clean_text(body.contact),
+             _site_page(_clean_text(body.page)), client)).fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    return ReportReceived(id=row[0], received_at=row[1])
 
 
 # --- privacy-preserving lookup ---------------------------------------------------

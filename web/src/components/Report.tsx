@@ -91,9 +91,9 @@ export default function Report({ site }: { site: Site }) {
         Automated analysis of this site&apos;s own documents, last run {shortDate(card.analyzed_at)}. Every quote
         below was checked word for word against the stored text. This describes what the documents say and is
         not legal advice.{" "}
-        <a className="underline" href={disputeUrl(site.domain)} target="_blank" rel="noopener noreferrer">
+        <Link className="underline" href={disputeUrl(site.domain)}>
           Something wrong? Report a problem
-        </a>
+        </Link>
       </p>
 
       <div className="mt-5 flex flex-wrap gap-x-2 gap-y-1 text-sm text-[#607186]">

@@ -1,0 +1,421 @@
+/* The editorial pages: how we score, what you can do, about, report a problem.
+   They share the front page's tokens, type and pink bars (home.css, scoped
+   under .home) and add an article layout under .page. */
+
+.page .page-main {
+  max-width: 1248px;
+  margin: 0 auto;
+  padding: 72px calc(24px + var(--gutter)) 72px;
+}
+.page .page-head {
+  max-width: 760px;
+}
+.page h1 {
+  margin: 10px 0 0;
+  font-weight: 600;
+  font-size: clamp(40px, 5.6vw, 68px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+.page .page-head .lede {
+  font-size: 19px;
+  max-width: 58ch;
+  margin-top: 18px;
+}
+.page .chapter {
+  position: relative;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 40px;
+  padding: 44px 0;
+  border-top: 1px solid var(--rule);
+  margin-top: 40px;
+}
+.page .chapter:first-of-type {
+  margin-top: 56px;
+}
+.page .chapter > h2 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+.page .chapter > h2 .eyebrow {
+  display: block;
+  margin-bottom: 10px;
+}
+.page .chapter-body {
+  max-width: 68ch;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.page .chapter-body.wide {
+  max-width: none;
+}
+.page .chapter-body p {
+  margin: 0;
+}
+.page .chapter-body p + p,
+.page .chapter-body ul + p,
+.page .chapter-body p + ul {
+  margin-top: 14px;
+}
+.page .chapter-body h3 {
+  margin: 28px 0 6px;
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.015em;
+}
+.page .chapter-body ul,
+.page .chapter-body ol {
+  margin: 0;
+  padding-left: 22px;
+}
+.page .chapter-body li + li {
+  margin-top: 8px;
+}
+.page .chapter-body a {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.page .chapter-body .quote {
+  margin: 14px 0;
+  padding-left: 18px;
+  border-left: 3px solid var(--pink);
+  font-size: 18px;
+  font-style: italic;
+  color: var(--muted);
+}
+.page .note {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* numbered steps, like the front page's stations */
+.page .steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 32px 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.page .steps > li {
+  position: relative;
+  padding-top: 20px;
+  border-top: 2px solid var(--pink);
+}
+.page .steps > li::before {
+  counter-increment: step;
+  content: counter(step);
+  display: block;
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.page .steps h3 {
+  margin: 10px 0 0;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.3;
+}
+.page .steps p {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* a definition list with a verdict on the left */
+.page .tiers {
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+.page .tiers > div {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 20px;
+  align-items: baseline;
+}
+.page .tiers dd {
+  margin: 0;
+}
+
+/* every question: a category heading, then rows of answer and rating */
+.page .checks {
+  display: grid;
+  gap: 36px;
+}
+.page .check {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 12px 40px;
+}
+.page .check .q {
+  font-size: 17px;
+  line-height: 1.5;
+}
+.page .check .id {
+  display: block;
+  margin-bottom: 6px;
+}
+.page .check .answers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.page .check .answers li {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+.page .check .answers .verdict {
+  font-size: 13px;
+}
+
+/* figures as a column of large numbers */
+.page .figures-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 22px;
+}
+.page .figures-list li {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 24px;
+  align-items: baseline;
+}
+.page .figures-list .big {
+  font-weight: 600;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.page .figures-list .big.miss {
+  color: var(--sev-extensive);
+}
+
+/* what you can do: a finding and the steps for it */
+.page .topic {
+  padding: 28px 0;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 16px 48px;
+  scroll-margin-top: 24px;
+}
+.page .topic h3 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.page .topic .why {
+  margin: 10px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.page .topic ol {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.page .topic ol li + li {
+  margin-top: 10px;
+}
+.page .topic ol a {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-underline-offset: 3px;
+}
+
+/* the tools: what each does and what it doesn't */
+.page .tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0 48px;
+}
+.page .tool {
+  padding: 24px 0;
+  border-top: 2px solid var(--ink);
+}
+.page .tool h3 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.page .tool p {
+  margin: 10px 0 0;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.page .tool .mark-does,
+.page .tool .mark-doesnt {
+  display: inline-block;
+  min-width: 72px;
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.page .tool .slot {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px dashed var(--pink-deep);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* the team */
+.page .people {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 28px 40px;
+}
+.page .people li {
+  padding-top: 16px;
+  border-top: 2px solid var(--pink);
+}
+.page .people .name {
+  display: block;
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.page .people .role {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* the report form */
+.page .form {
+  display: grid;
+  gap: 26px;
+  max-width: 640px;
+}
+.page .form label {
+  display: block;
+}
+.page .form .lbl {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.page .form .hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--faint);
+}
+.page .form input,
+.page .form textarea,
+.page .form select {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  background: transparent;
+  font: inherit;
+  font-size: 18px;
+  color: var(--ink);
+  padding: 4px 0 10px;
+  outline: none;
+  border-radius: 0;
+  transition: border-color 0.2s ease;
+}
+.page .form textarea {
+  min-height: 160px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.page .form input:focus,
+.page .form textarea:focus,
+.page .form select:focus {
+  border-bottom: 2px solid var(--pink-deep);
+  padding-bottom: 9px;
+}
+.page .form [aria-invalid="true"] {
+  border-bottom-color: var(--pin);
+}
+.page .form .error {
+  margin: 0;
+  color: var(--pin);
+  font-size: 15px;
+}
+.page .form .submit {
+  justify-self: start;
+  border: 0;
+  background: var(--ink);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 16px;
+  padding: 14px 26px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.page .form .submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* the honeypot: off screen for people, present for bots */
+.page .form .hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.page .received {
+  max-width: 640px;
+  padding: 24px 0;
+  border-top: 2px solid var(--pink);
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+@media (max-width: 767px) {
+  .page .page-main {
+    padding: 48px calc(16px + var(--gutter)) 48px;
+  }
+  .page .chapter {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 32px 0;
+  }
+  .page .check,
+  .page .topic {
+    grid-template-columns: 1fr;
+  }
+  .page .tiers > div,
+  .page .figures-list li {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
