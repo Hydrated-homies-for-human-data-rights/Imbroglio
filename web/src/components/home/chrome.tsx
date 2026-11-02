@@ -1,4 +1,5 @@
 import Link from "next/link"
+import LogoGlyph from "@/components/LogoGlyph"
 import type { Tier } from "@/lib/api"
 import { TIER_WORD } from "./data"
 
@@ -9,13 +10,7 @@ import { TIER_WORD } from "./data"
 export function Wordmark() {
   return (
     <Link href="/" className="wordmark" aria-label="Imbroglio home">
-      <svg viewBox="380 160 270 670" aria-hidden="true">
-        <circle cx="544" cy="260" r="92" fill="#c0392b" />
-        <path
-          fill="currentColor"
-          d="M450 398C478 382 530 378 560 402C588 425 585 465 565 505L492 632C478 658 485 690 510 705C527 715 545 715 560 710L583 795C555 815 525 823 497 822C450 821 410 800 393 760C378 723 385 670 405 630L478 492C492 465 485 448 470 440C460 434 446 432 436 433Z"
-        />
-      </svg>
+      <LogoGlyph />
       mbroglio<b>.</b>
     </Link>
   )
