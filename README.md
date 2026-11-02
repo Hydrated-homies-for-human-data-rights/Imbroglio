@@ -46,14 +46,18 @@ Working:
     leads to, and the scoring rules ([docs/rubric.md](docs/rubric.md))
 - **Website:** Next.js app in `web/`, live at imbroglio.io, with the report,
   search and change history screens from the UX team's Figma design, a "How we
-  score" page with the rubric and measured accuracy, and a disclaimer and
-  "Report a problem" link on every page. See [web/README.md](web/README.md).
+  score" page with the rubric and measured accuracy, "What you can do", an
+  about page, and a disclaimer and "Report a problem" link on every page. See [web/README.md](web/README.md).
 - **Browser extension:** `extension/`, Chrome (Manifest V3). Click the icon to
   see the current site's ratings. It looks sites up by hash prefix through
   `imbroglio.io/api/v1/lookup`, which adds the API password on the server, and
   only reads cached results; new sites are requested on the website.
-- **Disputes:** "Report a problem" opens a GitHub issue from a template
-  (`.github/ISSUE_TEMPLATE/dispute.yml`) with the site filled in.
+- **Disputes:** "Report a problem" is a form on the site (`/report`, with the
+  site filled in from a report page). Submissions go through `POST /v1/reports`
+  into a `reports` table, rate limited per visitor, and are listed with
+  `python -m imbroglio.cli reports`; a team member rereads each one against the
+  stored document. The GitHub issue template (`.github/ISSUE_TEMPLATE/dispute.yml`)
+  still works for people who prefer it.
 - **Docs:** the rubric spec, an evaluation page with every measured figure, and
   a record of how the build differs from the design spec ([docs/](docs/README.md)).
 - **Bulk import:** seed from the ToS;DR catalogue and run batches from the CLI.

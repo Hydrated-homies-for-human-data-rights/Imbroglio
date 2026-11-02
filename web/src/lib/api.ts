@@ -175,3 +175,35 @@ export async function requestAnalysis(domain: string, clientIp: string | null): 
   if (!res.ok) throw new ApiError(res.status, body.error ?? body.detail?.[0]?.msg ?? `API returned ${res.status}`)
   return body as RequestAccepted
 }
+
+// --- report a problem -------------------------------------------------------
+
+export const REPORT_KINDS = ["rating", "quote", "wrong_document", "missing", "other"] as const
+export type ReportKind = (typeof REPORT_KINDS)[number]
+export type NewReport = {
+  domain: string | null
+  kind: ReportKind
+  message: string
+  contact: string | null
+  page: string | null
+  website: string // honeypot: real forms leave it empty
+}
+export type ReportReceived = { id: number; received_at: string }
+
+// Store a problem report. Like requestAnalysis, the visitor's address goes
+// with the shared key so the API's per-visitor limit applies to the visitor.
+export async function submitReport(report: NewReport, clientIp: string | null): Promise<ReportReceived> {
+  const key = process.env.IMBROGLIO_WEB_KEY
+  const res = await fetch(base() + "/v1/reports", {
+    method: "POST",
+    cache: "no-store",
+    headers: headers({
+      "Content-Type": "application/json",
+      ...(clientIp && key ? { "X-Imbroglio-Web-Key": key, "X-Imbroglio-Visitor-IP": clientIp } : {}),
+    }),
+    body: JSON.stringify(report),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new ApiError(res.status, body.error ?? body.detail?.[0]?.msg ?? `API returned ${res.status}`)
+  return body as ReportReceived
+}
