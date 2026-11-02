@@ -11,6 +11,8 @@
     python -m imbroglio.cli offsite-documents     # --remove keepassxc.org ... deletes those
     python -m imbroglio.cli report                # latest batch
     python -m imbroglio.cli report 3 --out runs/batch-3.md
+    python -m imbroglio.cli reports               # new problem reports from readers
+    python -m imbroglio.cli reports --mark 12 withdrawn --note "quote not in document"
 """
 
 from __future__ import annotations
@@ -84,6 +86,60 @@ def _extract_cmd(args) -> int:
     print(f"spent in last 24h: ${spent_last_24h(conn):.2f}")
     conn.close()
     return 0
+
+
+REPORT_STATUSES = ("new", "reviewed", "withdrawn", "dismissed")
+
+
+def list_reports(conn, status: str = "new", limit: int = 50) -> list[tuple]:
+    """Latest problem reports first; `status` 'all' lists every status."""
+    where, params = "", []
+    if status != "all":
+        where, params = "WHERE status = %s", [status]
+    return conn.execute(
+        f"""SELECT id, created_at, status, kind, domain, message, contact, note
+            FROM reports {where} ORDER BY created_at DESC, id DESC LIMIT %s""",
+        params + [limit]).fetchall()
+
+
+def mark_report(conn, report_id: int, status: str, note: str | None = None) -> bool:
+    """Set a report's status (and note, when given). False if no such report."""
+    if status not in REPORT_STATUSES:
+        raise ValueError(f"status must be one of {', '.join(REPORT_STATUSES)}")
+    row = conn.execute(
+        "UPDATE reports SET status = %s, note = COALESCE(%s, note) WHERE id = %s RETURNING id",
+        (status, note, report_id)).fetchone()
+    conn.commit()
+    return row is not None
+
+
+def _report_line(row) -> str:
+    rid, created, status, kind, domain, message, contact, _ = row
+    text = " ".join(message.split())[:80]
+    line = f"{rid:>5}  {created:%Y-%m-%d}  {status:<9} {kind:<14} {domain or '-':<28} {text}"
+    return line + (f"  <{contact}>" if contact else "")
+
+
+def _reports_cmd(args) -> int:
+    from . import db
+
+    conn = db.connect()
+    db.init_schema(conn)
+    try:
+        if args.mark:
+            report_id, status = args.mark
+            if not mark_report(conn, int(report_id), status, args.note):
+                print(f"no report {report_id}")
+                return 1
+            print(f"report {report_id}: {status}")
+            return 0
+        rows = list_reports(conn, args.status, args.limit)
+        for row in rows:
+            print(_report_line(row))
+        print(f"{len(rows)} reports ({args.status})")
+        return 0
+    finally:
+        conn.close()
 
 
 def main() -> int:
@@ -174,7 +230,17 @@ def main() -> int:
     el.add_argument("--out", type=Path, default=Path("exports/labels-v0.1"))
     el.add_argument("--stdout", action="store_true", help="print JSON lines instead of writing files")
 
+    rp = sub.add_parser("reports", help="list problem reports from readers, or mark one reviewed")
+    rp.add_argument("--status", choices=REPORT_STATUSES + ("all",), default="new")
+    rp.add_argument("--limit", type=int, default=50)
+    rp.add_argument("--mark", nargs=2, metavar=("ID", "STATUS"),
+                    help="set a report's status: " + "|".join(REPORT_STATUSES))
+    rp.add_argument("--note", help="reviewer's note, stored with --mark")
+
     args = ap.parse_args()
+
+    if args.command == "reports":
+        return _reports_cmd(args)
 
     if args.command == "store-document":
         import sys

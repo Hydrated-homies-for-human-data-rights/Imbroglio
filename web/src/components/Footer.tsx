@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { REPO_URL, disputeUrl } from "@/lib/links"
+import { disputeUrl } from "@/lib/links"
 
 // Not in the design yet: plain until the UX team designs it. The disclaimer
 // and correction path are promised in the proposal (risk 8) for every page.
@@ -15,12 +15,15 @@ export default function Footer() {
         <Link className="underline" href="/how-we-score">
           How we score
         </Link>
-        <a className="underline" href={disputeUrl()} target="_blank" rel="noopener noreferrer">
+        <Link className="underline" href="/learn">
+          What you can do
+        </Link>
+        <Link className="underline" href="/about">
+          About
+        </Link>
+        <Link className="underline" href={disputeUrl()}>
           Report a problem
-        </a>
-        <a className="underline" href={REPO_URL} target="_blank" rel="noopener noreferrer">
-          Source code
-        </a>
+        </Link>
       </p>
     </footer>
   )

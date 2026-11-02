@@ -1,14 +1,8 @@
 // Public links shown on every page.
 
-export const REPO_URL = "https://github.com/Hydrated-homies-for-human-data-rights/Imbroglio"
-
-// Disputes are GitHub issues from .github/ISSUE_TEMPLATE/dispute.yml, with the
-// site filled in. That is the published correction path the proposal promised.
+// "Report a problem" is the published correction path (proposal risk 8): a
+// form on the site, stored for the team to reread against the stored
+// document. The site's report page passes its domain so the form is filled in.
 export function disputeUrl(domain?: string): string {
-  const params = new URLSearchParams({ template: "dispute.yml" })
-  if (domain) {
-    params.set("title", `Dispute: ${domain}`)
-    params.set("site", domain)
-  }
-  return `${REPO_URL}/issues/new?${params}`
+  return domain ? `/report?site=${encodeURIComponent(domain)}` : "/report"
 }
