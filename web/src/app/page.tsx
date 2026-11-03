@@ -255,13 +255,14 @@ export default function Home() {
         </div>
         <p>
           Across {FIGURES.sites} sites, the model cited {FIGURES.quotes.toLocaleString("en-US")} quotes.{" "}
-          {FIGURES.verified} percent were found word for word in the stored document; the rest were never shown.
-          Fifty policies analyzed three times each gave the same answer in every run {FIGURES.consistency} percent of
-          the time. Both figures fall short of their targets, 95 and 90 percent, and both are published with their
-          method.
+          {FIGURES.found} percent were found word for word in the stored document, above the 95 percent target, and{" "}
+          {FIGURES.onTopic} percent also contained one of the question’s evidence words; only those are shown. Fifty
+          policies analyzed three times each gave the same answer in every run {FIGURES.consistency} percent of the
+          time, short of the 90 percent target. Both are published with their method.
         </p>
         <p className="meta mono" style={{ fontSize: 11, marginTop: 12 }}>
-          measured {FIGURES.measured} · <Link href="/how-we-score">how we score</Link>
+          quotes {FIGURES.measured} · consistency {FIGURES.consistencyMeasured} ·{" "}
+          <Link href="/how-we-score">how we score</Link>
         </p>
       </section>
 

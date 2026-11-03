@@ -137,8 +137,17 @@ const RECENT_RAW: { domain: string; tier: Tier; why: string }[] = [
 ]
 export const RECENT = RECENT_RAW.filter((s) => showable(s.domain))
 
-// From docs/evaluation.md, measured 2026-10-30.
-export const FIGURES = { sites: 559, quotes: 13_496, verified: "91.9", consistency: "88.4", measured: "2026-10-30" }
+// From docs/evaluation.md. `found`: quotes found word for word; `onTopic`: found
+// and containing one of the question's evidence words (the ones shown).
+export const FIGURES = {
+  sites: 559,
+  quotes: 8_407,
+  found: "99.4",
+  onTopic: "78.7",
+  consistency: "88.4",
+  measured: "2026-11-02",
+  consistencyMeasured: "2026-10-30",
+}
 
 export const TIER_WORD: Record<Tier, string> = {
   SEVERE: "Severe",

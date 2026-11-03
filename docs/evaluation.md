@@ -12,7 +12,7 @@ Each figure says when it was measured. Rerun them as the system changes and upda
 | --- | --- | --- | --- |
 | Discovery on the 20-site feasibility sample | 19 of 20 privacy policies found and extracted | 16 of 20 | Sep 2026 |
 | Discovery on 100 random ToS;DR services | Privacy policy found on 68 of 86 reachable sites (79%) | | Oct 2026 |
-| Quote verification, rubric v0.2, 550 sites | 91.9% of 13,496 cited quotes found word for word | 95% | Oct 30, 2026 |
+| Quote verification, rubric v0.2, 559 sites | 99.4% of 8,407 cited quotes found word for word; 78.7% also about the question | 95% | Nov 2, 2026 |
 | Quote verification, rubric v0, first 40 sites | 99.7% of 627 cited quotes found word for word | 95% | Oct 6, 2026 |
 | Classifier (TF-IDF + logistic regression, OPP-115 test split) | Macro F1 0.765 | 0.70 | Oct 2026 |
 | Run-to-run consistency (N2), rubric v0.2 | 88.4% of answers the same in all 3 runs (95% CI 85.9% to 91.0%) | 90% | Oct 30, 2026 |
@@ -43,11 +43,50 @@ strict fuzzy match for one-character typos. It never accepts a quote whose negat
 "no") differ from the document. Quotes must also contain one of the question's evidence words, so a
 real quote about a different topic doesn't count.
 
-Across the first 40 rated sites (rubric v0, October 6), 99.7% of 627 cited quotes verified. Across
-all 550 sites under rubric v0.2 (October 30), 91.9% of 13,496 cited quotes verified, below the 95%
-target; the v0.1 run on the same documents was at 96.5%. We haven't yet broken the drop down by
-question. Unverified quotes are stored for review but never shown, and a finding with none is never
-scored, so a missed quote costs coverage, not correctness.
+Across the first 40 rated sites (rubric v0, October 6), 99.7% of 627 cited quotes verified.
+
+Under rubric v0.2 (November 2: 559 sites, 973 documents, 6,159 answers that cite a quote):
+
+| Measure | Result |
+| --- | --- |
+| Quotes found word for word in the document | 99.4% (8,356 of 8,407) |
+| Quotes found word for word and containing an evidence word (shown on the site) | 78.7% (6,617 of 8,407) |
+| Answers with at least one quote found word for word (the proposal's measure) | 99.7% (6,143 of 6,159) |
+| Answers with at least one quote that passes both checks (scored) | 84.1% (5,180 of 6,159) |
+
+So the model almost never misquotes: 51 of 8,407 quotes weren't in the document. Nearly all of the
+gap comes from the evidence-word check. Some of the quotes it rejects are off topic; others answer the
+question in words the list doesn't include ("other users may provide information about you" for data
+from third parties). We haven't yet measured how often each happens. Rejected quotes are stored for
+review but never shown, and an answer with none is never scored, so a rejected quote costs coverage,
+not correctness.
+
+By question, worst first:
+
+| Question | Quotes | Found word for word | Also contains an evidence word |
+| --- | --- | --- | --- |
+| `collects_from_third_parties` | 682 | 99.9% | 51.0% |
+| `collects_sensitive_data` | 853 | 98.6% | 66.9% |
+| `access_and_export` | 728 | 99.2% | 71.0% |
+| `content_license` | 439 | 100.0% | 75.2% |
+| `sells_personal_data` | 577 | 99.5% | 76.9% |
+| `security_measures` | 797 | 99.7% | 82.8% |
+| `deletion_on_request` | 736 | 99.5% | 82.9% |
+| `shares_for_advertising` | 835 | 99.8% | 83.4% |
+| `opt_out_of_tracking` | 817 | 98.4% | 85.8% |
+| `discloses_to_government` | 750 | 99.3% | 87.2% |
+| `retention_period` | 821 | 99.6% | 89.8% |
+| `trains_ai_on_user_data` | 219 | 100.0% | 90.9% |
+| `notifies_users_of_requests` | 68 | 100.0% | 97.1% |
+| `breach_notification` | 85 | 100.0% | 98.8% |
+
+**Correction, November 2.** The figure published on October 31, "91.9% of 13,496 cited quotes
+verified", was the share of answers marked verified, and "not disclosed" answers, which cite no
+quote, counted as verified. 13,496 was the number of answers, not quotes. The v0.1 figure of 96.5%
+it was compared with was counted the same way, so the reported drop between rubrics was mostly an
+artifact. On the 92 documents analyzed under both, the share of quotes passing both checks went from
+85.1% (v0.1) to 83.9% (v0.2). The lower rate across all sites comes from the sites added since, not
+from the rubric change.
 
 **Model choice.** We ran Claude Haiku 4.5 and Claude Sonnet 5 on the same policies. Haiku verified
 100% of its quotes at $0.064 per document; Sonnet verified 98.5% at $0.036 per document and was more

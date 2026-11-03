@@ -125,20 +125,25 @@ def verify_quotes(quotes: list[str], document: str) -> list[bool]:
     return [verify_quote(q, document, _doc_canon=doc) for q in quotes]
 
 
+def quote_offsets(quotes: list[str], document: str) -> list[list[tuple[int, int]] | None]:
+    """For each quote: the (start, end) offsets in `document` of each piece
+    where it matched, or None if it doesn't verify. Evidence words are the
+    rubric's business, not checked here."""
+    doc, origin = _canon_map(document)
+    out: list[list[tuple[int, int]] | None] = []
+    for q in quotes:
+        spans = _spans(q, doc)
+        out.append(None if spans is None else [(origin[s], origin[e - 1] + 1) for s, e in spans])
+    return out
+
+
 def exact_quotes(quotes: list[str], document: str) -> list[str | None]:
     """For each quote: the document's own words where it matched (pieces of
     an ellipsis quote joined with " ... ", whitespace collapsed), or None if
     it doesn't verify."""
-    doc, origin = _canon_map(document)
-    out: list[str | None] = []
-    for q in quotes:
-        spans = _spans(q, doc)
-        if spans is None:
-            out.append(None)
-            continue
-        pieces = [" ".join(document[origin[s]: origin[e - 1] + 1].split()) for s, e in spans]
-        out.append(" ... ".join(pieces))
-    return out
+    return [None if offsets is None else
+            " ... ".join(" ".join(document[a:b].split()) for a, b in offsets)
+            for offsets in quote_offsets(quotes, document)]
 
 
 def exact_quote(quote: str, document: str) -> str | None:
