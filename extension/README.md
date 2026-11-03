@@ -4,10 +4,11 @@ Shows the Imbroglio rating for the site in the current tab, following the UX
 team's Figma (imbroglio browser extension): the toolbar icon carries the
 site's worst level as a badge; the popup opens on an overview (the overall
 rating in plain words, counts per level, the three biggest flags), with a
-category breakdown behind it and a "what you can do" screen of actions per
-category, each linking to the matching topic on imbroglio.io/learn until the
-API carries the site's own opt-out pages. Manifest V3; works in Chrome, Edge,
-Opera and other Chromium browsers.
+category breakdown behind it and a "what you can do" screen with one action
+per flagged category. An action gets a button only when the lookup carries
+the site's own page for it (the API's link harvest); otherwise it is text
+and a "mark done". Manifest V3; works in Chrome, Edge, Opera and other
+Chromium browsers.
 
 It is a thin client over the public read API. Nothing is analyzed in the
 browser, there is no account, and the site's name never leaves the browser:

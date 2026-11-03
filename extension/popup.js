@@ -30,11 +30,11 @@ const HEADLINE_TEXT = {
   NOT_DISCLOSED: "The documents say nothing about the practices we check.",
 };
 
-// What you can do, per rubric category. A site-specific link (the site's own
-// opt-out or settings page) is used when the lookup carries one; until then
-// the button opens the matching topic on imbroglio.io/learn, which has the
-// steps. `verb` is the button's text; "Request" marks actions you ask the
-// company for rather than switch off yourself.
+// What you can do, per rubric category, shown for the categories flagged on
+// the site. The button opens the site's own page for it and only appears
+// when the lookup carries that link (the API's link harvest); `verb` is the
+// button's text, and "Request" marks actions you ask the company for rather
+// than switch off yourself. `check` is the rubric check the action answers.
 const ACTIONS = {
   ai_training: { title: "Opt out of AI training", why: "Stops your content being used to train their models.", verb: "Open setting", check: "trains_ai_on_user_data" },
   selling_sharing: { title: "Do not sell or share", why: "Turns off sharing with ad partners.", verb: "Opt out", check: "sells_personal_data" },
@@ -128,9 +128,23 @@ function sortedCategories(site) {
 
 // --- screens -------------------------------------------------------------------
 
+// The screens in depth order; going deeper slides in from the right,
+// going back from the left. The popup itself never changes size.
+const ORDER = ["overview", "breakdown", "actions"];
+let current = "overview";
+
 function show(id) {
-  for (const s of document.querySelectorAll(".screen")) s.hidden = s.id !== id;
-  const first = document.querySelector(`#${id} .back`) || document.querySelector(`#${id} button, #${id} a`);
+  const forward = ORDER.indexOf(id) > ORDER.indexOf(current);
+  current = id;
+  for (const s of document.querySelectorAll(".screen")) {
+    s.hidden = s.id !== id;
+    s.classList.remove("enter-forward", "enter-back");
+  }
+  const screen = $(id);
+  screen.classList.add(forward ? "enter-forward" : "enter-back");
+  screen.addEventListener("animationend", () => screen.classList.remove("enter-forward", "enter-back"), { once: true });
+  screen.querySelector(".body").scrollTop = 0;
+  const first = screen.querySelector(".back") || screen.querySelector("button, a");
   if (first) first.focus({ preventScroll: true });
 }
 
@@ -272,24 +286,32 @@ function saveDone(domain, done) {
   }
 }
 
-// Where an action's button goes: the site's own page when the lookup has
-// one for this category, otherwise the topic on imbroglio.io/learn.
-function actionUrl(site, key) {
-  const own = (site.links || []).find((l) => l.category === key);
-  return own ? own.url : `${WEBSITE}/learn#${ACTIONS[key].check}`;
+// The site's own page for an action, when the lookup carries one for the
+// category (the API's link harvest). Without one there is no button: we
+// don't send people to a page we haven't found.
+function ownLink(site, key) {
+  const own = (site.links || []).find((l) => l.category === key && /^https?:/.test(l.url || ""));
+  return own ? own.url : null;
 }
 
 function renderActions(site) {
-  const cards = sortedCategories(site).filter((c) => ACTIONS[c.key] && c.tier !== "INFO" && c.tier !== "NOT_DISCLOSED");
-  $("action-cards").replaceChildren(
+  // Only the categories flagged on this site get a card.
+  const cards = sortedCategories(site).filter((c) => ACTIONS[c.key] && CONCERNS.has(c.tier));
+  const list = $("action-cards");
+  list.replaceChildren(
     ...cards.map((c) => {
       const a = ACTIONS[c.key];
       const done = state.done.has(c.key);
       const li = el("li", `card${done ? " is-done" : ""}`);
-      li.append(el("p", `eyebrow t-${tierClass(c.tier)}`, c.name), el("h3", "", a.title), el("p", "why", a.why));
+      const text = el("div", "card-text");
+      text.append(el("p", `eyebrow t-${tierClass(c.tier)}`, c.name), el("h3", "", a.title), el("p", "why", a.why));
       const buttons = el("div", "card-buttons");
-      const go = el("a", "button primary small", a.verb);
-      linkTo(go, actionUrl(site, c.key));
+      const url = ownLink(site, c.key);
+      if (url) {
+        const go = el("a", "button primary small", a.verb);
+        linkTo(go, url);
+        buttons.append(go);
+      }
       const toggle = el("button", `button small ${done ? "done" : "quiet"}`, done ? "✓ Done" : "Mark done");
       toggle.type = "button";
       toggle.setAttribute("aria-pressed", String(done));
@@ -299,11 +321,16 @@ function renderActions(site) {
         saveDone(site.domain, state.done);
         renderActions(site);
       };
-      buttons.append(go, toggle);
-      li.append(buttons);
+      buttons.append(toggle);
+      li.append(text, buttons);
       return li;
     }),
   );
+  const none = document.querySelector("#actions .none");
+  if (none) none.remove();
+  if (!cards.length) {
+    list.after(el("p", "none", "Nothing is flagged on this site, so there is nothing to opt out of here."));
+  }
   const n = cards.filter((c) => state.done.has(c.key)).length;
   $("done-count").textContent = `${n} of ${cards.length} done`;
 }
@@ -355,6 +382,7 @@ function mockSite(kind) {
     analyzedAt: "2026-11-02T19:29:33Z",
     rubric: "v0.2",
     documents: ["privacy", "terms"],
+    links: [{ category: "ai_training", url: "https://example-shop.com/settings/privacy" }],
     categories: [
       { key: "selling_sharing", name: "Data selling and sharing", tier: "MODERATE", findings: 3 },
       { key: "collection", name: "Collection scope", tier: "INFO", findings: 2 },

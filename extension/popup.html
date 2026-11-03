@@ -7,26 +7,18 @@
 </head>
 <body>
   <!-- Three screens from the UX team's Figma (imbroglio browser extension):
-       the overview, the category breakdown, and what you can do. One is
-       shown at a time; popup.js switches them. -->
+       the overview, the category breakdown, and what you can do. The popup
+       has one fixed size; popup.js slides one screen in at a time. -->
   <main id="popup">
 
     <section id="overview" class="screen" aria-labelledby="domain">
       <header class="bar bar-home">
-        <span class="wordmark" aria-label="Imbroglio">
+        <a id="site-link" class="wordmark" href="https://imbroglio.io" title="Open imbroglio.io" aria-label="Imbroglio, open imbroglio.io">
+          <!-- the wordmark: the logo's dotted i stands in for the first letter -->
           <svg class="logo-i" viewBox="380 160 270 670" aria-hidden="true">
             <circle cx="544" cy="260" r="92" fill="#c0392b"/>
             <path fill="currentColor" d="M450 398C478 382 530 378 560 402C588 425 585 465 565 505L492 632C478 658 485 690 510 705C527 715 545 715 560 710L583 795C555 815 525 823 497 822C450 821 410 800 393 760C378 723 385 670 405 630L478 492C492 465 485 448 470 440C460 434 446 432 436 433Z"/>
-          </svg><span aria-hidden="true">mbrogl</span><svg class="logo-i second" viewBox="380 160 270 670" aria-hidden="true">
-            <circle cx="544" cy="260" r="92" fill="#c0392b"/>
-            <path fill="currentColor" d="M450 398C478 382 530 378 560 402C588 425 585 465 565 505L492 632C478 658 485 690 510 705C527 715 545 715 560 710L583 795C555 815 525 823 497 822C450 821 410 800 393 760C378 723 385 670 405 630L478 492C492 465 485 448 470 440C460 434 446 432 436 433Z"/>
-          </svg><span aria-hidden="true">o</span>
-        </span>
-        <a id="site-link" class="round" href="https://imbroglio.io" title="Open imbroglio.io" aria-label="Open imbroglio.io">
-          <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-            <circle cx="10" cy="10" r="2.6"/>
-            <path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/>
-          </svg>
+          </svg><span aria-hidden="true">mbroglio<b>.</b></span>
         </a>
       </header>
 
@@ -103,8 +95,8 @@
           <p class="bar-domain" data-domain></p>
         </div>
       </header>
-      <div class="body scroll">
-        <p class="intro">Based on this site’s policy, here’s what you’re allowed to change. Each link goes straight to the right page.</p>
+      <div class="body">
+        <p id="actions-intro" class="intro">Based on this site’s flags, here’s what you can change. A button opens the site’s own page for it.</p>
         <ul id="action-cards" class="cards" aria-label="What you can do"></ul>
       </div>
       <footer class="foot between">
