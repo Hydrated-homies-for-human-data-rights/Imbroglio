@@ -138,13 +138,15 @@ class Scorecard(BaseModel):
 
 class SiteLink(BaseModel):
     """The site's own page for a category's advice: its opt-out, settings or
-    request page, found on its homepage or policy (links.py). One per
-    category, the most specific kind first."""
+    request page, found on its homepage or policy (links.py), or listed by
+    hand for the sites whose settings pages nothing links to (source
+    "known"). One per category, a known page first, then the most specific
+    kind."""
     category: str
     kind: str
     url: str
-    text: str = Field(description="The link's own words, as found on the site")
-    source: Literal["homepage", "privacy", "terms"]
+    text: str = Field(description="The link's own words as found on the site, or our label for a known page")
+    source: Literal["homepage", "privacy", "terms", "known"]
 
 
 def _site_links(links: list) -> list[SiteLink]:

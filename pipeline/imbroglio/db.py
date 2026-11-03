@@ -391,19 +391,33 @@ def replace_links(conn: psycopg.Connection, service_id: int, links: list) -> Non
 
 def links_by_hash(conn: psycopg.Connection, hash_like: str) -> dict[str, list]:
     """domain_hash -> the best link per category (links.best) for every site
-    whose hash matches the pattern."""
-    from .links import Link, best
+    whose hash matches the pattern: the harvested links plus the hand-listed
+    known pages for the site, which win for the same category."""
+    from .links import Link, best, known
 
     rows = conn.execute(
-        """SELECT s.domain_hash, l.kind, l.category, l.url, l.text, l.source
-           FROM site_links l JOIN services s ON s.id = l.service_id
+        """SELECT s.domain_hash, s.domain, l.kind, l.category, l.url, l.text, l.source
+           FROM services s LEFT JOIN site_links l ON l.service_id = s.id
            WHERE s.domain_hash LIKE %s""", (hash_like,)).fetchall()
     grouped: dict[str, list] = {}
-    for h, *rest in rows:
-        grouped.setdefault(h, []).append(Link(*rest))
-    return {h: best(links) for h, links in grouped.items()}
+    domains: dict[str, str] = {}
+    for h, domain, *rest in rows:
+        domains[h] = domain
+        grouped.setdefault(h, [])
+        if rest[0] is not None:
+            grouped[h].append(Link(*rest))
+    out = {}
+    for h, links in grouped.items():
+        merged = best(known(domains[h]) + links)
+        if merged:
+            out[h] = merged
+    return out
 
 
 def links_for_domain(conn: psycopg.Connection, domain: str) -> list:
-    """The best link per category for one site."""
-    return links_by_hash(conn, domain_hash(domain)).get(domain_hash(domain), [])
+    """The best link per category for one site, known pages included. A site
+    not stored at all still gets its known pages."""
+    from .links import best, known
+
+    h = domain_hash(domain)
+    return links_by_hash(conn, h).get(h) or best(known(domain))
