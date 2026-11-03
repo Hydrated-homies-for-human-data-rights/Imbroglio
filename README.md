@@ -155,6 +155,11 @@ python -m imbroglio.cli offsite-documents
 # Compare scoring schemes on stored findings (read-only, no LLM cost)
 python -m imbroglio.cli calibrate --out runs/calibration.md
 
+# Each site's own opt-out and settings pages (links.py), read off the
+# homepage and policy pages. The worker does this on every analysis; this
+# backfills sites stored before it existed. No model calls. --dry-run first.
+python -m imbroglio.cli harvest-links --limit 50 --dry-run
+
 # Standalone worker (what production runs)
 python -m imbroglio.worker
 ```

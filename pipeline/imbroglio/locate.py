@@ -196,6 +196,12 @@ class Located:
     text: str = ""
     notes: list[str] = field(default_factory=list)
     html: str = field(default="", repr=False)   # the page itself, for its links to the other document
+    # The site's own opt-out and settings links (links.py), from the homepage
+    # and both found documents; the same list on every Located of a site.
+    # pages_seen says how many pages were read for them, so a harvest that
+    # saw nothing is told apart from one that found nothing.
+    links: list = field(default_factory=list, repr=False)
+    pages_seen: int = 0
 
 
 COMMON_PATH_RANK = 5
@@ -491,11 +497,13 @@ def locate_all(domain: str, use_playwright: bool = True,
     home_notes: list[str] = [] if html else [f"homepage static -> {home_status}"]
 
     cands: dict[str, list[tuple[str, str, int]]] = {"privacy": [], "terms": []}
+    home_pages: list[str] = []  # every real homepage we got, for the link harvest
     if html and is_challenge(html):
         log.info("homepage is a bot-challenge page; ignoring its links")
         home_notes.append("homepage static -> blocked: bot challenge")
         html = None
     if html:
+        home_pages.append(html)
         cands = _candidates(html, homepage)
         log.info("homepage links: %d privacy candidate(s), %d terms candidate(s)",
                  len(cands["privacy"]), len(cands["terms"]))
@@ -514,6 +522,7 @@ def locate_all(domain: str, use_playwright: bool = True,
             home_notes.append("homepage render -> blocked: bot challenge")
             rendered = None
         if rendered:
+            home_pages.append(rendered)
             rcands = _candidates(rendered, homepage)
             # Merge: keep static finds first, add anything the render revealed.
             for dt in ("privacy", "terms"):
@@ -562,4 +571,28 @@ def locate_all(domain: str, use_playwright: bool = True,
     for loc in results.values():
         if not loc.ok:
             loc.notes[:0] = home_notes  # homepage outcome explains most misses
+    _harvest_links(domain, homepage, home_pages, results)
     return results
+
+
+def _harvest_links(domain: str, homepage: str, home_pages: list[str],
+                   results: dict[str, Located]) -> None:
+    """The site's own opt-out and settings links, from the pages already in
+    hand: the homepage (static, rendered, or both) and each found document."""
+    from .links import dedupe, harvest  # links.py imports site_of from here
+
+    links = []
+    pages = 0
+    for page in home_pages:
+        links += harvest(page, homepage, domain, "homepage")
+        pages += 1
+    for dt, loc in results.items():
+        if loc.ok and loc.html and loc.url:
+            links += harvest(loc.html, loc.url, domain, dt)
+            pages += 1
+    links = dedupe(links)
+    if pages:
+        log.info("site links: %d found on %d page(s)", len(links), pages)
+    for loc in results.values():
+        loc.links = links
+        loc.pages_seen = pages

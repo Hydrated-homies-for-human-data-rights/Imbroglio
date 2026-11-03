@@ -1,9 +1,14 @@
 # Browser extension
 
-Shows the Imbroglio rating for the site in the current tab: the overall
-rating, the category that drove it, and one row per category, with a link to
-the full report on imbroglio.io. Manifest V3; works in Chrome, Edge, Opera and
-other Chromium browsers.
+Shows the Imbroglio rating for the site in the current tab, following the UX
+team's Figma (imbroglio browser extension): the toolbar icon carries the
+site's worst level as a badge; the popup opens on an overview (the overall
+rating in plain words, counts per level, the three biggest flags), with a
+category breakdown behind it and a "what you can do" screen with one action
+per flagged category. An action gets a button only when the lookup carries
+the site's own page for it (the API's link harvest); otherwise it is text
+and a "mark done". Manifest V3; works in Chrome, Edge, Opera and other
+Chromium browsers.
 
 It is a thin client over the public read API. Nothing is analyzed in the
 browser, there is no account, and the site's name never leaves the browser:
@@ -15,13 +20,21 @@ where the request limits apply.
 
 ## Files
 
-- `manifest.json`: permissions (`activeTab` to read the current tab's address
-  when the icon is clicked, `storage` for the local API override).
-- `background.js`: the lookup.
-- `popup.html`, `popup.css`, `popup.js`: the card. Colors and rating marks
-  follow the website (`web/src/components/design.tsx`) until the UX team's
-  Figma for the extension arrives.
-- `icons/`: the logo at the sizes Chrome asks for.
+- `manifest.json`: permissions (`tabs` to know which site each tab is on, so
+  the badge can be drawn as you browse; `notifications` for the one-time
+  "warn me on Extensive sites" nudge; `activeTab` for the popup; `storage`
+  for the warn setting, which sites were nudged, and the local API
+  override). The badge lookups are the same hash-prefix lookups as the popup's,
+  cached ten minutes per site, so browsing still never sends a site's name.
+- `background.js`: the lookup and the badge. The icon is drawn in a canvas
+  (the logo, plus the worst level's shape in the corner; dimmed with no
+  badge for a site we haven't rated), so no badge icons are shipped as files.
+- `popup.html`, `popup.css`, `popup.js`: the three screens. Tier colors and
+  rating marks are the website's (`web/src/components/design.tsx`). Open
+  `popup.html?mock=ready` (or `unknown`, `not_analyzed`, `error`) in a plain
+  browser tab to see each state with sample data, no extension needed.
+- `icons/`: the logo at the sizes Chrome asks for (the store listing and the
+  extensions page; the toolbar icon is drawn).
 
 ## Loading it unpacked
 

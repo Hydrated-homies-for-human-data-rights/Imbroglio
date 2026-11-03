@@ -136,6 +136,22 @@ class Scorecard(BaseModel):
     documents: list[Literal["privacy", "terms"]]
 
 
+class SiteLink(BaseModel):
+    """The site's own page for a category's advice: its opt-out, settings or
+    request page, found on its homepage or policy (links.py). One per
+    category, the most specific kind first."""
+    category: str
+    kind: str
+    url: str
+    text: str = Field(description="The link's own words, as found on the site")
+    source: Literal["homepage", "privacy", "terms"]
+
+
+def _site_links(links: list) -> list[SiteLink]:
+    return [SiteLink(category=l.category, kind=l.kind, url=l.url, text=l.text, source=l.source)
+            for l in links]
+
+
 class Site(BaseModel):
     domain: str
     state: SiteState
@@ -147,6 +163,8 @@ class Site(BaseModel):
         None, description="For no_policy_found: when a new request will crawl the site again")
     scorecard: Scorecard | None = Field(
         None, description="Ratings and evidence; null until the documents have been analyzed")
+    links: list[SiteLink] = Field(
+        default_factory=list, description="The site's own opt-out and settings pages, one per category")
 
 
 class ApiError(BaseModel):
@@ -272,7 +290,8 @@ def build_site(conn, domain: str) -> Site:
     return Site(domain=domain, state=state, checked_at=checked_at, documents=docs,
                 missing=[t for t in ("privacy", "terms") if t not in have],
                 pending_request=pending, recheck_after=recheck,
-                scorecard=_scorecard(conn, docs) if docs else None)
+                scorecard=_scorecard(conn, docs) if docs else None,
+                links=_site_links(db.links_for_domain(conn, domain)))
 
 
 @router.get("/sites/{domain}", response_model=Site,
@@ -565,6 +584,8 @@ class LookupEntry(BaseModel):
     scores: LookupScores | None = Field(
         None, description="Ratings without the quotes, the same ones the site's scorecard shows. "
                           "Null until the site's documents have been analyzed")
+    links: list[SiteLink] = Field(
+        default_factory=list, description="The site's own opt-out and settings pages, one per category")
 
 
 def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
@@ -629,11 +650,13 @@ def lookup(prefix: str, request: Request, response: Response):
             (p + "%",),
         ).fetchall()
         scores = _lookup_scores(conn, p + "%") if rows else {}
+        links = db.links_by_hash(conn, p + "%") if rows else {}
     finally:
         conn.close()
     response.headers["Cache-Control"] = "private, max-age=300"
     return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t,
-                                                     scores=scores.get(h))
+                                                     scores=scores.get(h),
+                                                     links=_site_links(links.get(h, [])))
                                          for h, docs, t in rows])
 
 
