@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold set labeling</title>
+<!-- Served by `python -m ml.gold serve`; see ml/GOLD.md. No outside requests. -->
+<style>
+  :root {
+    --bg: #fafaf8; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e2e1dc;
+    --accent: #2f5d8a; --accent-soft: #e3ecf5; --yes: #2e7d4f; --no: #a33b2b; --mark: #fff1b8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9993; --line: #34332f;
+      --accent: #8db4dd; --accent-soft: #23303d; --yes: #6cc28f; --no: #e3806f; --mark: #4a4122;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  select, button, textarea { font: inherit; color: inherit; }
+  select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+  button { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+  .tabs button.on { background: var(--accent-soft); border-color: var(--accent); }
+  #saved { margin-left: auto; color: var(--muted); font-size: 13px; }
+  #saved.error { color: var(--no); font-weight: 600; }
+  main { display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); height: calc(100vh - 53px); }
+  #doc, #task { overflow-y: auto; padding: 12px 16px 80px; }
+  #doc { border-right: 1px solid var(--line); }
+  .ln { display: grid; grid-template-columns: 3.2em 1fr; gap: 8px; padding: 3px 6px; border-radius: 4px; }
+  .ln .n { color: var(--muted); font-size: 12px; text-align: right; padding-top: 2px; font-variant-numeric: tabular-nums; }
+  .ln.short .t { font-weight: 600; }
+  .ln.pick { cursor: pointer; }
+  .ln.pick:hover { background: var(--accent-soft); }
+  .ln.marked { background: var(--mark); }
+  .ln.current { outline: 2px solid var(--accent); background: var(--accent-soft); }
+  .muted { color: var(--muted); }
+  .q { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin-bottom: 8px; }
+  .q > .head { display: flex; gap: 8px; padding: 8px 10px; cursor: pointer; align-items: baseline; }
+  .q > .head .st { margin-left: auto; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .q.active { border-color: var(--accent); }
+  .q .body { padding: 0 12px 12px; }
+  .q .body label.opt { display: block; padding: 3px 0; }
+  .guidance { font-size: 13px; color: var(--muted); margin: 4px 0 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chips button { font-size: 12px; padding: 2px 8px; }
+  .chips button.on { border-color: var(--accent); background: var(--accent-soft); }
+  .chips button.done { color: var(--muted); }
+  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 12px 14px; margin-bottom: 10px; }
+  .card .para { font-size: 16px; margin: 8px 0 12px; }
+  .verdict { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .verdict .yes.on { background: var(--yes); border-color: var(--yes); color: var(--panel); }
+  .verdict .no.on { background: var(--no); border-color: var(--no); color: var(--panel); }
+  .checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; font-size: 13px; }
+  .bar { padding: 10px 0; display: flex; gap: 10px; align-items: center; }
+  details.guidance summary { cursor: pointer; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    #doc { max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gold set</h1>
+  <span id="who" class="muted"></span>
+  <select id="docpick" aria-label="Document"></select>
+  <span class="tabs">
+    <button data-layer="answers">1 Answers</button>
+    <button data-layer="passages">2 Passages</button>
+    <button data-layer="pool_check">3 Pool check</button>
+  </span>
+  <span id="saved"></span>
+</header>
+<main>
+  <section id="doc" aria-label="Document text"></section>
+  <section id="task" aria-label="Task"></section>
+</main>
+<script>
+const LAYERS = ["answers", "passages", "pool_check"];
+const annotator = new URLSearchParams(location.search).get("a") || "";
+let rubric, tasks, doc, label, layer = "answers";
+let activeCheck = 0;                       // layer A: open question
+let cur = { check: 0, item: 0 };           // layer B: position
+let dirty = false, saveTimer = null, lastActivity = Date.now();
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const short = id => id.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+const api = (path, opts) => fetch(path, opts).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.error)));
+
+function emptyLabel() {
+  const answers = {}, passages = {};
+  for (const c of rubric.checks) {
+    answers[c.id] = { status: null, paragraphs: [], unsure: false, note: "" };
+    passages[c.id] = {};
+  }
+  const pool_check = {};
+  for (const i of doc.pool_check) pool_check[i] = null;
+  return { version_id: doc.version_id, annotator, rubric_version: doc.rubric_version, answers, passages,
+           pool_check, finished: { answers: null, passages: null, pool_check: null },
+           seconds: { answers: 0, passages: 0, pool_check: 0 } };
+}
+
+// --- saving ------------------------------------------------------------------
+
+function changed() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(save, 500); }
+
+async function save() {
+  if (!dirty) return;
+  dirty = false;
+  const el = $("#saved");
+  el.textContent = "Saving...";
+  try {
+    await api(`/api/labels/${annotator}/${doc.version_id}`, { method: "PUT", body: JSON.stringify(label) });
+    el.className = ""; el.textContent = "Saved";
+  } catch (e) {
+    dirty = true;
+    el.className = "error"; el.textContent = "Not saved: is the server running? (" + e + ")";
+  }
+}
+
+// Seconds of active work per layer, for the effort figures. Idle for a minute stops the clock.
+for (const ev of ["keydown", "click", "scroll"]) addEventListener(ev, () => lastActivity = Date.now(), true);
+setInterval(() => {
+  if (label && !document.hidden && Date.now() - lastActivity < 60000 && !label.finished[layer]) {
+    label.seconds[layer] += 5;
+    dirty = true;
+  }
+}, 5000);
+setInterval(save, 30000);
+addEventListener("beforeunload", save);
+
+// --- document pane -----------------------------------------------------------
+
+function renderDoc() {
+  $("#doc").innerHTML = doc.lines.map(l =>
+    `<div class="ln${l.text.length < 40 ? " short" : ""}" id="L${l.idx}" data-idx="${l.idx}">` +
+    `<span class="n">${l.idx}</span><span class="t">${esc(l.text)}</span></div>`).join("");
+  $("#doc").onclick = e => {
+    const ln = e.target.closest(".ln");
+    if (!ln || layer !== "answers" || label.finished.answers) return;
+    const a = label.answers[rubric.checks[activeCheck].id], idx = +ln.dataset.idx;
+    a.paragraphs = a.paragraphs.includes(idx) ? a.paragraphs.filter(i => i !== idx)
+                                              : [...a.paragraphs, idx].sort((x, y) => x - y);
+    changed(); render();
+  };
+}
+
+function highlight(marked, current) {
+  const pick = layer === "answers" && !label.finished.answers;
+  for (const el of document.querySelectorAll("#doc .ln")) {
+    const idx = +el.dataset.idx;
+    el.classList.toggle("marked", marked.includes(idx));
+    el.classList.toggle("current", idx === current);
+    el.classList.toggle("pick", pick);
+  }
+  if (current != null) $("#L" + current)?.scrollIntoView({ block: "center" });
+}
+
+// --- layer A: answers ----------------------------------------------------------
+
+function renderAnswers() {
+  const locked = !!label.finished.answers;
+  const done = rubric.checks.filter(c => label.answers[c.id].status).length;
+  let h = `<p class="muted">${locked ? "Answers are locked (passages have been shown)." :
+    "Answer each question from the document. Open a question, then click lines on the left to mark what the answer rests on."}</p>`;
+  rubric.checks.forEach((c, i) => {
+    const a = label.answers[c.id], open = i === activeCheck;
+    h += `<div class="q${open ? " active" : ""}" data-i="${i}"><div class="head"><b>${i + 1}.</b>
+      <span>${esc(c.question)}</span><span class="st">${a.status ? esc(a.status) : "unanswered"}${a.unsure ? " ?" : ""}</span></div>`;
+    if (open) {
+      h += `<div class="body"><div class="guidance">${esc(c.category)}. ${esc(c.guidance)}</div>`;
+      for (const s of c.statuses) {
+        h += `<label class="opt"><input type="radio" name="st" value="${esc(s.name)}" ${a.status === s.name ? "checked" : ""}
+          ${locked ? "disabled" : ""}> <b>${esc(s.name)}</b> <span class="muted">${esc(s.meaning)}</span></label>`;
+      }
+      h += `<p class="muted">Lines: ${a.paragraphs.length ? a.paragraphs.join(", ") : "none marked"}</p>
+        <label><input type="checkbox" id="unsure" ${a.unsure ? "checked" : ""} ${locked ? "disabled" : ""}> Unsure</label>
+        <p><textarea id="note" rows="2" style="width:100%" placeholder="Note (optional, no copied policy text)"
+          ${locked ? "disabled" : ""}>${esc(a.note)}</textarea></p></div>`;
+    }
+    h += `</div>`;
+  });
+  h += `<div class="bar"><span class="muted">${done} of ${rubric.checks.length} answered</span>
+    ${locked ? "" : `<button class="primary" id="finish" ${done < rubric.checks.length ? "disabled" : ""}>Finish answers</button>`}</div>`;
+  $("#task").innerHTML = h;
+
+  for (const q of document.querySelectorAll(".q > .head"))
+    q.onclick = () => { activeCheck = +q.parentElement.dataset.i; render(); };
+  const a = label.answers[rubric.checks[activeCheck].id];
+  for (const r of document.querySelectorAll("input[name=st]"))
+    r.onchange = () => { a.status = r.value; changed(); render(); };
+  if ($("#unsure")) $("#unsure").onchange = e => { a.unsure = e.target.checked; changed(); render(); };
+  if ($("#note")) $("#note").oninput = e => { a.note = e.target.value; changed(); };
+  if ($("#finish")) $("#finish").onclick = () => {
+    if (!confirm("Lock your answers and go on to passages? Answers can't be changed after you see the candidates.")) return;
+    label.finished.answers = new Date().toISOString();
+    changed(); setLayer("passages");
+  };
+  highlight(a.paragraphs, null);
+}
+
+// --- layer B: passages ---------------------------------------------------------
+
+function candidates(checkId) {
+  const own = label.answers[checkId].paragraphs;   // the annotator's own layer A marks join the pool
+  return [...new Set([...doc.pools[checkId], ...own])].sort((x, y) => x - y);
+}
+
+function nextUnjudged() {
+  const n = rubric.checks.length;
+  for (let k = 0; k < n; k++) {
+    const ci = (cur.check + k) % n, id = rubric.checks[ci].id, list = candidates(id);
+    for (let j = k === 0 ? cur.item : 0; j < list.length; j++)
+      if (label.passages[id][list[j]] === undefined) return { check: ci, item: j };
+  }
+  return null;
+}
+
+function judge(v) {
+  const id = rubric.checks[cur.check].id, list = candidates(id);
+  if (!list.length) return;
+  label.passages[id][list[cur.item]] = v;
+  changed();
+  cur = nextUnjudged() || cur;
+  render();
+}
+
+function step(d) {
+  const list = candidates(rubric.checks[cur.check].id);
+  cur.item = Math.max(0, Math.min(list.length - 1, cur.item + d));
+  render();
+}
+
+function renderPassages() {
+  const c = rubric.checks[cur.check], list = candidates(c.id), j = label.passages[c.id];
+  let total = 0, judged = 0;
+  let h = `<div class="chips">`;
+  rubric.checks.forEach((q, i) => {
+    const l = candidates(q.id), d = l.filter(x => label.passages[q.id][x] !== undefined).length;
+    total += l.length; judged += d;
+    h += `<button data-i="${i}" class="${i === cur.check ? "on" : ""} ${d === l.length ? "done" : ""}">${esc(short(q.id))} ${d}/${l.length}</button>`;
+  });
+  h += `</div><div class="card"><b>${esc(c.question)}</b>
+    <details class="guidance"><summary>Guidance</summary>${esc(c.guidance)}</details>`;
+  if (!list.length) {
+    h += `<p class="muted">No candidates for this question.</p>`;
+  } else {
+    const idx = list[cur.item], v = j[idx], line = doc.lines.find(l => l.idx === idx);
+    h += `<div class="muted">Candidate ${cur.item + 1} of ${list.length}, line ${idx}</div>
+      <div class="para">${esc(line ? line.text : "")}</div>
+      <div class="verdict">Does this paragraph help answer the question?
+        <button class="yes ${v === true ? "on" : ""}" id="yes">Yes <kbd>Y</kbd></button>
+        <button class="no ${v === false ? "on" : ""}" id="no">No <kbd>N</kbd></button>
+        <button id="prev">&larr;</button><button id="next">&rarr;</button></div>`;
+  }
+  h += `</div><div class="bar"><span class="muted">${judged} of ${total} judged</span>
+    ${label.finished.passages ? "<span class='muted'>Finished</span>" :
+      `<button class="primary" id="finish" ${judged < total ? "disabled" : ""}>Finish passages</button>`}</div>`;
+  $("#task").innerHTML = h;
+
+  for (const b of document.querySelectorAll(".chips button"))
+    b.onclick = () => { cur = { check: +b.dataset.i, item: 0 }; render(); };
+  if ($("#yes")) { $("#yes").onclick = () => judge(true); $("#no").onclick = () => judge(false); }
+  if ($("#prev")) { $("#prev").onclick = () => step(-1); $("#next").onclick = () => step(1); }
+  if ($("#finish")) $("#finish").onclick = () => {
+    label.finished.passages = new Date().toISOString(); changed(); setLayer("pool_check");
+  };
+  highlight([], list.length ? list[cur.item] : null);
+}
+
+// --- layer C: pool check -------------------------------------------------------
+
+function renderPoolCheck() {
+  const idxs = doc.pool_check;
+  const done = idxs.filter(i => label.pool_check[i] !== null).length;
+  let h = `<p class="muted">${idxs.length ? "Paragraphs picked at random from those no source proposed. Tick every question each one helps answer, or None."
+    : "Every substantive paragraph in this document was already a candidate, so there is nothing to check here."}</p>`;
+  for (const i of idxs) {
+    const v = label.pool_check[i], line = doc.lines.find(l => l.idx === i);
+    h += `<div class="card" data-idx="${i}"><div class="muted">Line ${i}</div><div class="para">${esc(line ? line.text : "")}</div>
+      <div class="checks">${rubric.checks.map(c => `<label><input type="checkbox" value="${c.id}"
+        ${v && v.includes(c.id) ? "checked" : ""}> ${esc(short(c.id))}</label>`).join("")}</div>
+      <p class="verdict"><button class="none ${v && !v.length ? "on" : ""}">None of these</button>
+      <span class="muted">${v === null ? "not judged" : v.length ? v.length + " ticked" : "none"}</span></p></div>`;
+  }
+  h += `<div class="bar"><span class="muted">${done} of ${idxs.length} judged</span>
+    ${label.finished.pool_check ? "<span class='muted'>Finished</span>" :
+      `<button class="primary" id="finish" ${done < idxs.length ? "disabled" : ""}>Finish document</button>`}</div>`;
+  $("#task").innerHTML = h;
+
+  for (const card of document.querySelectorAll(".card[data-idx]")) {
+    const i = card.dataset.idx;
+    card.onmouseenter = () => highlight([], +i);
+    for (const box of card.querySelectorAll("input"))
+      box.onchange = () => {
+        label.pool_check[i] = [...card.querySelectorAll("input:checked")].map(b => b.value);
+        changed(); render();
+      };
+    $(".none", card).onclick = () => { label.pool_check[i] = []; changed(); render(); };
+  }
+  if ($("#finish")) $("#finish").onclick = () => {
+    label.finished.pool_check = new Date().toISOString(); dirty = true; render();
+    save().then(() => loadTasks(false));
+  };
+  highlight([], null);
+}
+
+// --- shell -------------------------------------------------------------------
+
+function setLayer(l) { layer = l; if (l === "passages") cur = nextUnjudged() || { check: 0, item: 0 }; render(); }
+
+function render() {
+  for (const b of document.querySelectorAll(".tabs button")) {
+    b.classList.toggle("on", b.dataset.layer === layer);
+    b.disabled = b.dataset.layer !== "answers" && !label.finished.answers;
+  }
+  ({ answers: renderAnswers, passages: renderPassages, pool_check: renderPoolCheck })[layer]();
+}
+
+addEventListener("keydown", e => {
+  if (layer !== "passages" || e.target.matches?.("textarea, input, select")) return;
+  if (e.key === "y") judge(true);
+  else if (e.key === "n") judge(false);
+  else if (e.key === "ArrowLeft") step(-1);
+  else if (e.key === "ArrowRight") step(1);
+});
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => setLayer(b.dataset.layer);
+
+async function openDoc(vid) {
+  await save();
+  doc = await api(`/api/doc/${vid}`);
+  label = await api(`/api/labels/${annotator}/${vid}`) || emptyLabel();
+  activeCheck = 0;
+  cur = { check: 0, item: 0 };
+  layer = LAYERS.find(l => !label.finished[l]) || "pool_check";
+  if (layer === "passages") cur = nextUnjudged() || cur;
+  renderDoc(); render();
+  $("#saved").textContent = "";
+}
+
+async function loadTasks(open) {
+  const state = await api(`/api/state?a=${encodeURIComponent(annotator)}`);
+  rubric = state.rubric; tasks = state.tasks;
+  const pick = $("#docpick"), keep = pick.value;
+  pick.innerHTML = tasks.map(t => {
+    const f = t.finished || {}, mark = f.pool_check ? "done" : f.answers ? "in progress" : "";
+    return `<option value="${t.version_id}">${t.order}. ${esc(t.set)}: ${esc(t.domain)} (${t.doc_type})${mark ? " - " + mark : ""}</option>`;
+  }).join("");
+  if (keep) pick.value = keep;
+  if (open) {
+    const first = tasks.find(t => !(t.finished || {}).pool_check) || tasks[0];
+    pick.value = first.version_id;
+    await openDoc(first.version_id);
+  }
+}
+
+$("#docpick").onchange = e => openDoc(+e.target.value);
+if (!["gage", "sam"].includes(annotator)) {
+  $("#task").innerHTML = `<p>Open this page as <a href="?a=gage">?a=gage</a> or <a href="?a=sam">?a=sam</a>.</p>`;
+} else {
+  $("#who").textContent = "Labeling as " + annotator;
+  loadTasks(true).catch(e => $("#task").textContent = "Couldn't load: " + e);
+}
+</script>
+</body>
+</html>

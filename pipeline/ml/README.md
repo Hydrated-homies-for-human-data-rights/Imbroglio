@@ -61,6 +61,11 @@ Split 1 is frozen, and the gold set drawn from its test part, once the threshold
 hand: `review.html` and `review.csv` in the neardup folder hold 34 pairs across the similarity
 range, to mark as template, boilerplate or different.
 
+## Gold set
+
+Human labels for testing, drawn from the frozen test split: the protocol and the tools
+(`ml.gold`: sample, pool, a local labeling page, disagreements) are in `GOLD.md`.
+
 ## Files
 
 - `paragraphs.jsonl`: `version_id`, `domain`, `doc_type`, `split`, `idx` (line number), `text`,
