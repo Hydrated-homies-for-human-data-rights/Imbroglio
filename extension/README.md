@@ -21,10 +21,12 @@ where the request limits apply.
 ## Files
 
 - `manifest.json`: permissions (`tabs` to know which site each tab is on, so
-  the badge can be drawn as you browse; `notifications` for the one-time
-  "warn me on Extensive sites" nudge; `activeTab` for the popup; `storage`
-  for the warn setting, which sites were nudged, and the local API
-  override). The badge lookups are the same hash-prefix lookups as the popup's,
+  the badge can be drawn as you browse; `notifications` for the two one-time
+  alerts, "warn me on Extensive sites" and "tell me when a site's policy
+  changes"; `activeTab` for the popup; `storage` for the two switches, the
+  per-site records behind the alerts, and the local API override). The
+  per-site records are kept under the site's sha256 hash with a date beside
+  it, never the site's name. The badge lookups are the same hash-prefix lookups as the popup's,
   cached ten minutes per site, so browsing still never sends a site's name.
 - `background.js`: the lookup and the badge. The icon is drawn in a canvas
   (the logo, plus the worst level's shape in the corner; dimmed with no

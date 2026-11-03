@@ -195,3 +195,21 @@ def test_shared_with_counts_identical_documents(conn):
     docs = client.get("/v1/sites/a-shop.example").json()["documents"]
     assert docs[0]["shared_with"] == 2
     assert client.get("/v1/sites/unique.example").json()["documents"][0]["shared_with"] == 0
+
+
+def test_lookup_carries_when_a_policy_last_changed(conn):
+    _store(conn, "moving.example", text="Version one of the policy. " * 80)
+    h = db.domain_hash("moving.example")
+    entry = next(s for s in client.get(f"/v1/lookup/{h[:5]}").json()["sites"] if s["hash"] == h)
+    assert entry["changed_at"] is None  # one version, never changed
+
+    doc_id, old_version = conn.execute(
+        """SELECT d.id, v.id FROM documents d JOIN document_versions v ON v.document_id = d.id
+           JOIN services s ON s.id = d.service_id WHERE s.domain = 'moving.example'""").fetchone()
+    _store(conn, "moving.example", text="Version two of the policy. " * 80)
+    new_version = conn.execute(
+        "SELECT id FROM document_versions WHERE document_id = %s ORDER BY id DESC LIMIT 1", (doc_id,)).fetchone()[0]
+    db.insert_change_event(conn, doc_id, old_version, new_version)
+    conn.commit()
+    entry = next(s for s in client.get(f"/v1/lookup/{h[:5]}").json()["sites"] if s["hash"] == h)
+    assert entry["changed_at"] is not None

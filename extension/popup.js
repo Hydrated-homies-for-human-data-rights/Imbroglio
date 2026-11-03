@@ -166,10 +166,24 @@ function showMessage(domain, text, button) {
   }
 }
 
+// A policy change counts as recent for this long (the website's rule too).
+const RECENT_DAYS = 30;
+
 function renderOverview(site) {
   const sorted = sortedCategories(site);
   $("domain").textContent = site.domain;
   $("checked").textContent = `Policy checked ${formatDate(site.analyzedAt)}`;
+
+  // A recent change to the policy, with the history page behind it.
+  const changed = site.changedAt ? new Date(site.changedAt) : null;
+  const recent = changed && !isNaN(changed) && Date.now() - changed.getTime() < RECENT_DAYS * 86_400_000;
+  const line = $("changed");
+  line.hidden = !recent;
+  if (recent) {
+    const a = el("a", "", "see what changed");
+    linkTo(a, `${reportUrl(site.domain)}/history`);
+    line.replaceChildren(`Policy changed ${formatDate(site.changedAt)} · `, a);
+  }
 
   // The card: how many categories sit at the overall rating, and what it means.
   const head = site.headline;
@@ -324,12 +338,16 @@ function wireNavigation() {
   linkTo($("site-link"), WEBSITE);
 }
 
+// The two switches in the footer. Both are on until switched off; the
+// background script reads the same keys before it notifies.
 async function wireWarnToggle() {
-  const warn = $("warn");
   if (typeof chrome === "undefined" || !chrome.storage) return;
-  const got = await chrome.storage.local.get("warnExtensive");
-  warn.checked = got.warnExtensive !== false; // on until switched off
-  warn.addEventListener("change", () => chrome.storage.local.set({ warnExtensive: warn.checked }));
+  const got = await chrome.storage.local.get(["warnExtensive", "policyChanges"]);
+  for (const [id, key] of [["warn", "warnExtensive"], ["changes", "policyChanges"]]) {
+    const box = $(id);
+    box.checked = got[key] !== false;
+    box.addEventListener("change", () => chrome.storage.local.set({ [key]: box.checked }));
+  }
 }
 
 function setFavicon(url) {
@@ -355,6 +373,7 @@ function mockSite(kind) {
     domain: "example-shop.com",
     headline: "EXTENSIVE",
     analyzedAt: "2026-11-02T19:29:33Z",
+    changedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
     rubric: "v0.2",
     documents: ["privacy", "terms"],
     links: [{ category: "ai_training", url: "https://example-shop.com/settings/privacy" }],
