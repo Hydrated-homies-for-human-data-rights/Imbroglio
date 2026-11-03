@@ -27,9 +27,10 @@ from .locate import site_of
 # patterns its URL path (and fragment).
 KINDS: list[tuple[str, str, re.Pattern, re.Pattern | None]] = [
     ("ai_training", "ai_training",
-     re.compile(r"\bai\b[^.]{0,30}\b(train|training|model)|\b(train|training)\b[^.]{0,20}\bai\b|"
-                r"model training|generative ai|machine learning", re.I),
-     re.compile(r"ai[-_]?(training|opt|settings)|training[-_]?opt", re.I)),
+     re.compile(r"\bai\b[^.]{0,30}\b(training|train|opt[- ]?out|settings?|preferences?|controls?|data use)|"
+                r"\b(train|training)\b[^.]{0,20}\b(ai|models?)\b|model training|"
+                r"(generative ai|machine learning)[^.]{0,20}\b(opt[- ]?out|settings?|preferences?|controls?)", re.I),
+     re.compile(r"ai[-_]?(training|opt|settings|data)|training[-_]?opt", re.I)),
     ("privacy_choices", "selling_sharing",
      re.compile(r"do not (sell|share)|don.?t sell|your privacy choices|privacy choices|"
                 r"opt[- ]?out of (the )?(sale|sharing)|limit the use of my|sale of (my |your )?personal", re.I),
@@ -129,7 +130,7 @@ _IN_PLACE_KINDS = {"privacy_choices", "ad_preferences", "cookie_settings"}
 # Documents about a topic, not pages for doing something: a CCPA addendum
 # for business customers, a supplemental privacy statement, a blog post.
 _NOT_A_PAGE = re.compile(r"addendum|agreement|\bdpa\b|supplemental|statement|whitepaper|faq|"
-                         r"/(blog|news|press|docs?|help/articles?)/", re.I)
+                         r"/(blog|news|press|docs?|help/articles?|learn|courses?|tutorials?|guides?)/", re.I)
 # A control's label is short and imperative; a heading asks or numbers itself
 # ("What are your cookie choices and controls", "11. Privacy Request Metrics").
 _CONTROL_TEXT = re.compile(r"^(?!(what|how|why|when|where|\d))[^.?]{1,32}$", re.I)
