@@ -31,22 +31,22 @@ const HEADLINE_TEXT = {
 };
 
 // What you can do, per rubric category, shown for the categories flagged on
-// the site. The button opens the site's own page for it and only appears
-// when the lookup carries that link (the API's link harvest); `verb` is the
-// button's text, and "Request" marks actions you ask the company for rather
-// than switch off yourself. `check` is the rubric check the action answers.
+// the site: what is available to you, not a to-do list. `how` links to the
+// steps on imbroglio.io/learn (the check the advice hangs on). A button to
+// the site's own page appears only when the lookup carries that link (the
+// API's link harvest); `verb` is its text.
 const ACTIONS = {
-  ai_training: { title: "Opt out of AI training", why: "Stops your content being used to train their models.", verb: "Open setting", check: "trains_ai_on_user_data" },
-  selling_sharing: { title: "Do not sell or share", why: "Turns off sharing with ad partners.", verb: "Opt out", check: "sells_personal_data" },
-  retention: { title: "Delete my data", why: "Sends a deletion request.", verb: "Request", check: "deletion_on_request" },
-  user_rights: { title: "Get a copy of my data", why: "Available in some states only.", verb: "Request", check: "access_and_export" },
-  collection: { title: "Limit what you share", why: "Skip optional fields and trim the app's permissions.", verb: "See how", check: "collects_sensitive_data" },
-  security: { title: "Lock down your account", why: "A unique password and two-step sign-in.", verb: "See how", check: "security_measures" },
-  government: { title: "Know when they hand over data", why: "Whether the site tells you about government requests.", verb: "See how", check: "notifies_users_of_requests" },
+  ai_training: { title: "Opt out of AI training", why: "You can stop your content being used to train their models.", verb: "Open setting", check: "trains_ai_on_user_data" },
+  selling_sharing: { title: "Do not sell or share", why: "You can tell them not to sell or share your data with ad partners.", verb: "Opt out", check: "sells_personal_data" },
+  retention: { title: "Delete your data", why: "You can ask them to delete what they hold about you.", verb: "Request", check: "deletion_on_request" },
+  user_rights: { title: "Get a copy of your data", why: "You can ask for a copy of what they hold, in some states.", verb: "Request", check: "access_and_export" },
+  collection: { title: "Limit what you share", why: "Optional fields can stay empty, and an app's permissions can be trimmed.", verb: "Open setting", check: "collects_sensitive_data" },
+  security: { title: "Lock down your account", why: "A unique password and two-step sign-in limit what a breach exposes.", verb: "Open setting", check: "security_measures" },
+  government: { title: "Government requests", why: "Whether they tell you when your data is requested is in the policy.", verb: "Read it", check: "notifies_users_of_requests" },
 };
 
 const $ = (id) => document.getElementById(id);
-const state = { site: null, domain: "", done: new Set(), open: null };
+const state = { site: null, domain: "", open: null };
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -272,20 +272,6 @@ function renderBreakdown(site) {
 
 // --- what you can do -------------------------------------------------------------
 
-const doneKey = (domain) => `done:${domain}`;
-
-async function loadDone(domain) {
-  if (typeof chrome === "undefined" || !chrome.storage) return new Set();
-  const got = await chrome.storage.local.get(doneKey(domain));
-  return new Set(got[doneKey(domain)] || []);
-}
-
-function saveDone(domain, done) {
-  if (typeof chrome !== "undefined" && chrome.storage) {
-    chrome.storage.local.set({ [doneKey(domain)]: [...done] });
-  }
-}
-
 // The site's own page for an action, when the lookup carries one for the
 // category (the API's link harvest). Without one there is no button: we
 // don't send people to a page we haven't found.
@@ -301,28 +287,20 @@ function renderActions(site) {
   list.replaceChildren(
     ...cards.map((c) => {
       const a = ACTIONS[c.key];
-      const done = state.done.has(c.key);
-      const li = el("li", `card${done ? " is-done" : ""}`);
+      const li = el("li", "card");
       const text = el("div", "card-text");
-      text.append(el("p", `eyebrow t-${tierClass(c.tier)}`, c.name), el("h3", "", a.title), el("p", "why", a.why));
-      const buttons = el("div", "card-buttons");
+      const how = el("a", "how", "How, on imbroglio.io");
+      linkTo(how, `${WEBSITE}/learn#${a.check}`);
+      text.append(el("p", `eyebrow t-${tierClass(c.tier)}`, c.name), el("h3", "", a.title), el("p", "why", a.why), how);
+      li.append(text);
       const url = ownLink(site, c.key);
       if (url) {
+        const buttons = el("div", "card-buttons");
         const go = el("a", "button primary small", a.verb);
         linkTo(go, url);
         buttons.append(go);
+        li.append(buttons);
       }
-      const toggle = el("button", `button small ${done ? "done" : "quiet"}`, done ? "✓ Done" : "Mark done");
-      toggle.type = "button";
-      toggle.setAttribute("aria-pressed", String(done));
-      toggle.onclick = () => {
-        if (done) state.done.delete(c.key);
-        else state.done.add(c.key);
-        saveDone(site.domain, state.done);
-        renderActions(site);
-      };
-      buttons.append(toggle);
-      li.append(text, buttons);
       return li;
     }),
   );
@@ -331,8 +309,6 @@ function renderActions(site) {
   if (!cards.length) {
     list.after(el("p", "none", "Nothing is flagged on this site, so there is nothing to opt out of here."));
   }
-  const n = cards.filter((c) => state.done.has(c.key)).length;
-  $("done-count").textContent = `${n} of ${cards.length} done`;
 }
 
 // --- wiring ----------------------------------------------------------------------
@@ -363,7 +339,6 @@ function setFavicon(url) {
 async function render(site, favIconUrl) {
   state.site = site;
   state.domain = site.domain;
-  state.done = await loadDone(site.domain);
   setFavicon(favIconUrl);
   renderOverview(site);
   renderBreakdown(site);

@@ -205,7 +205,43 @@ function iconFor(headline) {
     return icons.get(key);
 }
 
-async function setBadge(tabId, url) {
+// --- the Extensive nudge ---------------------------------------------------------
+//
+// The popup's "Warn me on Extensive sites" switch. The first time a tab
+// finishes loading a site rated Extensive or Severe, one system notification
+// says so and names the category behind it; clicking it opens the report.
+// Each site is nudged once, remembered in storage, and the switch is on
+// until turned off.
+
+const NUDGE_TIERS = new Set(["EXTENSIVE", "SEVERE"]);
+const nudgeKey = (domain) => `nudged:${domain}`;
+
+async function maybeNudge(data) {
+    if (!NUDGE_TIERS.has(data.headline)) return;
+    const got = await chrome.storage.local.get(["warnExtensive", nudgeKey(data.domain)]);
+    if (got.warnExtensive === false || got[nudgeKey(data.domain)]) return;
+    await chrome.storage.local.set({ [nudgeKey(data.domain)]: Date.now() });
+    const tier = data.headline.charAt(0) + data.headline.slice(1).toLowerCase();
+    const behind = data.categories.filter((c) => c.tier === data.headline).map((c) => c.name);
+    const because = behind.length ? ` for ${behind.join(" and ")}` : "";
+    chrome.notifications.create(`imbroglio:${data.domain}`, {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: `${data.domain} is rated ${tier}`,
+        message: `Imbroglio rated this site ${tier}${because}. Click to see the quotes behind it.`,
+        priority: 0,
+    });
+}
+
+chrome.notifications.onClicked.addListener((id) => {
+    if (id.startsWith("imbroglio:")) {
+        const domain = id.slice("imbroglio:".length);
+        chrome.tabs.create({ url: `https://imbroglio.io/site/${encodeURIComponent(domain)}` });
+        chrome.notifications.clear(id);
+    }
+});
+
+async function setBadge(tabId, url, loaded = false) {
     let headline = null;
     let title = "Imbroglio: this site's privacy rating";
     try {
@@ -215,6 +251,7 @@ async function setBadge(tabId, url) {
             if (data.status === "ready") {
                 headline = data.headline;
                 title = `Imbroglio: ${data.domain} is rated ${headline.toLowerCase().replace("_", " ")}`;
+                if (loaded) maybeNudge(data).catch((err) => console.warn("imbroglio BG: nudge failed", err));
             } else if (data.status === "not_analyzed") {
                 title = `Imbroglio: ${data.domain} is stored but not rated yet`;
             } else if (data.status === "unknown") {
@@ -242,5 +279,5 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
-    if (change.url || change.status === "complete") setBadge(tabId, tab.url);
+    if (change.url || change.status === "complete") setBadge(tabId, tab.url, change.status === "complete");
 });
