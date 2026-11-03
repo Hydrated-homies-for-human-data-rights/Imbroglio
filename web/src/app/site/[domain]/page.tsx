@@ -2,6 +2,7 @@ import { Suspense } from "react"
 import Header from "@/components/Header"
 import Report from "@/components/Report"
 import RequestForm from "@/components/RequestForm"
+import RequestProgress from "@/components/RequestProgress"
 import { ApiError, getSite } from "@/lib/api"
 import { shortDate } from "@/lib/format"
 
@@ -23,13 +24,16 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
   if (site.scorecard) return <Report site={site} />
 
   if (site.state === "queued" || site.state === "analyzing") {
-    const ahead = site.pending_request?.queue_ahead ?? 0
+    // The progress box polls the request and refreshes this page when the
+    // report is ready, so the reader never has to reload by hand.
     return (
       <Plain>
-        <p>
-          {site.domain} is being analyzed{site.state === "queued" && ahead > 0 ? ` (${ahead} ahead in the queue)` : ""}.
-          Most sites take under a minute. Reload this page to check.
-        </p>
+        <p>{site.domain} is being analyzed.</p>
+        {site.pending_request ? (
+          <RequestProgress id={site.pending_request.id} domain={site.domain} refreshOnDone />
+        ) : (
+          <p className="mt-2">Most sites take one to three minutes. Reload this page to check.</p>
+        )}
       </Plain>
     )
   }
