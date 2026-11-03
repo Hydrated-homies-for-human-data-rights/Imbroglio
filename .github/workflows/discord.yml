@@ -1,7 +1,7 @@
 name: Discord
 
 # The team's Discord bot, the same one the Notes repo runs its deadline board
-# with, posting to #dev:
+# with, posting to #dev-feed:
 #   * every push: who pushed what, to which branch, with the commit messages
 #   * a pull request opened (or marked ready): "@everyone ... needs a review",
 #     with a 👀 reaction already on it so whoever takes the review reacts
@@ -48,5 +48,8 @@ jobs:
       - run: node .github/scripts/discord.mjs
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          # Not a secret: a channel id grants no access on its own. #dev.
+          # Not a secret: a channel id grants no access on its own. This should
+          # be #dev-feed; the id here is the one the Notes deadline board posts
+          # to. To check: Discord > Settings > Advanced > Developer Mode, then
+          # right-click the channel > Copy Channel ID.
           DISCORD_CHANNEL_ID: '1542560640986648687'
