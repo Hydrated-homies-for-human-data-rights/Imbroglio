@@ -156,11 +156,11 @@ def _harvest_links_cmd(args) -> int:
         homepage = f"https://{domain}"
         html, status = fetch_static(homepage, session)
         if html and is_challenge(html):
-            html = None
+            html, status = None, "bot challenge"
         if not html and args.render:
             html, status = fetch_rendered(homepage)
             if html and is_challenge(html):
-                html = None
+                html, status = None, "bot challenge"
         if html:
             pages += 1
             links += harvest(html, homepage, domain, "homepage")
