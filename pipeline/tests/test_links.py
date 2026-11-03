@@ -73,6 +73,10 @@ def test_section_anchors_are_places_to_read_not_pages_of_the_sites_own():
               <a href="/company/ccpa-addendum/">CCPA Addendum</a>
               <a href="/legal/supplemental-privacy-statement-ai">AI training statement</a>
               <a href="/en/learn/courses/genai-in-practice">Generative AI in Practice</a>
+              <a href="/handbook/ai-control-plane/">AI control plane</a>
+              <a href="/products/ai-gateway/">AI Gateway</a>
+              <a href="/index/securing-model-training/">Securing our frontier model training environment</a>
+              <a href="/solutions/autonomous-vehicles/ai-training/">Autonomous vehicles</a>
               <a href="/ai-and-machine-learning">AI and machine learning</a>"""
     links = harvest(page, "https://x.com/privacy", "x.com", "privacy")
     assert [(l.kind, l.url) for l in links] == [

@@ -26,11 +26,14 @@ from .locate import site_of
 # the first kind listed wins. Text patterns match the link's words, path
 # patterns its URL path (and fragment).
 KINDS: list[tuple[str, str, re.Pattern, re.Pattern | None]] = [
+    # AI is a product topic on half the web ("AI Gateway", "AI control plane",
+    # a course on AI), so an AI-training link needs both: the subject and a
+    # word that says it is a choice ("opt out of AI training", "AI data
+    # preferences"), or a path that says so outright.
     ("ai_training", "ai_training",
-     re.compile(r"\bai\b[^.]{0,30}\b(training|train|opt[- ]?out|settings?|preferences?|controls?|data use)|"
-                r"\b(train|training)\b[^.]{0,20}\b(ai|models?)\b|model training|"
-                r"(generative ai|machine learning)[^.]{0,20}\b(opt[- ]?out|settings?|preferences?|controls?)", re.I),
-     re.compile(r"ai[-_]?(training|opt|settings|data)|training[-_]?opt", re.I)),
+     re.compile(r"(?=.*\b(ai|artificial intelligence|model training|training data|machine learning|llm)\b)"
+                r"(?=.*\b(opt[- ]?out|turn off|disable|do not use|don.?t use|manage|preferences?|settings?|choices?|consent)\b)", re.I),
+     re.compile(r"ai[-_]?(training[-_]?)?(opt[-_]?out|settings|preferences|choices)|training[-_]?opt[-_]?out", re.I)),
     ("privacy_choices", "selling_sharing",
      re.compile(r"do not (sell|share)|don.?t sell|your privacy choices|privacy choices|"
                 r"opt[- ]?out of (the )?(sale|sharing)|limit the use of my|sale of (my |your )?personal", re.I),
