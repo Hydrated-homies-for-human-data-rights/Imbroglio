@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { Evidence, Site, WhatYouCanDo } from "@/lib/api"
 import { docName, shortDate } from "@/lib/format"
 import { disputeUrl } from "@/lib/links"
@@ -25,11 +25,25 @@ export default function Report({ site }: { site: Site }) {
   const current = card.categories.find((c) => c.name === selected)
   const severe = card.headline === "SEVERE"
 
+  // A link straight to a category (the extension's "read the quotes on the
+  // full report" sends #<category key>) opens that category.
+  useEffect(() => {
+    const key = window.location.hash.slice(1)
+    const target = key && card.categories.find((c) => c.key === key)
+    if (target) {
+      setSelected(target.name)
+      setExpanded(true)
+      document.getElementById(key)?.scrollIntoView({ block: "center" })
+    }
+  }, [card.categories])
+
   // advice for the selected category, once per topic
   const advice = new Map<string, WhatYouCanDo>()
   for (const f of current?.findings ?? []) {
     if (f.what_you_can_do) advice.set(f.what_you_can_do.learn_anchor, f.what_you_can_do)
   }
+  // the site's own page for this category, when one was found on its site
+  const ownPage = current ? (site.links ?? []).find((l) => l.category === current.key) : undefined
 
   return (
     <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
@@ -129,6 +143,7 @@ export default function Report({ site }: { site: Site }) {
             return (
               <button
                 key={category.key}
+                id={category.key}
                 onClick={() => {
                   setSelected(category.name)
                   setExpanded(true)
@@ -184,6 +199,21 @@ export default function Report({ site }: { site: Site }) {
                 . The documents don’t address it.
               </p>
             </div>
+          )}
+
+          {/* The site's own page for this, found on its homepage or policy.
+              Not in the design yet: plain until the UX team designs it. */}
+          {ownPage && (
+            <p className="mt-5 rounded-xl border border-[#cfe0d3] bg-[#f1f8f3] px-5 py-4 text-sm text-[#2f5a3d]">
+              On {site.domain}:{" "}
+              <a className="font-semibold underline" href={ownPage.url} target="_blank" rel="noopener noreferrer">
+                {ownPage.text}
+              </a>
+              <span className="text-[#5f7a66]">
+                {" "}
+                (its own page, linked from its {ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})
+              </span>
+            </p>
           )}
 
           {/* Not in the design yet: plain until the UX team designs it. */}
