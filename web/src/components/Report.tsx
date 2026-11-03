@@ -26,14 +26,24 @@ export default function Report({ site }: { site: Site }) {
   const severe = card.headline === "SEVERE"
 
   // A link straight to a category (the extension's "read the quotes on the
-  // full report" sends #<category key>) opens that category.
+  // full report" sends #<category key>) opens that category: on arrival,
+  // and again if the hash changes while the page is open. The address bar
+  // is the external system here, so the state is set from its callbacks.
   useEffect(() => {
-    const key = window.location.hash.slice(1)
-    const target = key && card.categories.find((c) => c.key === key)
-    if (target) {
-      setSelected(target.name)
-      setExpanded(true)
-      document.getElementById(key)?.scrollIntoView({ block: "center" })
+    const open = () => {
+      const key = window.location.hash.slice(1)
+      const target = key && card.categories.find((c) => c.key === key)
+      if (target) {
+        setSelected(target.name)
+        setExpanded(true)
+        document.getElementById(key)?.scrollIntoView({ block: "center" })
+      }
+    }
+    const soon = setTimeout(open, 0)
+    window.addEventListener("hashchange", open)
+    return () => {
+      clearTimeout(soon)
+      window.removeEventListener("hashchange", open)
     }
   }, [card.categories])
 
