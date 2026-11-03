@@ -108,6 +108,23 @@ export type RequestAccepted = {
   created: boolean
 }
 
+// One analysis request as the worker moves it along (GET /v1/requests/{id}).
+// `progress` is the worker's own log lines, newest last; `result` is filled
+// in when it is done.
+export type AnalysisRequest = {
+  id: number
+  domain: string
+  status: "queued" | "running" | "done" | "failed"
+  stage: string | null
+  progress: string[]
+  result: { documents?: { doc_type: DocType; found: boolean; status: string; analysis: string | null }[] } | null
+  error: string | null
+  queue_ahead: number
+  requested_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -141,6 +158,7 @@ export const getSite = (domain: string) => get<Site>(`/v1/sites/${encodeURICompo
 export const search = (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=25`)
 export const getLearn = () => get<Learn>("/v1/learn")
 export const getRubric = () => get<RubricInfo>("/v1/rubric")
+export const getRequest = (id: number) => get<AnalysisRequest>(`/v1/requests/${id}`)
 // Passed through untouched to the browser extension (see app/api/v1/lookup).
 // Like requestAnalysis, it passes on the visitor's address so the API's
 // per-visitor lookup limit applies to them, not to this server.

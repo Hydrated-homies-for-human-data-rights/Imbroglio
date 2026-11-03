@@ -5,7 +5,7 @@ import { ApiError, REPORT_KINDS, requestAnalysis, submitReport as postReport, ty
 
 export type RequestState =
   | { kind: "idle" }
-  | { kind: "accepted"; domain: string; status: string }
+  | { kind: "accepted"; domain: string; status: string; requestId: number | null }
   | { kind: "error"; message: string }
 
 export async function submitRequest(_prev: RequestState, form: FormData): Promise<RequestState> {
@@ -15,7 +15,7 @@ export async function submitRequest(_prev: RequestState, form: FormData): Promis
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip")
   try {
     const r = await requestAnalysis(raw, ip ?? null)
-    return { kind: "accepted", domain: r.domain, status: r.status }
+    return { kind: "accepted", domain: r.domain, status: r.status, requestId: r.request_id }
   } catch (e) {
     if (e instanceof ApiError && e.status === 429) {
       return { kind: "error", message: "Too many requests right now. Try again later." }

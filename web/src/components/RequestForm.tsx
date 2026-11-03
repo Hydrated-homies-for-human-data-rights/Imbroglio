@@ -3,10 +3,12 @@
 import Link from "next/link"
 import { useActionState } from "react"
 import { submitRequest, type RequestState } from "@/app/actions"
+import RequestProgress from "./RequestProgress"
 
 // "Request analysis" form from the design's search results page. The success
 // box is the design's; the other outcomes (already analyzed, errors) aren't in
-// the design yet and are plain text until the UX team designs them.
+// the design yet and are plain text until the UX team designs them. Once a
+// request is queued, the box is followed by its live progress.
 export default function RequestForm({ initial = "" }: { initial?: string }) {
   const [state, action, pending] = useActionState<RequestState, FormData>(submitRequest, { kind: "idle" })
 
@@ -17,11 +19,22 @@ export default function RequestForm({ initial = "" }: { initial?: string }) {
       </p>
     )
   }
+  if (state.kind === "accepted" && state.status === "no_policy_found") {
+    return (
+      <p className="mt-4 text-sm">
+        We looked at {state.domain} recently and couldn’t find a privacy policy or terms.{" "}
+        <Link className="underline" href={`/site/${state.domain}`}>See what we tried</Link>.
+      </p>
+    )
+  }
   if (state.kind === "accepted") {
     return (
-      <div className="mt-4 rounded-lg border border-[#b9d8c4] bg-[#f1f8f3] px-4 py-3 text-sm font-medium text-[#35694a]">
-        Request received. We’ll add it to the analysis queue.
-      </div>
+      <>
+        <div className="mt-4 rounded-lg border border-[#b9d8c4] bg-[#f1f8f3] px-4 py-3 text-sm font-medium text-[#35694a]">
+          Request received. We’ll add it to the analysis queue.
+        </div>
+        {state.requestId !== null && <RequestProgress id={state.requestId} domain={state.domain} />}
+      </>
     )
   }
   return (
