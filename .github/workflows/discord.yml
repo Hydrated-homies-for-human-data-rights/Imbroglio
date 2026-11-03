@@ -1,0 +1,49 @@
+name: Discord
+
+# The team's Discord bot, the same one the Notes repo runs its deadline board
+# with, posting to #dev:
+#   * every push: who pushed what, to which branch, with the commit messages
+#   * a pull request opened (or marked ready): "@everyone ... needs a review",
+#     with a 👀 reaction already on it so whoever takes the review reacts
+#     and the others see it is taken
+#   * a review submitted: approved or changes requested, with no ping
+#
+# Needs two things in this repo's Actions settings: the DISCORD_BOT_TOKEN
+# secret (the bot's token, the same value as in the Notes repo), and the
+# channel id below. A fork's pull request gets no secrets, so a stranger's
+# PR posts nothing; the team's own PRs do.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    types: [opened, ready_for_review, reopened]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# One post at a time per repo, in order, so a push and its PR don't race.
+concurrency:
+  group: discord
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    # Drafts wait until they are marked ready.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: node .github/scripts/discord.mjs
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          # Not a secret: a channel id grants no access on its own. #dev.
+          DISCORD_CHANNEL_ID: '1542560640986648687'
