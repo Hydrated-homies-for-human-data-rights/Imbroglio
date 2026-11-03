@@ -362,3 +362,48 @@ def offsite_documents(conn: psycopg.Connection) -> list[tuple]:
     return [(doc_id, domain, doc_type, url, analyzed)
             for doc_id, domain, doc_type, url, text, analyzed in rows
             if site_of(urlparse(url).hostname or "") != site_of(domain) and not names_site(domain, text)]
+
+
+# --- the site's own opt-out pages (links.py) -------------------------------------
+
+def domain_hash(domain: str) -> str:
+    """The services.domain_hash value for a domain: sha256 of the cleaned name."""
+    import hashlib
+
+    return hashlib.sha256(domain.encode()).hexdigest()
+
+
+def replace_links(conn: psycopg.Connection, service_id: int, links: list) -> None:
+    """Store a harvest as the site's links, replacing the last one. An empty
+    harvest keeps what is stored: one bad fetch shouldn't erase a site's
+    pages. Commits."""
+    if not links:
+        return
+    conn.execute("DELETE FROM site_links WHERE service_id = %s", (service_id,))
+    with conn.cursor() as cur:
+        cur.executemany(
+            """INSERT INTO site_links (service_id, kind, category, url, text, source)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               ON CONFLICT (service_id, url) DO NOTHING""",
+            [(service_id, l.kind, l.category, l.url, l.text, l.source) for l in links])
+    conn.commit()
+
+
+def links_by_hash(conn: psycopg.Connection, hash_like: str) -> dict[str, list]:
+    """domain_hash -> the best link per category (links.best) for every site
+    whose hash matches the pattern."""
+    from .links import Link, best
+
+    rows = conn.execute(
+        """SELECT s.domain_hash, l.kind, l.category, l.url, l.text, l.source
+           FROM site_links l JOIN services s ON s.id = l.service_id
+           WHERE s.domain_hash LIKE %s""", (hash_like,)).fetchall()
+    grouped: dict[str, list] = {}
+    for h, *rest in rows:
+        grouped.setdefault(h, []).append(Link(*rest))
+    return {h: best(links) for h, links in grouped.items()}
+
+
+def links_for_domain(conn: psycopg.Connection, domain: str) -> list:
+    """The best link per category for one site."""
+    return links_by_hash(conn, domain_hash(domain)).get(domain_hash(domain), [])
