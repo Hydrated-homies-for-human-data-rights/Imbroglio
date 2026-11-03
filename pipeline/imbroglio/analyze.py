@@ -77,6 +77,15 @@ def analyze(domain: str, use_playwright: bool = True,
 
             outcomes.append(store_text(conn, service_id, doc_type, loc.url, loc.discovered_via,
                                        loc.fetch_method, text))
+
+        # The site's own opt-out pages, read off the same fetches (links.py).
+        # Stored whenever at least one page was read, even if no document was
+        # found: a homepage with a "Your Privacy Choices" link is still worth
+        # knowing. An empty harvest keeps the last one.
+        first = next(iter(located.values()), None)
+        if conn is not None and first is not None and first.pages_seen and first.links:
+            db.replace_links(conn, service_id, first.links)
+            log.info("site links: %d stored", len(first.links))
     finally:
         if conn is not None:
             conn.close()

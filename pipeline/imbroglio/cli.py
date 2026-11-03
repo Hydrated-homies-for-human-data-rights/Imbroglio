@@ -120,6 +120,74 @@ def _report_line(row) -> str:
     return line + (f"  <{contact}>" if contact else "")
 
 
+def _harvest_links_cmd(args) -> int:
+    """Backfill the site's own opt-out links for sites stored before the
+    harvest existed: the homepage and each stored document URL are fetched
+    again (static, no model calls), read for links, and the result replaces
+    the site's stored links. A site whose pages all fail is left as it was."""
+    import requests
+
+    from . import db
+    from .fetch import fetch_rendered, fetch_static
+    from .links import best, dedupe, harvest
+    from .locate import is_challenge
+
+    conn = db.connect()
+    db.init_schema(conn)
+    if args.domains:
+        wanted = [d.strip().lower() for d in args.domains.split(",") if d.strip()]
+        rows = conn.execute(
+            """SELECT s.id, s.domain, array_agg(d.doc_type), array_agg(d.url)
+               FROM services s LEFT JOIN documents d ON d.service_id = s.id
+               WHERE s.domain = ANY(%s) GROUP BY s.id ORDER BY s.id""", (wanted,)).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT s.id, s.domain, array_agg(d.doc_type), array_agg(d.url)
+               FROM services s JOIN documents d ON d.service_id = s.id
+               GROUP BY s.id ORDER BY s.id""").fetchall()
+    if args.limit:
+        rows = rows[:args.limit]
+
+    session = requests.Session()
+    found = skipped = 0
+    for service_id, domain, doc_types, urls in rows:
+        pages = 0
+        links = []
+        homepage = f"https://{domain}"
+        html, status = fetch_static(homepage, session)
+        if html and is_challenge(html):
+            html = None
+        if not html and args.render:
+            html, status = fetch_rendered(homepage)
+            if html and is_challenge(html):
+                html = None
+        if html:
+            pages += 1
+            links += harvest(html, homepage, domain, "homepage")
+        for doc_type, url in zip(doc_types or [], urls or []):
+            if not url:
+                continue
+            page, _ = fetch_static(url, session)
+            if page and not is_challenge(page):
+                pages += 1
+                links += harvest(page, url, domain, doc_type)
+        links = dedupe(links)
+        chosen = best(links)
+        if not pages:
+            skipped += 1
+            print(f"{domain:<32} no page could be read ({status}); kept as is")
+            continue
+        found += 1 if chosen else 0
+        summary = ", ".join(f"{l.category}: {l.url}" for l in chosen) or "no links"
+        print(f"{domain:<32} {len(links):>2} link(s) on {pages} page(s)  {summary}")
+        if links and not args.dry_run:
+            db.replace_links(conn, service_id, links)
+    conn.close()
+    print(f"\n{len(rows)} site(s): {found} with links, {skipped} unreadable"
+          + (" (dry run, nothing stored)" if args.dry_run else ""))
+    return 0
+
+
 def _reports_cmd(args) -> int:
     from . import db
 
@@ -237,10 +305,20 @@ def main() -> int:
                     help="set a report's status: " + "|".join(REPORT_STATUSES))
     rp.add_argument("--note", help="reviewer's note, stored with --mark")
 
+    hl = sub.add_parser("harvest-links",
+                        help="read stored sites' homepages and policy pages for their own opt-out links")
+    hl.add_argument("--domains", help="comma-separated domains (default: every site with a document)")
+    hl.add_argument("--limit", type=int, default=None, help="stop after this many sites")
+    hl.add_argument("--render", action="store_true",
+                    help="also render a homepage in the headless browser when the static page has no links")
+    hl.add_argument("--dry-run", action="store_true", help="print what would be stored, store nothing")
+
     args = ap.parse_args()
 
     if args.command == "reports":
         return _reports_cmd(args)
+    if args.command == "harvest-links":
+        return _harvest_links_cmd(args)
 
     if args.command == "store-document":
         import sys

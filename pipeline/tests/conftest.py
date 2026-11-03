@@ -32,7 +32,7 @@ def conn(test_dsn, monkeypatch):
     db.migrate()
     c = db.connect()
     c.execute("""TRUNCATE analysis_requests, crawl_attempts, change_events, document_versions,
-                 documents, services, reports RESTART IDENTITY CASCADE""")
+                 documents, services, reports, site_links RESTART IDENTITY CASCADE""")
     c.commit()
     yield c
     c.close()
