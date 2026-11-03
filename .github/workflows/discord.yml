@@ -33,8 +33,11 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
-    # Drafts wait until they are marked ready.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # Skipped, not failed, until the secret is set; drafts wait until they are
+    # marked ready.
+    if: >-
+      secrets.DISCORD_BOT_TOKEN != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - uses: actions/checkout@v5
         with:
