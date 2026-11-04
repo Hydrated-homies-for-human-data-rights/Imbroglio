@@ -138,13 +138,15 @@ class Scorecard(BaseModel):
 
 class SiteLink(BaseModel):
     """The site's own page for a category's advice: its opt-out, settings or
-    request page, found on its homepage or policy (links.py). One per
-    category, the most specific kind first."""
+    request page, found on its homepage or policy (links.py), or listed by
+    hand for the sites whose settings pages nothing links to (source
+    "known"). One per category, a known page first, then the most specific
+    kind."""
     category: str
     kind: str
     url: str
-    text: str = Field(description="The link's own words, as found on the site")
-    source: Literal["homepage", "privacy", "terms"]
+    text: str = Field(description="The link's own words as found on the site, or our label for a known page")
+    source: Literal["homepage", "privacy", "terms", "known"]
 
 
 def _site_links(links: list) -> list[SiteLink]:
@@ -586,6 +588,8 @@ class LookupEntry(BaseModel):
                           "Null until the site's documents have been analyzed")
     links: list[SiteLink] = Field(
         default_factory=list, description="The site's own opt-out and settings pages, one per category")
+    changed_at: datetime | None = Field(
+        None, description="When a change to one of the site's documents was last detected; null if never")
 
 
 def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
@@ -640,7 +644,8 @@ def lookup(prefix: str, request: Request, response: Response):
     try:
         rows = conn.execute(
             """SELECT s.domain_hash, array_agg(DISTINCT d.doc_type ORDER BY d.doc_type),
-                      max(v.fetched_at)
+                      max(v.fetched_at),
+                      max((SELECT max(c.detected_at) FROM change_events c WHERE c.document_id = d.id))
                FROM services s
                JOIN documents d ON d.service_id = s.id
                JOIN document_versions v ON v.document_id = d.id
@@ -656,8 +661,9 @@ def lookup(prefix: str, request: Request, response: Response):
     response.headers["Cache-Control"] = "private, max-age=300"
     return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t,
                                                      scores=scores.get(h),
-                                                     links=_site_links(links.get(h, [])))
-                                         for h, docs, t in rows])
+                                                     links=_site_links(links.get(h, [])),
+                                                     changed_at=changed)
+                                         for h, docs, t, changed in rows])
 
 
 # --- learn: what users can do --------------------------------------------------

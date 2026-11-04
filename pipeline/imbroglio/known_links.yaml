@@ -1,0 +1,196 @@
+# Known pages for exercising choices on the sites people use most. These
+# live inside account settings, so the link harvest (links.py) never sees
+# them on a homepage or policy. Each entry is a page the company itself
+# documents; `checked` is when someone on the team last confirmed the
+# address answers (logged-in pages redirect to a sign-in, which counts).
+#
+# Served through the same `links` field as the harvested ones, with source
+# "known", and a known page wins over a harvested one for the same
+# category. Keys are registrable domains; subdomains inherit them.
+#
+# Categories are the rubric's: selling_sharing, collection, retention,
+# user_rights, security, ai_training, government.
+
+github.com:
+  - category: ai_training
+    text: Copilot settings (AI model training)
+    url: https://github.com/settings/copilot/features
+    checked: 2026-11-03
+  - category: retention
+    text: Delete your account
+    url: https://github.com/settings/admin
+    checked: 2026-11-03
+
+google.com:
+  - category: selling_sharing
+    text: My Ad Center
+    url: https://myadcenter.google.com/controls
+    checked: 2026-11-03
+  - category: collection
+    text: Activity controls
+    url: https://myactivity.google.com/activitycontrols
+    checked: 2026-11-03
+  - category: retention
+    text: Delete a Google service or your account
+    url: https://myaccount.google.com/delete-services-or-account
+    checked: 2026-11-03
+  - category: user_rights
+    text: Google Takeout (download your data)
+    url: https://takeout.google.com/
+    checked: 2026-11-03
+
+youtube.com:
+  - category: selling_sharing
+    text: My Ad Center
+    url: https://myadcenter.google.com/controls
+    checked: 2026-11-03
+  - category: user_rights
+    text: Google Takeout (download your data)
+    url: https://takeout.google.com/
+    checked: 2026-11-03
+
+facebook.com:
+  - category: selling_sharing
+    text: Ad preferences
+    url: https://accountscenter.facebook.com/ad_preferences
+    checked: 2026-11-03
+  - category: ai_training
+    text: Generative AI data subject rights
+    url: https://www.facebook.com/privacy/genai
+    checked: 2026-11-03
+  - category: user_rights
+    text: Download your information
+    url: https://accountscenter.facebook.com/info_and_permissions/dyi
+    checked: 2026-11-03
+  - category: retention
+    text: Account ownership and control (deletion)
+    url: https://accountscenter.facebook.com/personal_info/account_ownership_and_control
+    checked: 2026-11-03
+
+instagram.com:
+  - category: selling_sharing
+    text: Ad preferences
+    url: https://accountscenter.instagram.com/ad_preferences
+    checked: 2026-11-03
+  - category: user_rights
+    text: Download your information
+    url: https://accountscenter.instagram.com/info_and_permissions/dyi
+    checked: 2026-11-03
+  - category: retention
+    text: Account ownership and control (deletion)
+    url: https://accountscenter.instagram.com/personal_info/account_ownership_and_control
+    checked: 2026-11-03
+
+reddit.com:
+  - category: selling_sharing
+    text: Privacy settings
+    url: https://www.reddit.com/settings/privacy
+    checked: 2026-11-03
+  - category: user_rights
+    text: Request your data
+    url: https://www.reddit.com/settings/data-request
+    checked: 2026-11-03
+  - category: retention
+    text: Account settings (deactivate)
+    url: https://www.reddit.com/settings/account
+    checked: 2026-11-03
+
+linkedin.com:
+  - category: ai_training
+    text: Data for generative AI improvement
+    url: https://www.linkedin.com/mypreferences/d/settings/data-for-ai-improvement
+    checked: 2026-11-03
+  - category: selling_sharing
+    text: Advertising data preferences
+    url: https://www.linkedin.com/mypreferences/d/categories/ads
+    checked: 2026-11-03
+  - category: user_rights
+    text: Get a copy of your data
+    url: https://www.linkedin.com/mypreferences/d/download-my-data
+    checked: 2026-11-03
+
+x.com:
+  - category: selling_sharing
+    text: Ads preferences
+    url: https://x.com/settings/ads_preferences
+    checked: 2026-11-03
+  - category: ai_training
+    text: Grok and third-party collaborators (data sharing)
+    url: https://x.com/settings/grok_settings
+    checked: 2026-11-03
+  - category: user_rights
+    text: Download an archive of your data
+    url: https://x.com/settings/download_your_data
+    checked: 2026-11-03
+  - category: retention
+    text: Deactivate your account
+    url: https://x.com/settings/deactivate
+    checked: 2026-11-03
+
+amazon.com:
+  - category: selling_sharing
+    text: Advertising preferences
+    url: https://www.amazon.com/adprefs
+    checked: 2026-11-03
+  - category: user_rights
+    text: Request your data
+    url: https://www.amazon.com/hz/privacy-central/data-requests/preview.html
+    checked: 2026-11-03
+  - category: retention
+    text: Request to delete your data
+    url: https://www.amazon.com/privacy/data-deletion
+    checked: 2026-11-03
+
+microsoft.com:
+  - category: selling_sharing
+    text: Ad settings
+    url: https://account.microsoft.com/privacy/ad-settings
+    checked: 2026-11-03
+  - category: collection
+    text: Privacy dashboard
+    url: https://account.microsoft.com/privacy
+    checked: 2026-11-03
+  - category: user_rights
+    text: Download your data
+    url: https://account.microsoft.com/privacy/download-data
+    checked: 2026-11-03
+
+apple.com:
+  - category: user_rights
+    text: Data and Privacy (get a copy of your data)
+    url: https://privacy.apple.com/
+    checked: 2026-11-03
+  - category: retention
+    text: Data and Privacy (delete your account)
+    url: https://privacy.apple.com/
+    checked: 2026-11-03
+
+tiktok.com:
+  - category: user_rights
+    text: Download your data
+    url: https://www.tiktok.com/setting/download-your-data
+    checked: 2026-11-03
+
+openai.com:
+  - category: ai_training
+    text: Privacy request portal (do not train on my content)
+    url: https://privacy.openai.com/policies
+    checked: 2026-11-03
+
+chatgpt.com:
+  - category: ai_training
+    text: Privacy request portal (do not train on my content)
+    url: https://privacy.openai.com/policies
+    checked: 2026-11-03
+
+netflix.com:
+  - category: user_rights
+    text: Get a copy of your information
+    url: https://www.netflix.com/account/getmyinfo
+    checked: 2026-11-03
+
+spotify.com:
+  - category: user_rights
+    text: Privacy settings (download your data)
+    url: https://www.spotify.com/account/privacy/
+    checked: 2026-11-03

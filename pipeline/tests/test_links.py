@@ -136,3 +136,44 @@ def test_links_are_stored_whole_and_reach_the_site_and_the_lookup(conn):
     assert [l["url"] for l in client.get("/v1/sites/calm.com").json()["links"]] == ["https://calm.com/cookies"]
     db.replace_links(conn, service_id, [])
     assert [l["url"] for l in client.get("/v1/sites/calm.com").json()["links"]] == ["https://calm.com/cookies"]
+
+
+# --- known pages (known_links.yaml) ------------------------------------------------
+
+from imbroglio.links import known, known_domains
+
+
+def test_known_pages_cover_the_domain_and_its_subdomains():
+    assert "github.com" in known_domains()
+    by_cat = {l.category: l for l in known("github.com")}
+    assert by_cat["ai_training"].url == "https://github.com/settings/copilot/features"
+    assert by_cat["ai_training"].kind == "known" and by_cat["ai_training"].source == "known"
+    assert known("docs.github.com") == known("github.com")
+    assert known("never-listed.example") == []
+
+
+def test_every_known_entry_is_well_formed():
+    categories = {"selling_sharing", "collection", "retention", "user_rights", "security", "ai_training", "government"}
+    for domain in known_domains():
+        for l in known(domain):
+            assert l.category in categories, (domain, l)
+            assert l.url.startswith("https://") and l.text, (domain, l)
+
+
+def test_a_known_page_wins_over_a_harvested_one_and_fills_the_gaps():
+    harvested = [Link("privacy_choices", "selling_sharing", "https://reddit.com/optout", "Your Privacy Choices", "homepage")]
+    chosen = {l.category: l for l in best(known("reddit.com") + harvested)}
+    assert chosen["selling_sharing"].source == "known"
+    assert chosen["user_rights"].url == "https://www.reddit.com/settings/data-request"
+
+
+def test_known_pages_reach_the_api_even_for_a_site_without_harvested_links(conn):
+    _site(conn, "github.com")
+    site = client.get("/v1/sites/github.com").json()
+    assert {l["category"] for l in site["links"]} == {"ai_training", "retention"}
+    assert all(l["source"] == "known" for l in site["links"])
+    prefix = db.domain_hash("github.com")[:5]
+    entry = next(s for s in client.get(f"/v1/lookup/{prefix}").json()["sites"] if s["hash"] == db.domain_hash("github.com"))
+    assert [l["category"] for l in entry["links"]] == ["ai_training", "retention"]
+    # a site we have never stored still answers with its known pages
+    assert {l["category"] for l in client.get("/v1/sites/x.com").json()["links"]} == {"selling_sharing", "ai_training", "user_rights", "retention"}

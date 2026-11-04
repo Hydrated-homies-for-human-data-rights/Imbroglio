@@ -221,7 +221,9 @@ export default function Report({ site }: { site: Site }) {
               </a>
               <span className="text-[#5f7a66]">
                 {" "}
-                (its own page, linked from its {ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})
+                {ownPage.source === "known"
+                  ? "(its own settings page, checked by the Imbroglio team)"
+                  : `(its own page, linked from its ${ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})`}
               </span>
             </p>
           )}

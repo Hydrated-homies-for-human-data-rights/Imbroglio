@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+import yaml
 from bs4 import BeautifulSoup
 
 from .locate import site_of
@@ -145,12 +147,13 @@ def _same_page_anchor(url: str, base_url: str) -> bool:
 
 
 _PRIORITY = {kind: i for i, (kind, *_rest) in enumerate(KINDS)}
+_PRIORITY["known"] = -1  # a page someone on the team checked beats any harvested one
 
 
 def best(links: list[Link]) -> list[Link]:
-    """One link per category: the highest-priority kind, the site's own page
-    before a vendor's, the policy page's link before the homepage's (it tends
-    to be the more specific one)."""
+    """One link per category: a known page first, then the highest-priority
+    kind, the site's own page before a vendor's, the policy page's link
+    before the homepage's (it tends to be the more specific one)."""
     chosen: dict[str, Link] = {}
 
     def rank(link: Link) -> tuple:
@@ -160,6 +163,41 @@ def best(links: list[Link]) -> list[Link]:
     for link in sorted(links, key=rank):
         chosen.setdefault(link.category, link)
     return list(chosen.values())
+
+
+# --- known pages ---------------------------------------------------------------
+#
+# The sites people use most keep their choices inside account settings,
+# where no homepage or policy links to them, so the harvest never sees
+# them. known_links.yaml lists those pages by hand, with the date someone
+# on the team last confirmed each address. They are served through the
+# same `links` field, with kind and source "known", and win over a
+# harvested page for the same category.
+
+KNOWN_FILE = Path(__file__).resolve().parent / "known_links.yaml"
+_known_cache: dict[str, list[Link]] | None = None
+
+
+def _load_known() -> dict[str, list[Link]]:
+    global _known_cache
+    if _known_cache is None:
+        raw = yaml.safe_load(KNOWN_FILE.read_text(encoding="utf-8")) or {}
+        _known_cache = {
+            domain.lower(): [Link("known", e["category"], e["url"], e["text"], "known") for e in entries or []]
+            for domain, entries in raw.items()
+        }
+    return _known_cache
+
+
+def known(domain: str) -> list[Link]:
+    """The hand-listed pages for a domain or the site it belongs to
+    ('docs.github.com' gets github.com's)."""
+    table = _load_known()
+    return list(table.get(domain.lower()) or table.get(site_of(domain)) or [])
+
+
+def known_domains() -> list[str]:
+    return sorted(_load_known())
 
 
 def dedupe(links: list[Link]) -> list[Link]:

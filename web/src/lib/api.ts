@@ -56,13 +56,14 @@ export type SiteDocument = {
 }
 
 // The site's own page for a category's advice (its opt-out, settings or
-// request page), found on its homepage or policy. One per category.
+// request page), found on its homepage or policy, or listed by hand for the
+// big sites whose settings pages nothing links to ("known"). One per category.
 export type SiteLink = {
   category: string
   kind: string
   url: string
   text: string
-  source: "homepage" | "privacy" | "terms"
+  source: "homepage" | "privacy" | "terms" | "known"
 }
 
 export type Site = {
