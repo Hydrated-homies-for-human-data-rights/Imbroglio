@@ -166,6 +166,23 @@ def test_a_genuinely_short_policy_is_still_used(web):
     assert result["privacy"].url == "https://tiny.dev/privacy"
 
 
+def test_a_small_sites_brief_policy_passes_the_floor_and_a_stub_does_not(web):
+    # griggo.io (Nov 2026): a real policy of about 1,400 characters was
+    # rejected as too short when the floor was 1,500.
+    pages, _ = web
+    sentence = POLICY[: len(POLICY) // 30]           # one sentence of the policy
+    brief = sentence * 12                            # about 1,400 characters
+    assert 1000 < len(brief) < 1500
+    stub = sentence * 4                              # a fragment: under 1,000
+    pages["https://griggo.test"] = page('<a href="/privacy">Privacy</a><a href="/terms">Terms</a>')
+    pages["https://griggo.test/privacy"] = page(brief)
+    pages["https://griggo.test/terms"] = page(stub)
+    result = locate.locate_all("griggo.test", use_playwright=False)
+    assert result["privacy"].ok and result["privacy"].url == "https://griggo.test/privacy"
+    assert not result["terms"].ok
+    assert "too short" in " ".join(result["terms"].notes)
+
+
 def test_settings_pages_side_terms_and_articles_rank_below_the_real_document(web):
     pages, _ = web
     pages["https://snap.test"] = page(
