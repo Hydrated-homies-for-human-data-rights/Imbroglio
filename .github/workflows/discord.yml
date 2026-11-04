@@ -33,23 +33,28 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
-    # Skipped, not failed, until the secret is set; drafts wait until they are
-    # marked ready.
-    if: >-
-      secrets.DISCORD_BOT_TOKEN != '' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    # Drafts wait until they are marked ready.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      # Not a secret: a channel id grants no access on its own. This should
+      # be #dev-feed; the id here is the one the Notes deadline board posts
+      # to. To check: Discord > Settings > Advanced > Developer Mode, then
+      # right-click the channel > Copy Channel ID.
+      DISCORD_CHANNEL_ID: '1542560640986648687'
     steps:
-      - uses: actions/checkout@v5
+      # A job can't read `secrets` in its own `if` (Actions rejects the whole
+      # workflow), so the steps check the token instead: with no secret set,
+      # the job passes with a notice and posts nothing.
+      - if: env.DISCORD_BOT_TOKEN == ''
+        run: echo "::notice::DISCORD_BOT_TOKEN is not set in this repo's Actions secrets, so nothing was posted."
+      - if: env.DISCORD_BOT_TOKEN != ''
+        uses: actions/checkout@v5
         with:
           sparse-checkout: .github/scripts
-      - uses: actions/setup-node@v5
+      - if: env.DISCORD_BOT_TOKEN != ''
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - run: node .github/scripts/discord.mjs
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          # Not a secret: a channel id grants no access on its own. This should
-          # be #dev-feed; the id here is the one the Notes deadline board posts
-          # to. To check: Discord > Settings > Advanced > Developer Mode, then
-          # right-click the channel > Copy Channel ID.
-          DISCORD_CHANNEL_ID: '1542560640986648687'
+      - if: env.DISCORD_BOT_TOKEN != ''
+        run: node .github/scripts/discord.mjs
