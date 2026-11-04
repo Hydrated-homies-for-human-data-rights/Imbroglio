@@ -160,6 +160,11 @@ python -m imbroglio.cli calibrate --out runs/calibration.md
 # backfills sites stored before it existed. No model calls. --dry-run first.
 python -m imbroglio.cli harvest-links --limit 50 --dry-run
 
+# The big sites keep their choices inside account settings, where nothing
+# links to them: pipeline/imbroglio/known_links.yaml lists those pages by
+# hand, with the date each address was last checked, and they are served
+# through the same `links` field (source "known").
+
 # Standalone worker (what production runs)
 python -m imbroglio.worker
 ```
