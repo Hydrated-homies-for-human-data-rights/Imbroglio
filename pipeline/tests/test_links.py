@@ -62,15 +62,26 @@ def test_path_alone_can_say_what_a_link_is():
     assert classify("Read more", "https://x.com/blog/privacy-day") is None
 
 
-def test_section_anchors_on_the_same_page_are_not_pages_of_the_sites_own():
+def test_section_anchors_are_places_to_read_not_pages_of_the_sites_own():
     page = """<a href="#your-privacy-rights">Your Privacy Rights</a>
               <a href="/privacy#11-privacy-request-metrics">11. Privacy Request Metrics</a>
+              <a href="/privacy#infodelete">Delete your information</a>
               <a href="#optanon-toggle-info-display">Your Privacy Choices</a>
-              <a href="/rights#top">Exercise your rights</a>"""
+              <a href="https://help.x.com/legal/privacy#cookies">Cookie preferences</a>
+              <a href="/rights">Exercise your rights</a>
+              <a href="/request-information">Request Information</a>
+              <a href="/company/ccpa-addendum/">CCPA Addendum</a>
+              <a href="/legal/supplemental-privacy-statement-ai">AI training statement</a>
+              <a href="/en/learn/courses/genai-in-practice">Generative AI in Practice</a>
+              <a href="/handbook/ai-control-plane/">AI control plane</a>
+              <a href="/products/ai-gateway/">AI Gateway</a>
+              <a href="/index/securing-model-training/">Securing our frontier model training environment</a>
+              <a href="/solutions/autonomous-vehicles/ai-training/">Autonomous vehicles</a>
+              <a href="/ai-and-machine-learning">AI and machine learning</a>"""
     links = harvest(page, "https://x.com/privacy", "x.com", "privacy")
     assert [(l.kind, l.url) for l in links] == [
         ("privacy_choices", "https://x.com/privacy#optanon-toggle-info-display"),
-        ("data_request", "https://x.com/rights#top")]
+        ("data_request", "https://x.com/rights")]
 
 
 def test_aria_label_counts_when_the_link_has_no_text():

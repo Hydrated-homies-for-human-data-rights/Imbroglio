@@ -55,6 +55,16 @@ export type SiteDocument = {
   changes_detected: number
 }
 
+// The site's own page for a category's advice (its opt-out, settings or
+// request page), found on its homepage or policy. One per category.
+export type SiteLink = {
+  category: string
+  kind: string
+  url: string
+  text: string
+  source: "homepage" | "privacy" | "terms"
+}
+
 export type Site = {
   domain: string
   state: "unknown" | "queued" | "analyzing" | "ready" | "no_policy_found"
@@ -64,6 +74,7 @@ export type Site = {
   pending_request: { id: number; status: "queued" | "running"; stage: string | null; queue_ahead: number } | null
   recheck_after: string | null
   scorecard: Scorecard | null
+  links?: SiteLink[]
 }
 
 export type SearchResult = {
