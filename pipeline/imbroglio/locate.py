@@ -102,7 +102,12 @@ SIDE_TITLE = {
 # sites keep their real policies there.
 NON_DOC_PATH = re.compile(r"/(blog|news|newsroom|press|stories|careers|jobs)(/|$)", re.I)
 
-MIN_CHARS = 1500
+# Shorter than this is a block page, a cookie wall or a fragment. It was 1,500
+# until a small site's real policy (griggo.io, about 1,400 characters, Nov
+# 2026) was thrown out; the keyword signals below are the test of whether a
+# page reads like a policy, so the floor only has to catch stubs. Same floor
+# as a hand-submitted document (analyze.MIN_MANUAL_CHARS).
+MIN_CHARS = 1000
 # A valid page shorter than this is often a hub that links to the real policy
 # (apple.com/privacy, reddit.com/privacy, paypal's privacy center). It is kept
 # as a fallback while discovery follows its links; small sites with genuinely
