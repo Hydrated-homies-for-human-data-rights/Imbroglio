@@ -73,3 +73,25 @@ Human labels for testing, drawn from the frozen test split: the protocol and the
 - `documents.jsonl`: one row per document: `version_id`, `domain`, `doc_type`, `split`, `group`,
   `answers` (check to status, verified or not)
 - `stats.md`: counts per split and per check, and quotes that couldn't be placed
+
+## Models and scoring
+
+Every model writes a run file (scores per paragraph and check, for dev and test) to
+`data/imbroglio/runs/`, and `ml.metrics` scores them all the same way. See its docstring for what
+Claude's labels can measure (ranking within a document, detection across documents) and what waits
+for the gold set (precision, recall and F1).
+
+    python -m ml.baselines data/imbroglio/v0.2-split1 --out data/imbroglio/runs
+    python -m ml.bm25 data/imbroglio/v0.2-split1 --out data/imbroglio/runs
+    python -m ml.metrics data/imbroglio/v0.2-split1 data/imbroglio/runs/logreg-dev.npz \
+        --compare data/imbroglio/runs/bm25-both-dev.npz
+
+- `ml.baselines`: floors (random, length, evidence words) and TF-IDF with logistic regression and
+  a linear SVM, tuned per check on dev.
+- `ml.bm25`: BM25 with three queries per check (question, evidence words, both), k1 and b tuned on
+  dev.
+- `ml.finetune`: a transformer (roberta-base by default) fine-tuned as a 14-check classifier, with
+  `--unlabeled-weight` setting how unquoted paragraphs count. It needs the training environment:
+
+      python -m venv ml/.venv
+      ml/.venv/Scripts/python -m pip install -r ml/requirements-train.txt
