@@ -39,7 +39,7 @@
   --grey-wash: #f1f3f5;
 
   --width: 360px;
-  --height: 500px;
+  --height: 540px;
 }
 
 html,
@@ -202,6 +202,18 @@ button {
   margin: 1px 0 0;
   font-size: 11px;
   color: var(--muted);
+}
+/* a recent policy change, with a link to what changed */
+.changed {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a16b0f;
+}
+.changed a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* the concern card */
@@ -449,6 +461,9 @@ li.open .row {
   font-weight: 500;
   color: var(--plum);
   cursor: pointer;
+}
+.switch-row + .switch-row {
+  margin-top: 7px;
 }
 .switch {
   appearance: none;
