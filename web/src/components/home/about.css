@@ -1,0 +1,162 @@
+/* The about page: the story told along one thread. The knot sits beside the
+   headline, the thread leaves it, runs under the lede into the left rail and
+   down the page, and each chapter's pin appears as the tip passes. Shares the
+   front page's tokens (home.css) and the article styles (pages.css). */
+
+.about .page-main {
+  padding-top: 0;
+}
+
+/* ---- the opening: headline left, the knot right ---- */
+.about .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 40px;
+  align-items: start;
+  padding: 88px 0 60px;
+}
+.about .hero .page-head {
+  position: relative;
+  z-index: 1;
+}
+.about .hero .knot {
+  width: 100%;
+  aspect-ratio: 1.6 / 1;
+}
+
+/* ---- the rail and the chapters ---- */
+.about .body {
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, 1fr);
+}
+.about .rail {
+  position: relative;
+}
+.about .body .chapter {
+  margin-top: 0;
+  padding: 56px 0 48px;
+}
+.about .body .chapter:first-of-type {
+  margin-top: 0;
+}
+/* the pin, on the rail, lit once the thread has reached the chapter */
+.about .chapter::before,
+.about .people li::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--gutter) / 2 - 5px);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pin);
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity 0.3s ease,
+    transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+.about .chapter::before {
+  top: 66px;
+}
+.about .chapter[data-reached="true"]::before,
+.about .people li[data-reached="true"]::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* the pull quote that closes the first chapter */
+.about .vow {
+  margin: 10px 0 0;
+  font-family: var(--font-newsreader), Newsreader, Georgia, serif;
+  font-style: italic;
+  font-size: 26px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  max-width: 30ch;
+}
+
+/* the team, as stops on the thread rather than a grid */
+.about .people {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 22px;
+}
+.about .people li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 24px;
+  align-items: baseline;
+  padding: 22px 0;
+  border-top: 1px solid var(--rule);
+}
+.about .people li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+.about .people li::before {
+  top: 30px;
+}
+.about .people .role {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+/* the rules, numbered in mono */
+.about .rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 720px;
+}
+.about .rules li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.about .rules li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+.about .rules .n {
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 5px;
+}
+.about .rules b {
+  font-weight: 600;
+}
+
+/* ---- the close: the thread runs out along the search line ---- */
+.about .close {
+  padding: 72px 0 24px;
+  border-top: 1px solid var(--rule);
+}
+.about .close h2 {
+  margin: 0;
+  font-weight: 500;
+  font-style: italic;
+  font-size: 40px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.about .close .search {
+  margin-top: 22px;
+}
+
+@media (max-width: 760px) {
+  .about .hero {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 48px;
+  }
+  .about .hero .knot {
+    max-width: 420px;
+  }
+  .about .people li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
