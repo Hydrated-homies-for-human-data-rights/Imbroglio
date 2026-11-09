@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Imbroglio",
-  "version": "0.3",
+  "version": "0.4",
   "description": "The privacy rating for the site you're on, from its own privacy policy and terms.",
   "permissions": ["storage", "activeTab", "tabs", "notifications"],
   "host_permissions": ["https://imbroglio.io/*", "http://localhost:8765/*", "http://127.0.0.1:8765/*"],
