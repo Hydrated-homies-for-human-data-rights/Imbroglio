@@ -15,9 +15,14 @@ import { threadStore } from "./reach"
 // the thread has passed it, and the CSS in home.css does the tinting and the
 // pins. With reduced motion the whole thread is drawn and everything is
 // reached.
+//
+// `drive="time"` draws the whole thread once, over `duration` ms from when
+// the page loads, instead of following the scroll: the about page uses it,
+// where the thread is a spine down the story rather than something pulled.
 
 export type Side = "left" | "right" | "top" | "bottom" | "center"
 export type Stop = { id: string; side: Side }
+export type Drive = "scroll" | "time"
 
 type Pt = { x: number; y: number }
 type Sample = { l: number; x: number; y: number }
@@ -86,7 +91,19 @@ function threadPath(pts: Pt[]): string {
   return d
 }
 
-export default function Thread({ route }: { route: Stop[] }) {
+const smooth = (v: number) => v * v * (3 - 2 * v)
+
+export default function Thread({
+  route,
+  drive = "scroll",
+  duration = 3200,
+  delay = 400,
+}: {
+  route: Stop[]
+  drive?: Drive
+  duration?: number
+  delay?: number
+}) {
   const svgRef = useRef<SVGSVGElement>(null)
   const pathRef = useRef<SVGPathElement>(null)
   const tipRef = useRef<SVGCircleElement>(null)
@@ -102,6 +119,24 @@ export default function Thread({ route }: { route: Stop[] }) {
     let samples: Sample[] = []
     let total = 0
     let raf = 0
+    const t0 = performance.now() + delay
+
+    // Time mode: the drawn length is a share of the whole, by the clock.
+    const updateByTime = (now: number) => {
+      const rr = root.getBoundingClientRect()
+      const p = reduced ? 1 : smooth(Math.min(1, Math.max(0, (now - t0) / duration)))
+      const drawn = total * p
+      let at: Pt = samples[0] ?? { x: 0, y: 0 }
+      for (const s of samples) {
+        if (s.l > drawn) break
+        at = s
+      }
+      path.style.strokeDashoffset = `${Math.max(0, total - drawn)}`
+      tip.style.transform = `translate(${f(at.x)}px, ${f(at.y)}px)`
+      tip.style.opacity = drawn > 8 ? "1" : "0"
+      threadStore.set(at.y + rr.top + window.scrollY)
+      if (p < 1) raf = requestAnimationFrame(updateByTime)
+    }
 
     const point = (s: Stop, rr: DOMRect): Pt | null => {
       const el = root.querySelector<HTMLElement>(`[data-thread="${s.id}"]`)
@@ -113,6 +148,11 @@ export default function Thread({ route }: { route: Stop[] }) {
     }
 
     const update = () => {
+      if (drive === "time") {
+        cancelAnimationFrame(raf)
+        raf = requestAnimationFrame(updateByTime)
+        return
+      }
       const rr = root.getBoundingClientRect()
       // The tip sits 70% of the way down the viewport, and reaches the very
       // end of the thread as the page reaches the end of its scroll, so the
@@ -192,7 +232,7 @@ export default function Thread({ route }: { route: Stop[] }) {
     build()
     const ro = new ResizeObserver(onResize)
     ro.observe(root)
-    window.addEventListener("scroll", onScroll, { passive: true })
+    if (drive === "scroll") window.addEventListener("scroll", onScroll, { passive: true })
     window.addEventListener("resize", onResize)
     document.fonts?.ready.then(build).catch(() => {})
     return () => {
@@ -201,7 +241,7 @@ export default function Thread({ route }: { route: Stop[] }) {
       window.removeEventListener("resize", onResize)
       cancelAnimationFrame(raf)
     }
-  }, [route])
+  }, [route, drive, duration, delay])
 
   return (
     <svg ref={svgRef} className="thread-svg" aria-hidden="true" preserveAspectRatio="none">
