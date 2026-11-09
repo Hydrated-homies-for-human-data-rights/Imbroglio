@@ -94,6 +94,8 @@ export const FIRST_THREAD = {
   tier: "EXTENSIVE" as Tier,
   quote: "train, test, and improve technology, such as machine learning models and algorithms",
   line: 37,
+  // the finding in plain words, as the opening screen's card shows it
+  why: "trains AI on your content and messages",
 }
 
 // Per category: the line of the stored text its evidence sits on, and a
