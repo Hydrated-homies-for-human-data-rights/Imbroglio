@@ -6,6 +6,7 @@
 - `rubric-calibration.md`: why rubric v0.1 rates nearly every site SEVERE or EXTENSIVE, and five
   scoring schemes compared on real findings
 - `design-changes.md`: where the built system differs from the design spec, and why
+- `rubric-v1.md`: the draft of rubric v1.0, the open decisions, and the bar it must meet before launch
 
 Planned:
 

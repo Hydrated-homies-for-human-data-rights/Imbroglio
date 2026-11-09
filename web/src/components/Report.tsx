@@ -129,7 +129,7 @@ export default function Report({ site }: { site: Site }) {
                   <li key={d.check_id} className="grid grid-cols-[3.5rem_1fr] gap-2">
                     <span className="text-right font-semibold tabular-nums text-[#a6461d]">−{d.points}</span>
                     <a href={`#${d.category}`} className="underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]">
-                      {d.meaning}
+                      {d.plain ?? d.meaning}
                     </a>
                   </li>
                 ))}
@@ -280,7 +280,7 @@ function CategoryDetails({ site, category }: { site: Site; category: CategorySco
             <DetailCard
               key={`${f.check_id}-${f.document}-${i}`}
               tone={f.concern === "info" ? "grey" : f.exposure > 0 ? "orange" : "green"}
-              title={f.meaning}
+              title={f.plain ?? f.meaning}
               quotes={f.quotes}
               source={docName(f.document)}
               tag={TAGS[f.provenance]}
