@@ -195,9 +195,11 @@ function renderOverview(site) {
   const title = $("concern-title");
   title.replaceChildren(TIER_WORDS[head] || head);
   if (site.score != null) {
-    const score = el("span", "score", ` · ${site.score}`);
+    // the score in the rating's own color, larger than the word
+    const score = el("span", "score", String(site.score));
+    score.style.color = `var(--${tierClass(head).replace("_", "-")})`;
     score.append(el("small", "", "/100"));
-    title.append(score);
+    title.append(el("span", "sep", " · "), score);
   }
   $("concern-text").textContent = HEADLINE_TEXT[head] || "";
 

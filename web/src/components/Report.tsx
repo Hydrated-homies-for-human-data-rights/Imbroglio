@@ -99,11 +99,12 @@ export default function Report({ site }: { site: Site }) {
               >
                 {headline}
                 {score && (
-                  <span className="font-semibold text-[#5a6b7e]">
-                    {" "}
-                    · {score.value}
-                    <span className="text-base font-medium">/100</span>
-                  </span>
+                  <>
+                    <span className="font-medium text-[#9aa6b3]"> · </span>
+                    {/* the score in the rating's own color, larger than the word */}
+                    <span className="text-[40px] leading-none tracking-[-0.03em] tabular-nums">{score.value}</span>
+                    <span className="text-lg font-semibold opacity-75">/100</span>
+                  </>
                 )}
               </p>
               <p className={`mt-1 text-sm ${severe ? "text-[#9f4b44]" : "text-[#5a6b7e]"}`}>
