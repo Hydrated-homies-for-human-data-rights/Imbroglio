@@ -87,9 +87,24 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
     )
   }
   if (site.state === "ready") {
+    // Stored but not rated yet: ratings are added in batches, so don't say a
+    // report is on its way.
+    const names = site.documents.map((d) => (d.type === "privacy" ? "privacy policy" : "terms of service"))
     return (
       <Plain>
-        <p>We found {site.documents.length === 2 ? "both documents" : "a document"} for {site.domain}; the report is being prepared.</p>
+        <p>
+          We have {site.domain}’s {names.join(" and ")}, but {names.length === 1 ? "it hasn’t" : "they haven’t"} been
+          rated yet.
+        </p>
+        <ul className="mt-2 list-disc pl-5">
+          {site.documents.map((d) => (
+            <li key={d.type}>
+              <a className="underline" href={d.url} target="_blank" rel="noopener noreferrer">
+                Read the {d.type === "privacy" ? "privacy policy" : "terms of service"}
+              </a>
+            </li>
+          ))}
+        </ul>
       </Plain>
     )
   }

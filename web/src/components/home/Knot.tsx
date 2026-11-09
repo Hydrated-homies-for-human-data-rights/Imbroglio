@@ -48,7 +48,9 @@ const PLACES = [
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 const smooth = (v: number) => v * v * (3 - 2 * v)
 
-export default function Knot() {
+// `still`: the knot drifts but is never pulled out by scrolling (the about
+// page, where the thread leaves it on its own).
+export default function Knot({ still = false }: { still?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export default function Knot() {
     const draw = (now: number) => {
       const t = reduced ? 0 : (now - t0) / 1000
       // 0 before scrolling, 1 once the reader has scrolled 80% of a screen
-      const pulled = reduced ? 0 : clamp01(window.scrollY / (window.innerHeight * 0.8))
+      const pulled = reduced || still ? 0 : clamp01(window.scrollY / (window.innerHeight * 0.8))
       box.style.setProperty("--pulled", pulled.toFixed(3))
 
       const exit = { x: w, y: h / 2 }
@@ -161,7 +163,7 @@ export default function Knot() {
       ro.disconnect()
       io.disconnect()
     }
-  }, [])
+  }, [still])
 
   return (
     <div ref={ref} className="knot" data-thread="knot" aria-hidden="true">

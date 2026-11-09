@@ -176,6 +176,7 @@ button {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden; /* never a side scroll, whatever a long word or button does */
   padding: 12px 14px 10px;
 }
 
@@ -429,6 +430,7 @@ li.open .row {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box; /* so a 100%-wide button's padding stays inside the popup */
   height: 40px;
   padding: 0 16px;
   border-radius: 10px;
