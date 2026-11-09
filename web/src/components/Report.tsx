@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import type { Evidence, Site, WhatYouCanDo } from "@/lib/api"
+import type { CategoryScore, Evidence, Site, WhatYouCanDo } from "@/lib/api"
 import { docName, shortDate } from "@/lib/format"
 import { disputeUrl } from "@/lib/links"
 import { Chevron, DetailCard, RatingMark, ratingOf, ratingStyles } from "./design"
@@ -19,11 +19,21 @@ const TAGS: Record<Evidence["provenance"], string> = {
 export default function Report({ site }: { site: Site }) {
   const card = site.scorecard!
   const headline = ratingOf[card.headline]
-  const [expanded, setExpanded] = useState(true)
-  const [selected, setSelected] = useState(card.headline_categories[0] ?? card.categories[0]?.name)
+  // Which categories are open. Each one opens right under its own row, so
+  // the quotes appear where the reader clicked. The worst one starts open to
+  // show that a row opens.
+  const first = card.categories.find((c) => c.name === card.headline_categories[0]) ?? card.categories[0]
+  const [open, setOpen] = useState<Set<string>>(() => new Set(first ? [first.key] : []))
+  const allOpen = open.size === card.categories.length
+  const toggle = (key: string) =>
+    setOpen((was) => {
+      const next = new Set(was)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   const [showScoring, setShowScoring] = useState(false)
   const router = useRouter()
-  const current = card.categories.find((c) => c.name === selected)
   const severe = card.headline === "SEVERE"
   const score = card.score ?? null
   const shareText = `${site.domain} is rated ${headline}${score ? `, ${score.value}/100,` : ""} on Imbroglio, with the quotes from its own policy behind it.`
@@ -37,9 +47,8 @@ export default function Report({ site }: { site: Site }) {
       const key = window.location.hash.slice(1)
       const target = key && card.categories.find((c) => c.key === key)
       if (target) {
-        setSelected(target.name)
-        setExpanded(true)
-        document.getElementById(key)?.scrollIntoView({ block: "center" })
+        setOpen((was) => new Set(was).add(target.key))
+        document.getElementById(key)?.scrollIntoView({ block: "start", behavior: "smooth" })
       }
     }
     const soon = setTimeout(open, 0)
@@ -49,14 +58,6 @@ export default function Report({ site }: { site: Site }) {
       window.removeEventListener("hashchange", open)
     }
   }, [card.categories])
-
-  // advice for the selected category, once per topic
-  const advice = new Map<string, WhatYouCanDo>()
-  for (const f of current?.findings ?? []) {
-    if (f.what_you_can_do) advice.set(f.what_you_can_do.learn_anchor, f.what_you_can_do)
-  }
-  // the site's own page for this category, when one was found on its site
-  const ownPage = current ? (site.links ?? []).find((l) => l.category === current.key) : undefined
 
   return (
     <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
@@ -181,121 +182,54 @@ export default function Report({ site }: { site: Site }) {
       </div>
 
       <section className="mt-10">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-[#56687c]">Category breakdown</h2>
+        <div className="mb-3 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-[#56687c]">Category breakdown</h2>
+            {/* Not in the design yet: plain until the UX team designs it. */}
+            <p className="mt-1 text-sm text-[#5a6b7e]">Open a category to see the quotes behind its rating.</p>
+          </div>
           <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-sm font-medium text-[#315f91] hover:text-[#173c63]"
+            onClick={() => setOpen(allOpen ? new Set() : new Set(card.categories.map((c) => c.key)))}
+            className="shrink-0 text-sm font-medium text-[#315f91] hover:text-[#173c63]"
           >
-            {expanded ? "Collapse all" : "Expand all"}
+            {allOpen ? "Collapse all" : "Expand all"}
           </button>
         </div>
         <div className="overflow-hidden rounded-xl border border-[#d6dde4] bg-white">
           {card.categories.map((category) => {
-            const isSelected = selected === category.name
+            const isOpen = open.has(category.key)
             const rating = ratingOf[category.tier]
             return (
-              <button
-                key={category.key}
-                id={category.key}
-                onClick={() => {
-                  setSelected(category.name)
-                  setExpanded(true)
-                }}
-                className={`grid w-full grid-cols-[24px_1fr_auto_22px] items-center gap-3 border-b border-[#e5e9ed] px-4 py-4 text-left transition last:border-b-0 hover:bg-[#f7f9fb] sm:px-5 ${
-                  isSelected ? "bg-[#f7fafc]" : ""
-                }`}
-              >
-                <RatingMark rating={rating} />
-                <span className="text-[15px] font-medium text-[#193149]">{category.name}</span>
-                <span
-                  className={`hidden text-xs font-bold uppercase tracking-[0.07em] sm:block ${ratingStyles[rating]}`}
+              <div key={category.key} id={category.key} className="scroll-mt-6 border-b border-[#e5e9ed] last:border-b-0">
+                <button
+                  onClick={() => toggle(category.key)}
+                  aria-expanded={isOpen}
+                  aria-controls={`${category.key}-details`}
+                  className={`grid w-full grid-cols-[24px_1fr_auto_22px] items-center gap-3 px-4 py-4 text-left transition hover:bg-[#f7f9fb] sm:px-5 ${
+                    isOpen ? "bg-[#f7fafc]" : ""
+                  }`}
                 >
-                  {rating}
-                </span>
-                <span className="text-[#8d9aa8]">
-                  <Chevron open={isSelected && expanded} />
-                </span>
-              </button>
+                  <RatingMark rating={rating} />
+                  <span className="text-[15px] font-medium text-[#193149]">{category.name}</span>
+                  <span
+                    className={`hidden text-xs font-bold uppercase tracking-[0.07em] sm:block ${ratingStyles[rating]}`}
+                  >
+                    {rating}
+                  </span>
+                  <span className="text-[#8d9aa8]">
+                    <Chevron open={isOpen} />
+                  </span>
+                </button>
+                {isOpen && (
+                  <div id={`${category.key}-details`} className="bg-[#f7fafc] px-4 pb-5 pt-1 sm:pl-[56px] sm:pr-5">
+                    <CategoryDetails site={site} category={category} />
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>
       </section>
-
-      {expanded && current && (
-        <section className="mt-8">
-          <div className="mb-4 flex items-center gap-2">
-            <button onClick={() => setExpanded(false)} className="text-[#4b6074]" aria-label="Collapse category">
-              <Chevron open />
-            </button>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.1em] text-[#84909d]">Category details</p>
-              <h2 className="text-lg font-bold tracking-[-0.01em] text-[#142b41]">{current.name}</h2>
-            </div>
-          </div>
-          {current.findings.length > 0 ? (
-            <div className="grid gap-3">
-              {current.findings.map((f, i) => (
-                <DetailCard
-                  key={`${f.check_id}-${f.document}-${i}`}
-                  tone={f.concern === "info" ? "grey" : f.exposure > 0 ? "orange" : "green"}
-                  title={f.meaning}
-                  quotes={f.quotes}
-                  source={docName(f.document)}
-                  tag={TAGS[f.provenance]}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-[#dfe4ea] bg-white p-6">
-              <p className="text-sm leading-6 text-[#5f7082]">
-                This category is rated <strong className={ratingStyles[ratingOf[current.tier]]}>{ratingOf[current.tier]}</strong>
-                . The documents don’t address it.
-              </p>
-            </div>
-          )}
-
-          {/* The site's own page for this, found on its homepage or policy.
-              Not in the design yet: plain until the UX team designs it. */}
-          {ownPage && (
-            <p className="mt-5 rounded-xl border border-[#cfe0d3] bg-[#f1f8f3] px-5 py-4 text-sm text-[#2f5a3d]">
-              On {site.domain}:{" "}
-              <a className="font-semibold underline" href={ownPage.url} target="_blank" rel="noopener noreferrer">
-                {ownPage.text}
-              </a>
-              <span className="text-[#5f7a66]">
-                {" "}
-                {ownPage.source === "known"
-                  ? "(its own settings page, checked by the Imbroglio team)"
-                  : `(its own page, linked from its ${ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})`}
-              </span>
-            </p>
-          )}
-
-          {/* Not in the design yet: plain until the UX team designs it. */}
-          {[...advice.values()].map((a) => (
-            <details key={a.learn_anchor} className="mt-4 text-sm">
-              <summary className="cursor-pointer">What can you do? {a.title}</summary>
-              <p className="mt-1">{a.why}</p>
-              <ul className="mt-1 list-disc pl-5">
-                {a.steps.map((s) => (
-                  <li key={s.text}>
-                    {s.text}{" "}
-                    {s.link && (
-                      <a className="underline" href={s.link} target="_blank" rel="noopener noreferrer">
-                        link
-                      </a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <Link className="underline" href={`/learn#${a.learn_anchor}`}>
-                More on this
-              </Link>
-            </details>
-          ))}
-        </section>
-      )}
 
       <div className="mt-6 flex flex-wrap gap-3">
         <button
@@ -323,5 +257,84 @@ export default function Report({ site }: { site: Site }) {
         </aside>
       )}
     </main>
+  )
+}
+
+// What opens under a category's row: the verified answers with their quotes,
+// the site's own page for it, and what you can do.
+function CategoryDetails({ site, category }: { site: Site; category: CategoryScore }) {
+  // advice for this category, once per topic
+  const advice = new Map<string, WhatYouCanDo>()
+  for (const f of category.findings) {
+    if (f.what_you_can_do) advice.set(f.what_you_can_do.learn_anchor, f.what_you_can_do)
+  }
+  // the site's own page for this category, when one was found on its site
+  const ownPage = (site.links ?? []).find((l) => l.category === category.key)
+
+  return (
+    <>
+      {category.findings.length > 0 ? (
+        <div className="grid gap-3">
+          {category.findings.map((f, i) => (
+            <DetailCard
+              key={`${f.check_id}-${f.document}-${i}`}
+              tone={f.concern === "info" ? "grey" : f.exposure > 0 ? "orange" : "green"}
+              title={f.meaning}
+              quotes={f.quotes}
+              source={docName(f.document)}
+              tag={TAGS[f.provenance]}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-[#dfe4ea] bg-white p-6">
+          <p className="text-sm leading-6 text-[#5f7082]">
+            This category is rated{" "}
+            <strong className={ratingStyles[ratingOf[category.tier]]}>{ratingOf[category.tier]}</strong>. The documents
+            don’t address it.
+          </p>
+        </div>
+      )}
+
+      {/* The site's own page for this, found on its homepage or policy.
+          Not in the design yet: plain until the UX team designs it. */}
+      {ownPage && (
+        <p className="mt-5 rounded-xl border border-[#cfe0d3] bg-[#f1f8f3] px-5 py-4 text-sm text-[#2f5a3d]">
+          On {site.domain}:{" "}
+          <a className="font-semibold underline" href={ownPage.url} target="_blank" rel="noopener noreferrer">
+            {ownPage.text}
+          </a>
+          <span className="text-[#5f7a66]">
+            {" "}
+            {ownPage.source === "known"
+              ? "(its own settings page, checked by the Imbroglio team)"
+              : `(its own page, linked from its ${ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})`}
+          </span>
+        </p>
+      )}
+
+      {/* Not in the design yet: plain until the UX team designs it. */}
+      {[...advice.values()].map((a) => (
+        <details key={a.learn_anchor} className="mt-4 text-sm">
+          <summary className="cursor-pointer">What can you do? {a.title}</summary>
+          <p className="mt-1">{a.why}</p>
+          <ul className="mt-1 list-disc pl-5">
+            {a.steps.map((s) => (
+              <li key={s.text}>
+                {s.text}{" "}
+                {s.link && (
+                  <a className="underline" href={s.link} target="_blank" rel="noopener noreferrer">
+                    link
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+          <Link className="underline" href={`/learn#${a.learn_anchor}`}>
+            More on this
+          </Link>
+        </details>
+      ))}
+    </>
   )
 }

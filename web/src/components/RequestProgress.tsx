@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import type { AnalysisRequest } from "@/lib/api"
 
@@ -9,9 +9,9 @@ import type { AnalysisRequest } from "@/lib/api"
 // status route every couple of seconds and shows which step the worker is
 // on. The worker's own log lines are technical, so they are folded into
 // four steps and the latest line is shown underneath as detail. When the
-// job finishes, the page is refreshed (so the report appears in place) or a
-// link to it is shown. Not in the UX team's design yet: plain, like the
-// other in-between states.
+// job finishes, the report opens by itself: in place when this is already the
+// site's page, otherwise by going to it. Not in the UX team's design yet:
+// plain, like the other in-between states.
 
 const STEPS = ["Finding the documents", "Storing them", "Reading them with the model", "Rating"] as const
 
@@ -50,16 +50,11 @@ function viewOf(r: AnalysisRequest): View {
   return { kind: "failed", error: r.error }
 }
 
-export default function RequestProgress({
-  id,
-  domain,
-  refreshOnDone = false,
-}: {
-  id: number
-  domain: string
-  refreshOnDone?: boolean
-}) {
+export default function RequestProgress({ id, domain }: { id: number; domain: string }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const reportPath = `/site/${encodeURIComponent(domain)}`
+  const onReport = decodeURIComponent(pathname) === `/site/${domain}`
   const [view, setView] = useState<View>({ kind: "loading" })
 
   useEffect(() => {
@@ -81,7 +76,10 @@ export default function RequestProgress({
       if (stopped) return
       setView(next)
       const active = next.kind === "loading" || next.kind === "queued" || next.kind === "running"
-      if (next.kind === "done" && refreshOnDone) router.refresh()
+      // Open the report: refresh this page if it is the report's, or go to it
+      // when something was found (otherwise the message below says so).
+      if (next.kind === "done" && onReport) router.refresh()
+      else if (next.kind === "done" && next.found) router.push(reportPath)
       if (!active || Date.now() - started > GIVE_UP_MS) return
       timer = setTimeout(tick, Date.now() - started > SLOW_AFTER_MS ? SLOW_POLL_MS : POLL_MS)
     }
@@ -91,10 +89,10 @@ export default function RequestProgress({
       if (timer) clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, refreshOnDone])
+  }, [id, onReport])
 
   const report = (
-    <Link className="underline" href={`/site/${encodeURIComponent(domain)}`}>
+    <Link className="underline" href={reportPath}>
       See the report
     </Link>
   )
@@ -114,7 +112,7 @@ export default function RequestProgress({
       <div className="mt-4 rounded-lg border border-[#b9d8c4] bg-[#f1f8f3] px-4 py-3 text-sm text-[#35694a]">
         {view.found ? (
           <>
-            Done. {refreshOnDone ? "Loading the report…" : report}
+            Done. Opening the report… <span className="text-[#5f7a66]">({report} if it doesn’t open)</span>
           </>
         ) : (
           <>

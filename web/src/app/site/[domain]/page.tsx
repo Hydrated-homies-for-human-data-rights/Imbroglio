@@ -30,7 +30,7 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
       <Plain>
         <p>{site.domain} is being analyzed.</p>
         {site.pending_request ? (
-          <RequestProgress id={site.pending_request.id} domain={site.domain} refreshOnDone />
+          <RequestProgress id={site.pending_request.id} domain={site.domain} />
         ) : (
           <p className="mt-2">Most sites take one to three minutes. Reload this page to check.</p>
         )}
