@@ -63,7 +63,7 @@ export const CLAUSES: Clause[] = [
     quoteChars: 138,
     key: "security",
     category: "Security",
-    tier: "LIMITED",
+    tier: "INFO",
     note: "“reasonable measures”, no more",
   },
   {
@@ -105,8 +105,8 @@ export const INDEX: { key: string; name: string; tier: Tier; line: number; why: 
   { key: "selling_sharing", name: "Data selling and sharing", tier: "MODERATE", line: 58, why: "shares with advertising partners; does not sell" },
   { key: "collection", name: "Data collection", tier: "INFO", line: 25, why: "biometrics, third parties, public sources" },
   { key: "retention", name: "Retention and deletion", tier: "MODERATE", line: 76, why: "“as long as necessary”; deletion on request" },
-  { key: "user_rights", name: "Your rights", tier: "LIMITED", line: 68, why: "access, export and ad opt-out for all users" },
-  { key: "security", name: "Security", tier: "LIMITED", line: 75, why: "“reasonable measures”" },
+  { key: "user_rights", name: "Your rights", tier: "MODERATE", line: 68, why: "access and export for all users; a narrower ad opt-out in the terms" },
+  { key: "security", name: "Security", tier: "INFO", line: 75, why: "“reasonable measures”" },
   { key: "ai_training", name: "AI and model training", tier: "EXTENSIVE", line: 37, why: "trains models on content and messages" },
   { key: "government", name: "Government requests", tier: "LIMITED", line: 64, why: "discloses under legal process" },
 ]
