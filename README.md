@@ -159,6 +159,12 @@ python -m imbroglio.cli calibrate --out runs/calibration.md
 # most common values, what takes points off. Read-only, no LLM cost
 python -m imbroglio.cli score-spread --rubric v0.2 --out runs/score-spread.md --csv runs/scores.csv
 
+# Real quotes the evidence-word check turned away, samples to judge, and the
+# evidence words that would let them in (with how often each word shows up in
+# other questions' quotes). --csv lists every one with an on_topic column to
+# fill in. Read-only, no LLM cost
+python -m imbroglio.cli rejected-quotes --rubric v0.2 --out runs/rejected.md --csv runs/rejected.csv
+
 # Each site's own opt-out and settings pages (links.py), read off the
 # homepage and policy pages. The worker does this on every analysis; this
 # backfills sites stored before it existed. No model calls. --dry-run first.
