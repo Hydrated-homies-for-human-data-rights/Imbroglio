@@ -276,6 +276,12 @@ def main() -> int:
     cal.add_argument("--tosdr", type=Path, default=Path("seeds/tosdr_rated.csv"))
     cal.add_argument("--out", type=Path, help="also write the report to this markdown file")
 
+    ss = sub.add_parser("score-spread",
+                        help="how the score out of 100 spreads across analyzed sites (read-only, no LLM calls)")
+    ss.add_argument("--rubric", default=None, help="rubric version (default: RUBRIC_VERSION, as the API uses)")
+    ss.add_argument("--out", type=Path, help="also write the report to this markdown file")
+    ss.add_argument("--csv", type=Path, help="also write every site's score to this CSV file")
+
     od = sub.add_parser("offsite-documents",
                         help="list stored documents that are another site's (they never name this one)")
     # A parent company's own policy (riotgames.com for leagueoflegends.com) can
@@ -375,6 +381,26 @@ def main() -> int:
         if args.out:
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(text, encoding="utf-8")
+        return 0
+
+    if args.command == "score-spread":
+        from . import db
+        from .analysis import RUBRIC_VERSION
+        from .rubric import load
+        from .score_spread import report, score_sites, write_csv
+        rubric = load(args.rubric or RUBRIC_VERSION)
+        conn = db.connect()
+        try:
+            scored = score_sites(rubric, db.site_findings(conn, rubric.version))
+        finally:
+            conn.close()
+        text = report(rubric, scored)
+        print(text)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text, encoding="utf-8")
+        if args.csv:
+            write_csv(args.csv, scored)
         return 0
 
     if args.command == "rebase-rubric":
