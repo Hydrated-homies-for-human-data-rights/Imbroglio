@@ -155,6 +155,10 @@ python -m imbroglio.cli offsite-documents
 # Compare scoring schemes on stored findings (read-only, no LLM cost)
 python -m imbroglio.cli calibrate --out runs/calibration.md
 
+# How the score out of 100 spreads across analyzed sites: per rating, the
+# most common values, what takes points off. Read-only, no LLM cost
+python -m imbroglio.cli score-spread --rubric v0.2 --out runs/score-spread.md --csv runs/scores.csv
+
 # Each site's own opt-out and settings pages (links.py), read off the
 # homepage and policy pages. The worker does this on every analysis; this
 # backfills sites stored before it existed. No model calls. --dry-run first.

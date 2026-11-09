@@ -68,6 +68,7 @@ function toSiteData(domain, entry) {
         domain,
         hash: entry.hash, // what this extension keeps its per-site records under
         headline: s.headline,
+        score: s.score ?? null, // out of 100; null for an UNCLEAR or NOT_DISCLOSED site
         categories: s.categories.map((c) => ({ key: c.key, name: c.name, tier: c.tier, findings: c.findings })),
         analyzedAt: s.analyzed_at,
         changedAt: entry.changed_at || null, // when a policy change was last detected

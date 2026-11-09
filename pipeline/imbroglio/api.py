@@ -126,10 +126,42 @@ class CategoryScore(BaseModel):
     findings: list[Evidence]
 
 
+class ScoreDeduction(BaseModel):
+    check_id: str
+    category: str = Field(description="Category key, to link the deduction to its evidence")
+    status: str
+    meaning: str
+    points: int = Field(description="Points this answer takes off the score")
+
+
+class SiteScore(BaseModel):
+    """The overall rating as a number (scorer.SCORE_RULE_S1/S2): 100 minus
+    the deductions, kept inside the rating's range."""
+    value: int = Field(description="0-100, higher is better")
+    starts_at: int
+    deductions: list[ScoreDeduction] = Field(description="Largest first; they add up to starts_at - unadjusted")
+    band: tuple[int, int] = Field(description="The range the overall rating allows")
+    unadjusted: int = Field(description="starts_at minus the deductions, before keeping it in the band")
+
+
+def _site_score(rubric, scored: list, head: str) -> SiteScore | None:
+    sc = scorer.score(rubric, scored, head)
+    if sc is None:
+        return None
+    return SiteScore(
+        value=sc.value, starts_at=scorer.START, band=sc.band, unadjusted=sc.unadjusted,
+        deductions=[ScoreDeduction(check_id=d.check_id, category=rubric.check(d.check_id).category,
+                                   status=d.status, points=d.points,
+                                   meaning=rubric.check(d.check_id).statuses[d.status].meaning)
+                    for d in sc.deductions])
+
+
 class Scorecard(BaseModel):
     rubric_version: str
     scorer_version: str
     headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
+    score: SiteScore | None = Field(
+        None, description="The overall rating out of 100; null when it is UNCLEAR or NOT_DISCLOSED")
     headline_categories: list[str] = Field(description="Categories at the headline tier")
     categories: list[CategoryScore]
     analyzed_at: datetime
@@ -263,6 +295,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
     tiers, head = scorer.rate(rubric, scored)
     return Scorecard(
         rubric_version=rubric.version, scorer_version=scorer.version_for(rubric), headline=head,
+        score=_site_score(rubric, scored, head),
         # s2 can rate a site above any one category (two high concerns make it
         # SEVERE); then the categories behind it are the EXTENSIVE/SEVERE ones
         headline_categories=[rubric.categories[c] for c, t in tiers.items() if t == head]
@@ -575,6 +608,8 @@ class LookupScores(BaseModel):
     rubric_version: str
     scorer_version: str
     headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
+    score: int | None = Field(None, description="The overall rating out of 100, as on the scorecard; "
+                                                "null when it is UNCLEAR or NOT_DISCLOSED")
     categories: list[LookupCategory]
     analyzed_at: datetime
 
@@ -601,7 +636,9 @@ def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
     rubric = load_rubric(RUBRIC_VERSION)
     out = {}
     for found in db.site_findings(conn, rubric.version, hash_like=pattern).values():
-        tiers, head = scorer.rate(rubric, [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found])
+        scored = [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found]
+        tiers, head = scorer.rate(rubric, scored)
+        site_score = scorer.score(rubric, scored, head)
         counts: dict[str, int] = {}
         for _, check_id, status, verified, _ in found:
             check = rubric.check(check_id)
@@ -610,6 +647,7 @@ def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
         out[found[0][0]] = LookupScores(
             rubric_version=rubric.version, scorer_version=scorer.version_for(rubric),
             headline=head, analyzed_at=max(created for *_, created in found),
+            score=site_score.value if site_score else None,
             categories=[LookupCategory(key=c, name=name, tier=tiers[c], findings=counts.get(c, 0))
                         for c, name in rubric.categories.items()])
     return out

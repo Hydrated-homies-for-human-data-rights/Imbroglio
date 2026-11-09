@@ -202,3 +202,72 @@ def test_scorecard_lookup_and_search_agree_on_s2(conn, monkeypatch):
     license_ = next(k for c in rubric["categories"] for k in c["checks"] if k["check_id"] == "content_license")
     assert {s["status"]: (s["tier"], s["concern"]) for s in license_["statuses"]} == {
         "broad": ("INFO", "info"), "limited": ("LIMITED", None)}
+
+
+# --- the score out of 100 ------------------------------------------------------------
+
+def score(findings):
+    return scorer.score(V02, findings)
+
+
+@pytest.mark.parametrize("extra, value, headline", [
+    ([], 100, "LIMITED"),
+    ([F("breach_notification", "no", True)], 88, "LIMITED"),                     # one medium
+    ([F("breach_notification", "no", True), F("shares_for_advertising", "yes", True)], 76, "MODERATE"),
+    ([F("trains_ai_on_user_data", "yes", True)], 58, "EXTENSIVE"),               # one high
+    ([F("trains_ai_on_user_data", "yes", True), F("shares_for_advertising", "yes", True)], 46, "EXTENSIVE"),
+    ([F("opt_out_of_tracking", "no", True), F("trains_ai_on_user_data", "yes", True)], 16, "SEVERE"),
+    ([F("collects_sensitive_data", "yes", True)], 100, "LIMITED"),               # informational: no points
+    ([F("trains_ai_on_user_data", "yes", False)], 100, "LIMITED"),               # unverified never counts
+])
+def test_score_is_100_minus_each_concern(extra, value, headline):
+    sc = score(CLEAN + extra)
+    assert (sc.value, head(CLEAN + extra)) == (value, headline)
+    assert sc.value == scorer.START - sum(d.points for d in sc.deductions) and not sc.adjusted
+
+
+def test_score_stays_in_its_ratings_range():
+    # four medium concerns would be 52, but MODERATE is 60 to 79
+    four = [F("breach_notification", "no", True), F("shares_for_advertising", "yes", True),
+            F("retention_period", "vague", True), F("trains_ai_on_user_data", "yes_with_opt_out", True)]
+    findings = [CLEAN[0], *CLEAN[2:], *four]
+    sc = score(findings)
+    assert head(findings) == "MODERATE"
+    assert (sc.value, sc.unadjusted, sc.band, sc.adjusted) == (60, 52, (60, 79), True)
+    # selling for money alone: 100 - 65 = 35, inside SEVERE's 0 to 39
+    assert score([F("sells_personal_data", "sold_for_money", True), *CLEAN[1:]]).value == 35
+
+
+def test_score_counts_one_practice_once():
+    sc = score([F("sells_personal_data", "state_law_sale", True), *CLEAN[1:],
+                F("shares_for_advertising", "yes", True)])
+    assert sc.value == 88 and [d.check_id for d in sc.deductions] == ["shares_for_advertising"]
+
+
+def test_no_score_without_a_rating():
+    assert head([CLEAN[0]]) == "UNCLEAR" and score([CLEAN[0]]) is None
+    assert score([]) is None
+
+
+def test_score_rule_is_published_for_both_scorers():
+    assert scorer.SCORE_RULE_S2 in scorer.rules_for(V02)
+    assert scorer.SCORE_RULE_S1 in scorer.rules_for(load("v0.1"))
+    assert "65" in scorer.SCORE_RULE_S2 and "40 to 59" in scorer.SCORE_RULE_S2
+
+
+def test_scorecard_and_lookup_carry_the_same_score(conn, monkeypatch):
+    monkeypatch.setattr(analysis, "RUBRIC_VERSION", "v0.2")
+    _site(conn, "onehigh.example", [(f.check_id, f.status) for f in CLEAN]
+          + [("trains_ai_on_user_data", "yes"), ("shares_for_advertising", "yes")])
+    _site(conn, "thin.example", [("sells_personal_data", "no")])
+
+    sc = client.get("/v1/sites/onehigh.example").json()["scorecard"]["score"]
+    assert (sc["value"], sc["starts_at"], sc["unadjusted"], sc["band"]) == (46, 100, 46, [40, 59])
+    assert [(d["check_id"], d["category"], d["points"]) for d in sc["deductions"]] == [
+        ("trains_ai_on_user_data", "ai_training", 42), ("shares_for_advertising", "selling_sharing", 12)]
+    assert sc["deductions"][0]["meaning"] == "User data or content is used to train AI models"
+    assert client.get("/v1/sites/thin.example").json()["scorecard"]["score"] is None
+
+    full = hashlib.sha256(b"onehigh.example").hexdigest()
+    entry = next(s for s in client.get(f"/v1/lookup/{full[:5]}").json()["sites"] if s["hash"] == full)
+    assert entry["scores"]["score"] == 46

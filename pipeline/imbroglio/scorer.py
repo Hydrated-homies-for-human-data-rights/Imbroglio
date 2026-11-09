@@ -21,7 +21,7 @@ Two versions, chosen by the rubric:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .rubric import NOT_DISCLOSED, RATED_CONCERNS, TIERS, Rubric
 
@@ -31,6 +31,27 @@ INFO_TIER = "INFO"               # s2 category only: the practice is reported, n
 SERIOUS = ("EXTENSIVE", "SEVERE")  # s2: categories the headline can never sit below
 MIN_HIGH_ANSWERED = 4            # s2 coverage gate: of the rubric's high-concern questions
 
+# The score out of 100 (both scorers). It starts at 100 and loses points for
+# each answer that raises a concern, so a reader can add it up from the
+# answers on the report, then stays inside its rating's range so the number
+# and the word never disagree. The points are set so that the arithmetic
+# alone almost always lands in the right range under s2: one high concern
+# (100 - 42 = 58) is EXTENSIVE, two medium ones (76) are MODERATE, one severe
+# concern or two high ones (35, 16) are SEVERE.
+START = 100
+POINTS = {3: 65, 2: 42, 1: 12}   # by the answer's exposure: severe, high, medium concern
+BANDS = {"LIMITED": (80, 100), "MODERATE": (60, 79), "EXTENSIVE": (40, 59), "SEVERE": (0, 39)}
+_SCORE_COMMON = (
+    "The score always stays in its rating's range: LIMITED 80 to 100, MODERATE 60 to 79, "
+    "EXTENSIVE 40 to 59, SEVERE 0 to 39. An UNCLEAR or NOT DISCLOSED site gets no score, so "
+    "silence never earns points."
+)
+SCORE_RULE_S1 = ("Every rated site also gets a score out of 100, higher is better. It starts at 100 and "
+                 "loses 65 points for each SEVERE answer, 42 for each EXTENSIVE one and 12 for each "
+                 "MODERATE one. " + _SCORE_COMMON)
+SCORE_RULE_S2 = ("Every rated site also gets a score out of 100, higher is better. It starts at 100 and "
+                 "loses 65 points for each severe concern, 42 for each high one and 12 for each medium "
+                 "one, counted the same way as the overall rating. " + _SCORE_COMMON)
 # Published on the website's "How we score" page (GET /v1/rubric). Keep these
 # in step with the code below: they are the rules each version applies.
 _COMMON_FIRST = [
@@ -52,6 +73,7 @@ RULES_S1 = [
     *_COMMON_LAST,
     "The overall rating is the worst category, never an average, so one serious practice "
     "can't be hidden behind good ones.",
+    SCORE_RULE_S1,
     _NO_MODEL,
 ]
 RULES_S2 = [
@@ -69,6 +91,7 @@ RULES_S2 = [
     f"A site is only rated LIMITED if at least {MIN_HIGH_ANSWERED} of the high-concern "
     "questions were answered. Otherwise it is UNCLEAR: we couldn't confirm enough to say its "
     "practices are limited, so silence is never read as good.",
+    SCORE_RULE_S2,
     _NO_MODEL,
 ]
 TIER_MEANINGS = {
@@ -160,6 +183,19 @@ def site_answers(rubric: Rubric, findings: list[ScoredFinding]) -> dict[str, str
     return out
 
 
+def _concerns(rubric: Rubric, answers: dict[str, str]) -> list[tuple[str, str]]:
+    """(check_id, status) of every answer that counts as a concern toward the
+    overall rating. s2: a rated concern, with two answers about the same
+    practice counted once. s1: every answer with an exposure above LIMITED."""
+    status = {c: rubric.check(c).statuses[s] for c, s in answers.items()}
+    if not rubric.uses_concerns:
+        return [(c, s.name) for c, s in status.items() if s.exposure > 0]
+    return [(c, s.name) for c, s in status.items()
+            if s.concern in RATED_CONCERNS
+            # counted once with the other check's concern about the same practice
+            and not (s.same_concern_as in status and status[s.same_concern_as].concern in RATED_CONCERNS)]
+
+
 def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str], str]:
     """Category tiers and headline for a site, from the findings of all its
     latest documents together (or for one document, from its own)."""
@@ -168,11 +204,7 @@ def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str],
     if not rubric.uses_concerns or worst == NOT_DISCLOSED_TIER:
         return tiers, worst
     answers = site_answers(rubric, findings)
-    status = {c: rubric.check(c).statuses[s] for c, s in answers.items()}
-    concerns = [s.concern for s in status.values()
-                if s.concern in RATED_CONCERNS
-                # counted once with the other check's concern about the same practice
-                and not (s.same_concern_as in status and status[s.same_concern_as].concern in RATED_CONCERNS)]
+    concerns = [rubric.check(c).statuses[s].concern for c, s in _concerns(rubric, answers)]
     high = concerns.count("high")
     if "severe" in concerns or high >= 2:
         flags = "SEVERE"
@@ -188,3 +220,38 @@ def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str],
     if head == "LIMITED" and len(rubric.high_concern_checks & answers.keys()) < MIN_HIGH_ANSWERED:
         head = UNCLEAR_TIER
     return tiers, head
+
+
+@dataclass(frozen=True)
+class Deduction:
+    check_id: str
+    status: str
+    points: int
+
+
+@dataclass(frozen=True)
+class Score:
+    value: int                       # what is shown: START minus the deductions, kept in the band
+    deductions: list[Deduction] = field(default_factory=list)
+    band: tuple[int, int] = (0, 100)
+    unadjusted: int = START          # START minus the deductions, before keeping it in the band
+
+    @property
+    def adjusted(self) -> bool:
+        return self.value != self.unadjusted
+
+
+def score(rubric: Rubric, findings: list[ScoredFinding], head: str | None = None) -> Score | None:
+    """The site's score out of 100 (see SCORE_RULE_S1/S2), or None when its
+    overall rating is UNCLEAR or NOT_DISCLOSED. Pass the headline from rate()
+    if you already have it."""
+    head = head if head is not None else rate(rubric, findings)[1]
+    if head not in BANDS:
+        return None
+    answers = site_answers(rubric, findings)
+    deductions = sorted(
+        (Deduction(c, s, POINTS[rubric.check(c).statuses[s].exposure]) for c, s in _concerns(rubric, answers)),
+        key=lambda d: (-d.points, [c.id for c in rubric.checks].index(d.check_id)))
+    raw = START - sum(d.points for d in deductions)
+    lo, hi = BANDS[head]
+    return Score(min(max(raw, lo), hi), deductions, (lo, hi), raw)
