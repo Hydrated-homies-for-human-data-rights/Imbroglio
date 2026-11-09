@@ -1,10 +1,47 @@
-import { Suspense } from "react"
+import type { Metadata } from "next"
+import { Suspense, cache } from "react"
 import Header from "@/components/Header"
 import Report from "@/components/Report"
 import RequestForm from "@/components/RequestForm"
 import RequestProgress from "@/components/RequestProgress"
-import { ApiError, getSite } from "@/lib/api"
+import { ApiError, getSite, type Site } from "@/lib/api"
 import { shortDate } from "@/lib/format"
+
+// One fetch per request, shared by the page and its metadata.
+const loadSite = cache(getSite)
+
+const TIER_WORD: Record<string, string> = {
+  SEVERE: "Severe", EXTENSIVE: "Extensive", MODERATE: "Moderate", LIMITED: "Limited",
+  NOT_DISCLOSED: "Not disclosed", UNCLEAR: "Unclear",
+}
+
+// The title and description a shared link shows, next to the preview image
+// (opengraph-image.tsx): the rating and score, and what took points off.
+function describe(site: Site | null, domain: string): { title: string; description: string } {
+  const card = site?.scorecard
+  if (!card) {
+    return {
+      title: `${domain} privacy report · Imbroglio`,
+      description: `What ${domain}’s privacy policy and terms let it do with your data, with the quotes behind every rating.`,
+    }
+  }
+  const rating = `${TIER_WORD[card.headline] ?? card.headline}${card.score ? `, ${card.score.value}/100` : ""}`
+  // "User data ... AI models" reads mid-sentence as "user data ... AI models"
+  const flags = card.score?.deductions.slice(0, 2).map((d) => d.meaning.charAt(0).toLowerCase() + d.meaning.slice(1)) ?? []
+  return {
+    title: `${domain}: ${rating} · Imbroglio`,
+    description: flags.length
+      ? `${domain} is rated ${rating}. Points off: ${flags.join("; ")}. Every finding quotes its own policy.`
+      : `${domain} is rated ${rating}. Every finding quotes its own policy, checked word for word.`,
+  }
+}
+
+export async function generateMetadata({ params }: PageProps<"/site/[domain]">): Promise<Metadata> {
+  const domain = decodeURIComponent((await params).domain)
+  const { title, description } = describe(await loadSite(domain).catch(() => null), domain)
+  const url = `/site/${encodeURIComponent(domain)}`
+  return { title, description, alternates: { canonical: url }, openGraph: { title, description, url } }
+}
 
 // States other than a finished report aren't in the design yet, so they're
 // plain text until the UX team designs them.
@@ -16,7 +53,7 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
   const domain = decodeURIComponent((await params).domain)
   let site
   try {
-    site = await getSite(domain)
+    site = await loadSite(domain)
   } catch (e) {
     if (e instanceof ApiError && e.status === 400) return <Plain>“{domain}” isn’t a valid website address.</Plain>
     return <Plain>The analysis service is unavailable right now. Try again in a minute.</Plain>
