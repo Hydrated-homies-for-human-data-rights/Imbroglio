@@ -27,7 +27,10 @@ function describe(site: Site | null, domain: string): { title: string; descripti
   }
   const rating = `${TIER_WORD[card.headline] ?? card.headline}${card.score ? `, ${card.score.value}/100` : ""}`
   // "User data ... AI models" reads mid-sentence as "user data ... AI models"
-  const flags = card.score?.deductions.slice(0, 2).map((d) => d.meaning.charAt(0).toLowerCase() + d.meaning.slice(1)) ?? []
+  const flags = card.score?.deductions.slice(0, 2).map((d) => {
+    const text = (d.plain ?? d.meaning).replace(/\.$/, "")
+    return text.charAt(0).toLowerCase() + text.slice(1)
+  }) ?? []
   return {
     title: `${domain}: ${rating} · Imbroglio`,
     description: flags.length

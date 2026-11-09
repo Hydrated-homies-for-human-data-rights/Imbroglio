@@ -23,6 +23,8 @@ export type Evidence = {
   question: string
   status: string
   meaning: string
+  // the answer in the reader's words (rubric v1.0 on); show it when present
+  plain?: string | null
   exposure: number
   // scorer s2: "info" = reported but not rated, null = protective (or rubric v0.1)
   concern: "severe" | "high" | "medium" | "info" | null
@@ -40,7 +42,14 @@ export type CategoryScore = { key: string; name: string; tier: Tier; findings: E
 // The overall rating out of 100 (higher is better): 100 minus each
 // concern's points, kept inside the rating's range. Null for UNCLEAR and
 // NOT_DISCLOSED sites.
-export type ScoreDeduction = { check_id: string; category: string; status: string; meaning: string; points: number }
+export type ScoreDeduction = {
+  check_id: string
+  category: string
+  status: string
+  meaning: string
+  plain?: string | null
+  points: number
+}
 export type SiteScore = {
   value: number
   starts_at: number

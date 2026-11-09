@@ -106,6 +106,8 @@ class Evidence(BaseModel):
     question: str
     status: str
     meaning: str
+    plain: str | None = Field(None, description="What the answer means for the reader, in plain words "
+                                                "(rubric v1.0 on); show this when present")
     exposure: int = Field(description="0 = LIMITED … 3 = SEVERE: how much this practice exposes the user")
     concern: Literal["severe", "high", "medium", "info"] | None = Field(
         None, description="Scorer s2: info = the practice is reported but not rated; null = protective")
@@ -131,6 +133,7 @@ class ScoreDeduction(BaseModel):
     category: str = Field(description="Category key, to link the deduction to its evidence")
     status: str
     meaning: str
+    plain: str | None = Field(None, description="The answer in plain words, when the rubric has them")
     points: int = Field(description="Points this answer takes off the score")
 
 
@@ -152,7 +155,8 @@ def _site_score(rubric, scored: list, head: str) -> SiteScore | None:
         value=sc.value, starts_at=scorer.START, band=sc.band, unadjusted=sc.unadjusted,
         deductions=[ScoreDeduction(check_id=d.check_id, category=rubric.check(d.check_id).category,
                                    status=d.status, points=d.points,
-                                   meaning=rubric.check(d.check_id).statuses[d.status].meaning)
+                                   meaning=rubric.check(d.check_id).statuses[d.status].meaning,
+                                   plain=rubric.check(d.check_id).statuses[d.status].plain)
                     for d in sc.deductions])
 
 
@@ -285,7 +289,8 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
                 continue
             evidence[check.category].append(Evidence(
                 check_id=check_id, question=check.question, status=status,
-                meaning=check.statuses[status].meaning, exposure=check.statuses[status].exposure,
+                meaning=check.statuses[status].meaning, plain=check.statuses[status].plain,
+                exposure=check.statuses[status].exposure,
                 concern=check.statuses[status].concern,
                 quotes=[q for q, ok in zip(quotes, flags) if ok], explanation=expl,
                 document=d.type, provenance=prov, model=model, reused=reused,
@@ -750,6 +755,7 @@ def learn(response: Response):
 class RubricStatus(BaseModel):
     status: str
     meaning: str
+    plain: str | None = Field(None, description="The answer in plain words (rubric v1.0 on)")
     tier: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "INFO"]
     concern: Literal["severe", "high", "medium", "info"] | None = Field(
         None, description="Scorer s2: how much this answer counts toward the overall rating; "
@@ -796,8 +802,9 @@ def rubric_info(response: Response):
         tiers=[TierMeaning(tier=t, meaning=m) for t, m in scorer.tier_meanings(rubric).items()],
         categories=[RubricCategory(key=key, name=name, checks=[
             RubricCheck(check_id=c.id, question=c.question,
-                        statuses=[RubricStatus(status=s.name, meaning=s.meaning, tier=scorer.answer_tier(s),
-                                               concern=s.concern) for s in c.statuses.values()])
+                        statuses=[RubricStatus(status=s.name, meaning=s.meaning, plain=s.plain,
+                                               tier=scorer.answer_tier(s), concern=s.concern)
+                                  for s in c.statuses.values()])
             for c in rubric.checks if c.category == key])
             for key, name in rubric.categories.items()])
 
