@@ -3,7 +3,8 @@
 Shows the Imbroglio rating for the site in the current tab, following the UX
 team's Figma (imbroglio browser extension): the toolbar icon carries the
 site's worst level as a badge; the popup opens on an overview (the overall
-rating in plain words, counts per level, the three biggest flags), with a
+rating and its score out of 100, in plain words, counts per level, the three
+biggest flags, and a Share button that copies the report's link), with a
 category breakdown behind it and a "what you can do" screen with one action
 per flagged category. An action gets a button only when the lookup carries
 the site's own page for it (the API's link harvest); otherwise it is text

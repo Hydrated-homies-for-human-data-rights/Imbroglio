@@ -191,6 +191,39 @@ button {
   border-radius: 7px;
   background: #f3edf0 center / 16px no-repeat;
 }
+.site-text {
+  flex: 1;
+  min-width: 0;
+}
+/* a small share button beside the site's name: copies the report's link */
+.share {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--body);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.share:hover {
+  border-color: #cdbfc6;
+  background: var(--soft);
+}
+.share:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.share svg {
+  width: 13px;
+  height: 13px;
+}
 .domain {
   margin: 0;
   font-size: 14px;
@@ -233,6 +266,14 @@ button {
   font-size: 16px;
   font-weight: 800;
   line-height: 1.2;
+}
+.concern-title .score {
+  color: var(--muted);
+  font-weight: 700;
+}
+.concern-title .score small {
+  font-size: 11px;
+  font-weight: 600;
 }
 .concern-text {
   margin: 2px 0 0;

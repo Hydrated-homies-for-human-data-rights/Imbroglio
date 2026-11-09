@@ -187,13 +187,18 @@ function renderOverview(site) {
 
   // The card: how many categories sit at the overall rating, and what it means.
   const head = site.headline;
-  const atHead = site.categories.filter((c) => c.tier === head).length;
   const card = $("concern");
   card.style.setProperty("--wash", `var(--${tierClass(head).replace("_", "-")}-wash, var(--grey-wash))`);
   $("concern-mark").className = `mark big m-${tierClass(head)}`;
-  $("concern-title").textContent = CONCERNS.has(head)
-    ? `${atHead} ${TIER_WORDS[head].toLowerCase()} concern${atHead === 1 ? "" : "s"}`
-    : TIER_WORDS[head] || head;
+  // The rating and its score out of 100, as the website's report shows them.
+  // How many categories sit at each level is in the tiles below.
+  const title = $("concern-title");
+  title.replaceChildren(TIER_WORDS[head] || head);
+  if (site.score != null) {
+    const score = el("span", "score", ` · ${site.score}`);
+    score.append(el("small", "", "/100"));
+    title.append(score);
+  }
   $("concern-text").textContent = HEADLINE_TEXT[head] || "";
 
   // One tile per tier present, worst first, at most four.
@@ -225,11 +230,29 @@ function renderOverview(site) {
       return li;
     }),
   );
+  wireShare(site);
   $("see-all").textContent = `See all ${site.categories.length} categories`;
   $("see-all").hidden = false;
   $("see-all").onclick = () => {
     renderBreakdown(site);
     show("breakdown");
+  };
+}
+
+// Share copies the report's link. The system share sheet would take focus
+// from the popup and close it, so the link goes on the clipboard instead.
+function wireShare(site) {
+  const button = $("share");
+  const label = $("share-label");
+  button.hidden = false;
+  button.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(reportUrl(site.domain));
+      label.textContent = "Link copied";
+    } catch {
+      label.textContent = "Couldn’t copy";
+    }
+    setTimeout(() => (label.textContent = "Share"), 2000);
   };
 }
 
@@ -372,6 +395,7 @@ function mockSite(kind) {
     status: "ready",
     domain: "example-shop.com",
     headline: "EXTENSIVE",
+    score: 46,
     analyzedAt: "2026-11-02T19:29:33Z",
     changedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
     rubric: "v0.2",
