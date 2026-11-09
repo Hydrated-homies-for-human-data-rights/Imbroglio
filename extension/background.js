@@ -60,19 +60,22 @@ async function lookup(domain, api) {
 // in the rubric's order, and when and from which documents it was made.
 function toSiteData(domain, entry) {
     if (!entry.scores) {
-        return { status: "not_analyzed", domain, documents: entry.documents };
+        return { status: "not_analyzed", domain, hash: entry.hash, documents: entry.documents };
     }
     const s = entry.scores;
     return {
         status: "ready",
         domain,
+        hash: entry.hash, // what this extension keeps its per-site records under
         headline: s.headline,
+        score: s.score ?? null, // out of 100; null for an UNCLEAR or NOT_DISCLOSED site
         categories: s.categories.map((c) => ({ key: c.key, name: c.name, tier: c.tier, findings: c.findings })),
         analyzedAt: s.analyzed_at,
+        changedAt: entry.changed_at || null, // when a policy change was last detected
         rubric: s.rubric_version,
         scorer: s.scorer_version,
         documents: entry.documents,
-        links: entry.links || [], // the site's own opt-out pages, once the API carries them
+        links: entry.links || [], // the site's own opt-out and settings pages
     };
 }
 
@@ -205,26 +208,38 @@ function iconFor(headline) {
     return icons.get(key);
 }
 
-// --- the Extensive nudge ---------------------------------------------------------
+// --- the two notifications --------------------------------------------------------
 //
-// The popup's "Warn me on Extensive sites" switch. The first time a tab
-// finishes loading a site rated Extensive or Severe, one system notification
-// says so and names the category behind it; clicking it opens the report.
-// Each site is nudged once, remembered in storage, and the switch is on
-// until turned off.
+// Both sit behind a switch in the popup's footer, on until turned off, and
+// each fires at most once per site per occasion when a tab finishes
+// loading. What the extension remembers about a site is kept under the
+// site's sha256 hash (the same one the lookup sends) with a date beside
+// it, never the site's name, so a look at the extension's storage says
+// nothing readable about where you have been.
+//
+// The Extensive nudge: the first time you land on a site rated Extensive
+// or Severe, one notification says so and names the category behind it;
+// clicking it opens the report.
+//
+// The change alert: the first visit to a site only records which policy
+// version you have seen. When a later visit finds a change detected after
+// that, one notification says the policy changed, with the date; clicking
+// it opens the change history. The words in a notification are our own
+// plus the domain and a date; nothing from the network is shown.
 
 const NUDGE_TIERS = new Set(["EXTENSIVE", "SEVERE"]);
-const nudgeKey = (domain) => `nudged:${domain}`;
+const nudgeKey = (hash) => `nudged:${hash}`;
+const seenKey = (hash) => `seen:${hash}`;
 
 async function maybeNudge(data) {
-    if (!NUDGE_TIERS.has(data.headline)) return;
-    const got = await chrome.storage.local.get(["warnExtensive", nudgeKey(data.domain)]);
-    if (got.warnExtensive === false || got[nudgeKey(data.domain)]) return;
-    await chrome.storage.local.set({ [nudgeKey(data.domain)]: Date.now() });
+    if (!NUDGE_TIERS.has(data.headline) || !data.hash) return;
+    const got = await chrome.storage.local.get(["warnExtensive", nudgeKey(data.hash)]);
+    if (got.warnExtensive === false || got[nudgeKey(data.hash)]) return;
+    await chrome.storage.local.set({ [nudgeKey(data.hash)]: Date.now() });
     const tier = data.headline.charAt(0) + data.headline.slice(1).toLowerCase();
     const behind = data.categories.filter((c) => c.tier === data.headline).map((c) => c.name);
     const because = behind.length ? ` for ${behind.join(" and ")}` : "";
-    chrome.notifications.create(`imbroglio:${data.domain}`, {
+    chrome.notifications.create(`imbroglio:rating:${data.domain}`, {
         type: "basic",
         iconUrl: "icons/icon128.png",
         title: `${data.domain} is rated ${tier}`,
@@ -233,12 +248,35 @@ async function maybeNudge(data) {
     });
 }
 
-chrome.notifications.onClicked.addListener((id) => {
-    if (id.startsWith("imbroglio:")) {
-        const domain = id.slice("imbroglio:".length);
-        chrome.tabs.create({ url: `https://imbroglio.io/site/${encodeURIComponent(domain)}` });
-        chrome.notifications.clear(id);
+async function maybeChangeAlert(data) {
+    if (!data.changedAt || !data.hash) return;
+    const changed = Date.parse(data.changedAt);
+    if (isNaN(changed)) return;
+    const got = await chrome.storage.local.get(["policyChanges", seenKey(data.hash)]);
+    if (got.policyChanges === false) return;
+    const seen = got[seenKey(data.hash)];
+    if (seen === undefined) {
+        await chrome.storage.local.set({ [seenKey(data.hash)]: changed }); // first visit: nothing to compare yet
+        return;
     }
+    if (changed <= seen) return;
+    await chrome.storage.local.set({ [seenKey(data.hash)]: changed });
+    const when = new Date(changed).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    chrome.notifications.create(`imbroglio:change:${data.domain}`, {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: `${data.domain} changed its policy`,
+        message: `A change to its privacy policy or terms was found on ${when}. Click to see what changed.`,
+        priority: 0,
+    });
+}
+
+chrome.notifications.onClicked.addListener((id) => {
+    const m = /^imbroglio:(rating|change):(.+)$/.exec(id);
+    if (!m) return;
+    const page = `https://imbroglio.io/site/${encodeURIComponent(m[2])}` + (m[1] === "change" ? "/history" : "");
+    chrome.tabs.create({ url: page });
+    chrome.notifications.clear(id);
 });
 
 async function setBadge(tabId, url, loaded = false) {
@@ -251,7 +289,10 @@ async function setBadge(tabId, url, loaded = false) {
             if (data.status === "ready") {
                 headline = data.headline;
                 title = `Imbroglio: ${data.domain} is rated ${headline.toLowerCase().replace("_", " ")}`;
-                if (loaded) maybeNudge(data).catch((err) => console.warn("imbroglio BG: nudge failed", err));
+                if (loaded) {
+                    maybeNudge(data).catch((err) => console.warn("imbroglio BG: nudge failed", err));
+                    maybeChangeAlert(data).catch((err) => console.warn("imbroglio BG: change alert failed", err));
+                }
             } else if (data.status === "not_analyzed") {
                 title = `Imbroglio: ${data.domain} is stored but not rated yet`;
             } else if (data.status === "unknown") {

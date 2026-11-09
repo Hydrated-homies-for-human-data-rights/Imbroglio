@@ -37,10 +37,23 @@ export type Evidence = {
 
 export type CategoryScore = { key: string; name: string; tier: Tier; findings: Evidence[] }
 
+// The overall rating out of 100 (higher is better): 100 minus each
+// concern's points, kept inside the rating's range. Null for UNCLEAR and
+// NOT_DISCLOSED sites.
+export type ScoreDeduction = { check_id: string; category: string; status: string; meaning: string; points: number }
+export type SiteScore = {
+  value: number
+  starts_at: number
+  deductions: ScoreDeduction[]
+  band: [number, number]
+  unadjusted: number
+}
+
 export type Scorecard = {
   rubric_version: string
   scorer_version: string
   headline: Tier
+  score?: SiteScore | null
   headline_categories: string[]
   categories: CategoryScore[]
   analyzed_at: string
@@ -56,13 +69,14 @@ export type SiteDocument = {
 }
 
 // The site's own page for a category's advice (its opt-out, settings or
-// request page), found on its homepage or policy. One per category.
+// request page), found on its homepage or policy, or listed by hand for the
+// big sites whose settings pages nothing links to ("known"). One per category.
 export type SiteLink = {
   category: string
   kind: string
   url: string
   text: string
-  source: "homepage" | "privacy" | "terms"
+  source: "homepage" | "privacy" | "terms" | "known"
 }
 
 export type Site = {

@@ -126,10 +126,42 @@ class CategoryScore(BaseModel):
     findings: list[Evidence]
 
 
+class ScoreDeduction(BaseModel):
+    check_id: str
+    category: str = Field(description="Category key, to link the deduction to its evidence")
+    status: str
+    meaning: str
+    points: int = Field(description="Points this answer takes off the score")
+
+
+class SiteScore(BaseModel):
+    """The overall rating as a number (scorer.SCORE_RULE_S1/S2): 100 minus
+    the deductions, kept inside the rating's range."""
+    value: int = Field(description="0-100, higher is better")
+    starts_at: int
+    deductions: list[ScoreDeduction] = Field(description="Largest first; they add up to starts_at - unadjusted")
+    band: tuple[int, int] = Field(description="The range the overall rating allows")
+    unadjusted: int = Field(description="starts_at minus the deductions, before keeping it in the band")
+
+
+def _site_score(rubric, scored: list, head: str) -> SiteScore | None:
+    sc = scorer.score(rubric, scored, head)
+    if sc is None:
+        return None
+    return SiteScore(
+        value=sc.value, starts_at=scorer.START, band=sc.band, unadjusted=sc.unadjusted,
+        deductions=[ScoreDeduction(check_id=d.check_id, category=rubric.check(d.check_id).category,
+                                   status=d.status, points=d.points,
+                                   meaning=rubric.check(d.check_id).statuses[d.status].meaning)
+                    for d in sc.deductions])
+
+
 class Scorecard(BaseModel):
     rubric_version: str
     scorer_version: str
     headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
+    score: SiteScore | None = Field(
+        None, description="The overall rating out of 100; null when it is UNCLEAR or NOT_DISCLOSED")
     headline_categories: list[str] = Field(description="Categories at the headline tier")
     categories: list[CategoryScore]
     analyzed_at: datetime
@@ -138,13 +170,15 @@ class Scorecard(BaseModel):
 
 class SiteLink(BaseModel):
     """The site's own page for a category's advice: its opt-out, settings or
-    request page, found on its homepage or policy (links.py). One per
-    category, the most specific kind first."""
+    request page, found on its homepage or policy (links.py), or listed by
+    hand for the sites whose settings pages nothing links to (source
+    "known"). One per category, a known page first, then the most specific
+    kind."""
     category: str
     kind: str
     url: str
-    text: str = Field(description="The link's own words, as found on the site")
-    source: Literal["homepage", "privacy", "terms"]
+    text: str = Field(description="The link's own words as found on the site, or our label for a known page")
+    source: Literal["homepage", "privacy", "terms", "known"]
 
 
 def _site_links(links: list) -> list[SiteLink]:
@@ -261,6 +295,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
     tiers, head = scorer.rate(rubric, scored)
     return Scorecard(
         rubric_version=rubric.version, scorer_version=scorer.version_for(rubric), headline=head,
+        score=_site_score(rubric, scored, head),
         # s2 can rate a site above any one category (two high concerns make it
         # SEVERE); then the categories behind it are the EXTENSIVE/SEVERE ones
         headline_categories=[rubric.categories[c] for c, t in tiers.items() if t == head]
@@ -573,6 +608,8 @@ class LookupScores(BaseModel):
     rubric_version: str
     scorer_version: str
     headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
+    score: int | None = Field(None, description="The overall rating out of 100, as on the scorecard; "
+                                                "null when it is UNCLEAR or NOT_DISCLOSED")
     categories: list[LookupCategory]
     analyzed_at: datetime
 
@@ -586,6 +623,8 @@ class LookupEntry(BaseModel):
                           "Null until the site's documents have been analyzed")
     links: list[SiteLink] = Field(
         default_factory=list, description="The site's own opt-out and settings pages, one per category")
+    changed_at: datetime | None = Field(
+        None, description="When a change to one of the site's documents was last detected; null if never")
 
 
 def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
@@ -597,7 +636,9 @@ def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
     rubric = load_rubric(RUBRIC_VERSION)
     out = {}
     for found in db.site_findings(conn, rubric.version, hash_like=pattern).values():
-        tiers, head = scorer.rate(rubric, [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found])
+        scored = [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found]
+        tiers, head = scorer.rate(rubric, scored)
+        site_score = scorer.score(rubric, scored, head)
         counts: dict[str, int] = {}
         for _, check_id, status, verified, _ in found:
             check = rubric.check(check_id)
@@ -606,6 +647,7 @@ def _lookup_scores(conn, pattern: str) -> dict[str, LookupScores]:
         out[found[0][0]] = LookupScores(
             rubric_version=rubric.version, scorer_version=scorer.version_for(rubric),
             headline=head, analyzed_at=max(created for *_, created in found),
+            score=site_score.value if site_score else None,
             categories=[LookupCategory(key=c, name=name, tier=tiers[c], findings=counts.get(c, 0))
                         for c, name in rubric.categories.items()])
     return out
@@ -640,7 +682,8 @@ def lookup(prefix: str, request: Request, response: Response):
     try:
         rows = conn.execute(
             """SELECT s.domain_hash, array_agg(DISTINCT d.doc_type ORDER BY d.doc_type),
-                      max(v.fetched_at)
+                      max(v.fetched_at),
+                      max((SELECT max(c.detected_at) FROM change_events c WHERE c.document_id = d.id))
                FROM services s
                JOIN documents d ON d.service_id = s.id
                JOIN document_versions v ON v.document_id = d.id
@@ -656,8 +699,9 @@ def lookup(prefix: str, request: Request, response: Response):
     response.headers["Cache-Control"] = "private, max-age=300"
     return LookupResult(prefix=p, sites=[LookupEntry(hash=h, documents=docs, checked_at=t,
                                                      scores=scores.get(h),
-                                                     links=_site_links(links.get(h, [])))
-                                         for h, docs, t in rows])
+                                                     links=_site_links(links.get(h, [])),
+                                                     changed_at=changed)
+                                         for h, docs, t, changed in rows])
 
 
 # --- learn: what users can do --------------------------------------------------

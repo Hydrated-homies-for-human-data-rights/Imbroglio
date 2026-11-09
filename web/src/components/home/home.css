@@ -168,12 +168,13 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 32px 24px 64px;
+  padding: 16px 24px 32px;
 }
 .knot {
   position: relative;
   width: min(760px, 100%);
-  aspect-ratio: 760 / 380;
+  max-width: 100%;
+  aspect-ratio: 760 / 280;
 }
 .knot canvas {
   position: absolute;
@@ -216,24 +217,82 @@
     opacity: 0;
   }
 }
+.opening .kicker {
+  margin: 4px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-wrap: balance;
+  color: var(--muted);
+}
+/* two lines, kept narrower than the knot so the thread's run down its right
+   edge never crosses the headline */
 .opening h1 {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
+  max-width: 9.5ch;
   font-weight: 600;
-  font-size: clamp(52px, 8.5vw, 104px);
+  font-size: clamp(40px, 5.4vw, 72px);
   line-height: 1;
   letter-spacing: -0.035em;
+  text-wrap: balance;
 }
 .opening .sub {
-  margin: 20px 0 0;
+  margin: 16px 0 0;
   font-size: 18px;
-  color: var(--muted);
-  max-width: 44ch;
+  line-height: 1.5;
+  color: var(--ink);
+  opacity: 0.82;
+  max-width: 46ch;
 }
-.scroll-hint {
-  margin-top: 40px;
+.opening-search {
+  margin-top: 20px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+/* one real finding: what a report is made of */
+.finding-card {
+  margin-top: 18px;
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  text-decoration: none;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--pink);
+  padding: 16px 20px;
+  transition: border-color 0.2s ease;
+}
+.finding-card:hover,
+.finding-card:focus-visible {
+  border-color: var(--pink-deep);
+}
+.finding-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.finding-site {
+  font-weight: 600;
+  font-size: 17px;
+}
+.finding-cat {
+  margin-left: 10px;
   font-size: 11px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+.finding-quote {
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.finding-meta {
+  font-size: 11px;
   color: var(--faint);
 }
 
@@ -382,21 +441,10 @@
   transform: scale(1.4);
 }
 
-/* ---- the first thread: a verdict sitting on the line ---- */
+/* ---- the first thread: the line it runs along after the opening ---- */
 .first {
-  padding-top: 32px;
-  padding-bottom: 40px;
-}
-.first-block {
-  max-width: 600px;
-  padding-bottom: 32px;
-}
-.first-block blockquote {
-  margin: 12px 0 8px;
-  font-style: italic;
-  font-size: 18px;
-  line-height: 1.5;
-  color: var(--muted);
+  padding-top: 24px;
+  padding-bottom: 0;
 }
 .first-line {
   height: 0;
@@ -787,8 +835,20 @@
   }
   .opening h1,
   .opening .sub,
-  .opening .search {
+  .opening .search,
+  .opening .kicker,
+  .finding-card {
     max-width: calc(100% - 2 * var(--gutter) - 8px);
+  }
+  .opening .kicker {
+    font-size: 10px;
+  }
+  .opening .sub {
+    font-size: 16px;
+  }
+  .finding-cat {
+    display: block;
+    margin: 2px 0 0;
   }
   .knot-fragment {
     font-size: 12px;

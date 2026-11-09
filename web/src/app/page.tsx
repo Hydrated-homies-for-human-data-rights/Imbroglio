@@ -20,8 +20,9 @@ import {
 import "@/components/home/home.css"
 import { getSite, type Tier } from "@/lib/api"
 
-// The front page: "Pull the thread." One pink line runs from the tangle on
-// the opening screen through a real policy, the verdict it earned, how the
+// The front page: "Know what you agreed to." The opening screen says what
+// Imbroglio is and shows one real finding. One pink line runs from the tangle
+// on the opening screen through a real policy, the verdict it earned, how the
 // verdict was reached, the sites rated most recently, and back to a search
 // box. Scrolling draws the line (components/home/Thread.tsx). Everything on
 // the page is real: the excerpt is tiktok.com's stored policy and the
@@ -139,25 +140,32 @@ export default function Home() {
 
       <section className="opening" aria-labelledby="h1">
         <Knot />
-        <h1 id="h1">Pull the thread.</h1>
-        <p className="sub">What a privacy policy actually says, one sentence at a time.</p>
-        <div style={{ marginTop: 32, width: "100%", display: "flex", justifyContent: "center" }}>
+        <p className="kicker mono">Imbroglio · privacy policies, read for you</p>
+        <h1 id="h1">Know what you agreed to.</h1>
+        <p className="sub">
+          Imbroglio reads the privacy policies and terms of the sites you use, and tells you in plain words what they let
+          a company do with your data. Every finding quotes the policy.
+        </p>
+        <div className="opening-search">
           <Search label="Search a site or service" />
         </div>
-        <p className="scroll-hint mono">scroll to pull ↓</p>
+        <Link href={`${reportHref}#${FIRST_THREAD.key}`} className="finding-card">
+          <span className="finding-head">
+            <span>
+              <span className="finding-site">{EXCERPT.domain}</span>
+              <span className="finding-cat mono">{FIRST_THREAD.category}</span>
+            </span>
+            <Verdict tier={FIRST_THREAD.tier} />
+          </span>
+          <span className="finding-quote serif">“{FIRST_THREAD.quote}”</span>
+          <span className="finding-meta mono">
+            {FIRST_THREAD.why} · privacy policy, line {FIRST_THREAD.line} · verified word for word · full report →
+          </span>
+        </Link>
       </section>
 
-      <section className="band first" aria-label="The first finding">
-        <Reach className="first-block">
-          <div className="eyebrow mono">{FIRST_THREAD.category}</div>
-          <div style={{ marginTop: 10 }}>
-            <Verdict tier={FIRST_THREAD.tier} big />
-          </div>
-          <blockquote className="serif">“{FIRST_THREAD.quote}”</blockquote>
-          <div className="meta mono">
-            {EXCERPT.domain} · privacy policy · line {FIRST_THREAD.line} of {EXCERPT.lines} · quote verified word for word
-          </div>
-        </Reach>
+      {/* The thread leaves the knot, comes down past the finding and runs along this line to the left gutter. */}
+      <section className="band first" aria-hidden="true">
         <div className="first-line" data-thread="first" />
       </section>
 

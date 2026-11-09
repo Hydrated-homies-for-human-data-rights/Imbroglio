@@ -166,20 +166,41 @@ function showMessage(domain, text, button) {
   }
 }
 
+// A policy change counts as recent for this long (the website's rule too).
+const RECENT_DAYS = 30;
+
 function renderOverview(site) {
   const sorted = sortedCategories(site);
   $("domain").textContent = site.domain;
   $("checked").textContent = `Policy checked ${formatDate(site.analyzedAt)}`;
 
+  // A recent change to the policy, with the history page behind it.
+  const changed = site.changedAt ? new Date(site.changedAt) : null;
+  const recent = changed && !isNaN(changed) && Date.now() - changed.getTime() < RECENT_DAYS * 86_400_000;
+  const line = $("changed");
+  line.hidden = !recent;
+  if (recent) {
+    const a = el("a", "", "see what changed");
+    linkTo(a, `${reportUrl(site.domain)}/history`);
+    line.replaceChildren(`Policy changed ${formatDate(site.changedAt)} · `, a);
+  }
+
   // The card: how many categories sit at the overall rating, and what it means.
   const head = site.headline;
-  const atHead = site.categories.filter((c) => c.tier === head).length;
   const card = $("concern");
   card.style.setProperty("--wash", `var(--${tierClass(head).replace("_", "-")}-wash, var(--grey-wash))`);
   $("concern-mark").className = `mark big m-${tierClass(head)}`;
-  $("concern-title").textContent = CONCERNS.has(head)
-    ? `${atHead} ${TIER_WORDS[head].toLowerCase()} concern${atHead === 1 ? "" : "s"}`
-    : TIER_WORDS[head] || head;
+  // The rating and its score out of 100, as the website's report shows them.
+  // How many categories sit at each level is in the tiles below.
+  const title = $("concern-title");
+  title.replaceChildren(TIER_WORDS[head] || head);
+  if (site.score != null) {
+    // the score in the rating's own color, larger than the word
+    const score = el("span", "score", String(site.score));
+    score.style.color = `var(--${tierClass(head).replace("_", "-")})`;
+    score.append(el("small", "", "/100"));
+    title.append(el("span", "sep", " · "), score);
+  }
   $("concern-text").textContent = HEADLINE_TEXT[head] || "";
 
   // One tile per tier present, worst first, at most four.
@@ -211,11 +232,29 @@ function renderOverview(site) {
       return li;
     }),
   );
+  wireShare(site);
   $("see-all").textContent = `See all ${site.categories.length} categories`;
   $("see-all").hidden = false;
   $("see-all").onclick = () => {
     renderBreakdown(site);
     show("breakdown");
+  };
+}
+
+// Share copies the report's link. The system share sheet would take focus
+// from the popup and close it, so the link goes on the clipboard instead.
+function wireShare(site) {
+  const button = $("share");
+  const label = $("share-label");
+  button.hidden = false;
+  button.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(reportUrl(site.domain));
+      label.textContent = "Link copied";
+    } catch {
+      label.textContent = "Couldn’t copy";
+    }
+    setTimeout(() => (label.textContent = "Share"), 2000);
   };
 }
 
@@ -324,12 +363,16 @@ function wireNavigation() {
   linkTo($("site-link"), WEBSITE);
 }
 
+// The two switches in the footer. Both are on until switched off; the
+// background script reads the same keys before it notifies.
 async function wireWarnToggle() {
-  const warn = $("warn");
   if (typeof chrome === "undefined" || !chrome.storage) return;
-  const got = await chrome.storage.local.get("warnExtensive");
-  warn.checked = got.warnExtensive !== false; // on until switched off
-  warn.addEventListener("change", () => chrome.storage.local.set({ warnExtensive: warn.checked }));
+  const got = await chrome.storage.local.get(["warnExtensive", "policyChanges"]);
+  for (const [id, key] of [["warn", "warnExtensive"], ["changes", "policyChanges"]]) {
+    const box = $(id);
+    box.checked = got[key] !== false;
+    box.addEventListener("change", () => chrome.storage.local.set({ [key]: box.checked }));
+  }
 }
 
 function setFavicon(url) {
@@ -354,7 +397,9 @@ function mockSite(kind) {
     status: "ready",
     domain: "example-shop.com",
     headline: "EXTENSIVE",
+    score: 46,
     analyzedAt: "2026-11-02T19:29:33Z",
+    changedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
     rubric: "v0.2",
     documents: ["privacy", "terms"],
     links: [{ category: "ai_training", url: "https://example-shop.com/settings/privacy" }],

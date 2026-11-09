@@ -3,7 +3,8 @@
 Shows the Imbroglio rating for the site in the current tab, following the UX
 team's Figma (imbroglio browser extension): the toolbar icon carries the
 site's worst level as a badge; the popup opens on an overview (the overall
-rating in plain words, counts per level, the three biggest flags), with a
+rating and its score out of 100, in plain words, counts per level, the three
+biggest flags, and a Share button that copies the report's link), with a
 category breakdown behind it and a "what you can do" screen with one action
 per flagged category. An action gets a button only when the lookup carries
 the site's own page for it (the API's link harvest); otherwise it is text
@@ -21,10 +22,12 @@ where the request limits apply.
 ## Files
 
 - `manifest.json`: permissions (`tabs` to know which site each tab is on, so
-  the badge can be drawn as you browse; `notifications` for the one-time
-  "warn me on Extensive sites" nudge; `activeTab` for the popup; `storage`
-  for the warn setting, which sites were nudged, and the local API
-  override). The badge lookups are the same hash-prefix lookups as the popup's,
+  the badge can be drawn as you browse; `notifications` for the two one-time
+  alerts, "warn me on Extensive sites" and "tell me when a site's policy
+  changes"; `activeTab` for the popup; `storage` for the two switches, the
+  per-site records behind the alerts, and the local API override). The
+  per-site records are kept under the site's sha256 hash with a date beside
+  it, never the site's name. The badge lookups are the same hash-prefix lookups as the popup's,
   cached ten minutes per site, so browsing still never sends a site's name.
 - `background.js`: the lookup and the badge. The icon is drawn in a canvas
   (the logo, plus the worst level's shape in the corner; dimmed with no

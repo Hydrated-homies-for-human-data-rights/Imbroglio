@@ -41,6 +41,34 @@ On screen each rating is a shape, a word and a color together, so it never relie
 4. With both a privacy policy and terms of service, each category takes the worse of the two.
 5. The overall rating is the worst category, never an average.
 
+## Score out of 100
+
+Every rated site also gets a score out of 100, where higher is better. It is the overall rating as a
+number, so the two always agree, and it is made by the same code (`scorer.score()`), with no AI model.
+
+1. Start at 100.
+2. Take off points for each answer that raises a concern: 65 for a severe concern, 42 for a high one,
+   12 for a medium one. Under scorer s1, the answer's rating stands in for its concern (SEVERE, EXTENSIVE,
+   MODERATE). Informational and protective answers take nothing off.
+3. Count each practice once, the same way the overall rating does (`same_concern_as`).
+4. Keep the result inside the overall rating's range:
+
+| Rating | Score |
+| --- | --- |
+| LIMITED | 80 to 100 |
+| MODERATE | 60 to 79 |
+| EXTENSIVE | 40 to 59 |
+| SEVERE | 0 to 39 |
+| UNCLEAR, NOT DISCLOSED | no score |
+
+The points are set so that under s2 the subtraction alone nearly always lands in the right range: one
+high concern gives 58 (EXTENSIVE), two medium ones give 76 (MODERATE), one severe concern gives 35 and
+two high ones give 16 (SEVERE). Step 4 only matters for unusual mixes, such as four medium concerns
+(52, kept at 60 because the site is MODERATE). The report shows each deduction next to the score, and
+says when the range moved it.
+
+A site with too few answers gets no number at all, so a policy that says little never scores well.
+
 ## The questions (rubric v0.1)
 
 ### Data selling and sharing

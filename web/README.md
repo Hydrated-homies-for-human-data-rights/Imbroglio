@@ -29,6 +29,18 @@ Environment variables (set in Vercel → Project → Settings → Environment Va
 
 - `IMBROGLIO_API_URL`: the read API, e.g. `https://api.imbroglio.io`
 - `IMBROGLIO_API_USER`, `IMBROGLIO_API_PASSWORD`: only while the API is password-protected
+- `SITE_URL`: optional, the site's own address for link previews (default `https://imbroglio.io`). Set it
+  on preview deployments so shared links point at the preview
 - `IMBROGLIO_WEB_KEY`: the same value as the API's `WEB_CLIENT_KEY`. It lets the site pass on
   each visitor's address, so the API's rate limit counts visitors one by one. Without it, every
   visitor shares this server's limit
+
+## Link previews
+
+A shared link shows a preview card. `src/app/opengraph-image.tsx` draws the default one (home and any
+page without its own), and `src/app/site/[domain]/opengraph-image.tsx` draws a report's: the site, its
+rating and score, and the two things that took the most points off. The report page's title and
+description say the same in text. The cards use Inter from `assets/fonts` (SIL Open Font License,
+`assets/fonts/OFL.txt`), since the image renderer needs font files. To see one locally, open
+`/site/<domain>/opengraph-image`.
+
