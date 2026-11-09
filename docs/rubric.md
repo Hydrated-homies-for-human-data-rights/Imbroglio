@@ -3,12 +3,13 @@
 This is the published spec for how Imbroglio rates a site (requirement F5). The same content is
 served by `GET /v1/rubric` and shown on the website's "How we score" page.
 
-- **Live now:** rubric v0.1 (14 questions, 2 per category), scorer s1
-- **Built, switching on next:** scorer s2, "red flags + coverage", with rubric v0.2 (see the end of
-  this page). It goes live once the documents have been analyzed under v0.2, by setting
-  `RUBRIC_VERSION=v0.2`; the scorer version follows the rubric.
-- **Source files:** `pipeline/imbroglio/rubric/v0.1.yaml` and `v0.2.yaml` (the questions) and
-  `pipeline/imbroglio/scorer.py` (the rules)
+- **Live now:** rubric v0.2 with scorer s2, "red flags + coverage" (live since Oct 30, 2026; see
+  "Next: scorer s2 and rubric v0.2" below)
+- **Built, switching on next:** rubric v0.3, a calibration of v0.2 from the first production reports
+  (see the end of this page). It goes live by setting `RUBRIC_VERSION=v0.3` once its findings are in.
+- **Drafted for later:** rubric v1.0, 23 questions ([rubric-v1.md](rubric-v1.md))
+- **Source files:** `pipeline/imbroglio/rubric/v0.1.yaml`, `v0.2.yaml`, `v0.3.yaml` (the questions)
+  and `pipeline/imbroglio/scorer.py` (the rules)
 
 ## How a rating is made
 
@@ -301,3 +302,40 @@ All three only narrow `no` answers, so only the 17 documents answered `no` on ei
 
 Every one of the 26 EXTENSIVE sites gets there on AI training alone. Whether training on user data
 should stay a high concern is a team decision to revisit after the v0.2 analysis.
+
+## Next: rubric v0.3, a calibration of v0.2 (Nov 9, 2026)
+
+Same 14 questions. The changes come from the first two production reports, on 565 sites:
+`cli rejected-quotes` and `cli score-spread`.
+
+| What the reports showed | Change in v0.3 |
+| --- | --- |
+| 1,706 real quotes (21% of 8,202) turned away by the evidence-word check; 124 sites (22%) UNCLEAR | Hyphens count as spaces ("third part" matches "third-party"); a quote that isn't in English skips the English word lists but must still be found word for word; each list gains the words its turned-away samples show on topic |
+| "As long as necessary" retention cost 256 sites 12 points, and scores piled on five values | `retention_period` `vague` is informational: shown on the report, not rated |
+| AI training "yes" cost 72 sites 42 points, most of the EXTENSIVE ones, whatever was trained on | Split by what is trained on: private content or AI chats is high (medium with an opt-out); public content or usage data is medium (informational with an opt-out) |
+| Opt-out "limited" on 158 sites, often for not honoring Do Not Track | Guidance: ignoring Do Not Track alone is neither `no` nor `limited` |
+| The report shows the rubric's wording | Every answer has a plain line in the reader's words |
+
+The evidence lists leave out generic words the report suggested ("collect", "account", "address"):
+they would let in quotes that aren't about the question. A quote is judged to be in another language
+only when it shows signs of one (mostly non-Latin letters, or common French, German, Spanish,
+Italian, Portuguese or Dutch words), so an English list of nouns is still checked.
+
+### Producing v0.3's findings
+
+```
+python -m imbroglio.cli rebase-rubric --from v0.2 --to v0.3
+python -m imbroglio.cli reanalyze --rubric v0.3 --from v0.2 --where trains_ai_on_user_data=yes,yes_with_opt_out --where opt_out_of_tracking=limited --dry-run
+python -m imbroglio.cli reanalyze --rubric v0.3 --from v0.2 --where trains_ai_on_user_data=yes,yes_with_opt_out --where opt_out_of_tracking=limited
+python -m imbroglio.cli score-spread --rubric v0.3
+python -m imbroglio.cli rejected-quotes --rubric v0.3
+```
+
+1. `rebase-rubric` carries every v0.2 answer over and re-checks its quotes under v0.3's word lists,
+   with no model calls. Answers v0.3 no longer has (AI training's plain `yes`) come over uncounted.
+2. `reanalyze` asks the model again only for the documents whose v0.2 answer has to change, and
+   keeps the new answers for those two questions only, so the other answers don't drift. Identical
+   documents are read once. `--dry-run` gives the count and estimated cost first.
+3. The two reports show the effect next to v0.2's. v0.3 goes live with `RUBRIC_VERSION=v0.3` on
+   Railway (both services) when the team is happy with them; until then the site keeps showing v0.2.
+

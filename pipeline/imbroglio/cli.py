@@ -88,6 +88,62 @@ def _extract_cmd(args) -> int:
     return 0
 
 
+def _reanalyze_cmd(args) -> int:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import db
+    from .analysis import (average_cost, extraction_enabled, reanalysis_targets, reanalyze_checks,
+                           spent_last_24h)
+    from .rubric import load
+
+    where: dict[str, list[str]] = {}
+    for item in args.where:
+        check_id, _, statuses = item.partition("=")
+        if not statuses:
+            print(f"--where {item!r}: expected CHECK=STATUS[,STATUS]")
+            return 2
+        where.setdefault(check_id.strip(), []).extend(s.strip() for s in statuses.split(",") if s.strip())
+    new, old = load(args.rubric), load(args.from_version)
+    for check_id, statuses in where.items():
+        if check_id not in {c.id for c in new.checks} or check_id not in {c.id for c in old.checks}:
+            print(f"{check_id}: not a question in both {args.from_version} and {args.rubric}")
+            return 2
+        unknown = [s for s in statuses if s not in old.check(check_id).allowed()]
+        if unknown:
+            print(f"{check_id}: {unknown} aren't answers in {args.from_version}")
+            return 2
+
+    logging.basicConfig(level=logging.WARNING)
+    conn = db.connect()
+    groups = reanalysis_targets(conn, args.from_version, where)[: args.limit]
+    docs = sum(len(g) for g in groups)
+    print(f"{len(groups)} distinct documents to read ({docs} stored copies), for "
+          + "; ".join(f"{c} in {s}" for c, s in where.items()))
+    print(f"estimated cost: ${len(groups) * average_cost(conn):.2f}; spent in last 24h: ${spent_last_24h(conn):.2f}")
+    conn.close()
+    if args.dry_run:
+        return 0
+    if not extraction_enabled():
+        print("ANTHROPIC_API_KEY not set (put it in pipeline/.env)")
+        return 1
+
+    def one(group):
+        c = db.connect()
+        try:
+            return group, reanalyze_checks(c, group, args.rubric, list(where), model=args.model)
+        finally:
+            c.close()
+
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for i, (group, outcome) in enumerate(pool.map(one, groups), 1):
+            print(f"[{i:>3}/{len(groups)}] {outcome:<40} version {group[0]}"
+                  + (f" (+{len(group) - 1} copies)" if len(group) > 1 else ""), flush=True)
+    conn = db.connect()
+    print(f"spent in last 24h: ${spent_last_24h(conn):.2f}")
+    conn.close()
+    return 0
+
+
 REPORT_STATUSES = ("new", "reviewed", "withdrawn", "dismissed")
 
 
@@ -258,6 +314,19 @@ def main() -> int:
     ex.add_argument("--model", help="override EXTRACTION_MODEL")
     ex.add_argument("--force", action="store_true", help="re-analyze even if findings exist")
     ex.add_argument("--workers", type=int, default=3)
+
+    ra = sub.add_parser("reanalyze",
+                        help="ask the model again only where a new rubric changes an answer, and keep the "
+                             "new answers for those questions only (run rebase-rubric first)")
+    ra.add_argument("--rubric", required=True, help="the new rubric version, e.g. v0.3")
+    ra.add_argument("--from", dest="from_version", required=True, help="the version the answers come from, e.g. v0.2")
+    ra.add_argument("--where", action="append", required=True, metavar="CHECK=STATUS[,STATUS]",
+                    help="documents whose --from answer to CHECK is one of these; that question's answer "
+                         "is replaced. Repeat for more questions")
+    ra.add_argument("--limit", type=int, help="at most this many distinct documents")
+    ra.add_argument("--model", help="override EXTRACTION_MODEL")
+    ra.add_argument("--workers", type=int, default=3)
+    ra.add_argument("--dry-run", action="store_true", help="count the documents and estimate the cost only")
 
     cs = sub.add_parser("consistency", help="run-to-run consistency study (N2), read-only")
     cs.add_argument("--sample", type=int, default=50)
@@ -450,6 +519,9 @@ def main() -> int:
 
     if args.command == "extract":
         return _extract_cmd(args)
+
+    if args.command == "reanalyze":
+        return _reanalyze_cmd(args)
 
     if args.command == "consistency":
         from .analysis import EXTRACTION_MODEL, RUBRIC_VERSION, extraction_enabled
