@@ -194,3 +194,102 @@ def rebase(conn: psycopg.Connection, version_id: int, from_version: str, to_vers
     _write_scores(conn, version_id, to_version)
     conn.commit()
     return "rebased"
+
+
+def _copy_checks(conn, source_version: int, version_id: int, rubric_version: str,
+                 checks: list[str]) -> None:
+    """Copy `checks`' findings from an identical document, replacing what the
+    target had for them."""
+    conn.execute(
+        """INSERT INTO findings (version_id, run_id, rubric_version, check_id, category, status, quotes,
+                                 quotes_verified, verified, explanation, model, provenance,
+                                 reused_from_version_id)
+           SELECT %s, run_id, rubric_version, check_id, category, status, quotes, quotes_verified,
+                  verified, explanation, model, provenance, version_id
+           FROM findings WHERE version_id = %s AND rubric_version = %s AND check_id = ANY(%s)
+           ON CONFLICT (version_id, rubric_version, check_id) DO UPDATE SET
+             run_id = EXCLUDED.run_id, status = EXCLUDED.status, quotes = EXCLUDED.quotes,
+             quotes_verified = EXCLUDED.quotes_verified, verified = EXCLUDED.verified,
+             explanation = EXCLUDED.explanation, model = EXCLUDED.model,
+             provenance = EXCLUDED.provenance,
+             reused_from_version_id = EXCLUDED.reused_from_version_id, created_at = now()""",
+        (version_id, source_version, rubric_version, checks),
+    )
+
+
+def reanalyze_checks(conn: psycopg.Connection, version_ids: list[int], rubric_version: str,
+                     checks: list[str], *, model: str | None = None) -> str:
+    """Ask the model again about documents with identical text (`version_ids`,
+    the first one is read) and keep its new answers for `checks` only. The
+    other answers stay as `rebase` carried them over, so a calibration that
+    changes one question's answers doesn't also stir every other answer
+    (run-to-run consistency is 88%).
+
+    Used when a new rubric version splits or redefines some answers (v0.3:
+    AI training split by what is trained on; opt-out guidance on Do Not
+    Track). Returns reanalyzed | skipped:<why> | failed:<why>."""
+    first = version_ids[0]
+    if not _has_findings(conn, first, rubric_version):
+        return f"skipped:no {rubric_version} findings yet (run rebase-rubric first)"
+    if not extraction_enabled():
+        return "skipped:extraction disabled or no API key"
+    spent = spent_last_24h(conn)
+    if spent >= DAILY_BUDGET_USD:
+        return "skipped:daily budget reached"
+
+    rubric = load(rubric_version)
+    text = conn.execute("SELECT normalized_text FROM document_versions WHERE id = %s", (first,)).fetchone()[0]
+    ex = extract(text, rubric, model or EXTRACTION_MODEL)
+    run_id = conn.execute(
+        """INSERT INTO extraction_runs (version_id, rubric_version, model, status, stop_reason,
+               input_tokens, output_tokens, cache_read_tokens, cost_usd, seconds, error)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        (first, rubric_version, ex.model, ex.status, ex.stop_reason, ex.input_tokens,
+         ex.output_tokens, ex.cache_read_tokens, ex.cost_usd, ex.seconds, ex.error),
+    ).fetchone()[0]
+    if ex.status != "ok":
+        conn.commit()
+        return f"failed:{ex.status}"
+    ex.findings = [f for f in ex.findings if f.check_id in checks]
+    _store(conn, first, rubric_version, ex, run_id)
+    _write_scores(conn, first, rubric_version)
+    for other in version_ids[1:]:
+        if _has_findings(conn, other, rubric_version):
+            _copy_checks(conn, first, other, rubric_version, checks)
+            _write_scores(conn, other, rubric_version)
+    conn.commit()
+    return "reanalyzed"
+
+
+def reanalysis_targets(conn: psycopg.Connection, from_version: str,
+                       where: dict[str, list[str]]) -> list[list[int]]:
+    """Latest document versions whose `from_version` answer to any check in
+    `where` is one of the listed statuses, grouped by identical text (each
+    group is read once)."""
+    rows = conn.execute(
+        """WITH latest AS (
+               SELECT DISTINCT ON (d.id) v.id AS version_id, v.content_hash
+               FROM documents d JOIN document_versions v ON v.document_id = d.id
+               ORDER BY d.id, v.fetched_at DESC)
+           SELECT DISTINCT l.version_id, l.content_hash
+           FROM latest l JOIN findings f ON f.version_id = l.version_id
+           WHERE f.rubric_version = %s AND f.check_id = ANY(%s)
+           ORDER BY l.content_hash, l.version_id""",
+        (from_version, list(where)),
+    ).fetchall()
+    wanted = {r[0] for r in conn.execute(
+        """SELECT version_id FROM findings
+           WHERE rubric_version = %s AND (check_id, status) IN (SELECT * FROM unnest(%s::text[], %s::text[]))""",
+        (from_version, [c for c, ss in where.items() for _ in ss], [s for ss in where.values() for s in ss]),
+    )}
+    groups: dict[str, list[int]] = {}
+    for version_id, content_hash in rows:
+        if version_id in wanted:
+            groups.setdefault(content_hash, []).append(version_id)
+    return list(groups.values())
+
+
+def average_cost(conn: psycopg.Connection) -> float:
+    """Average cost of a successful extraction so far (USD), for estimates."""
+    row = conn.execute("SELECT avg(cost_usd) FROM extraction_runs WHERE status = 'ok' AND cost_usd > 0").fetchone()
+    return float(row[0]) if row and row[0] is not None else 0.036

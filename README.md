@@ -165,6 +165,12 @@ python -m imbroglio.cli score-spread --rubric v0.2 --out runs/score-spread.md --
 # fill in. Read-only, no LLM cost
 python -m imbroglio.cli rejected-quotes --rubric v0.2 --out runs/rejected.md --csv runs/rejected.csv
 
+# Move to a new rubric version cheaply: carry answers over and re-check their
+# quotes (free), then ask the model again only where an answer has to change,
+# keeping the new answers for those questions only. --dry-run first
+python -m imbroglio.cli rebase-rubric --from v0.2 --to v0.3
+python -m imbroglio.cli reanalyze --rubric v0.3 --from v0.2 --where trains_ai_on_user_data=yes,yes_with_opt_out --where opt_out_of_tracking=limited --dry-run
+
 # Each site's own opt-out and settings pages (links.py), read off the
 # homepage and policy pages. The worker does this on every analysis; this
 # backfills sites stored before it existed. No model calls. --dry-run first.
