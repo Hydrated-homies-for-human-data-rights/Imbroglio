@@ -7,6 +7,7 @@ import type { Evidence, Site, WhatYouCanDo } from "@/lib/api"
 import { docName, shortDate } from "@/lib/format"
 import { disputeUrl } from "@/lib/links"
 import { Chevron, DetailCard, RatingMark, ratingOf, ratingStyles } from "./design"
+import ShareButton from "./ShareButton"
 
 // Privacy report page from the UX team's design, fed with /v1/sites/{domain}.
 const TAGS: Record<Evidence["provenance"], string> = {
@@ -24,6 +25,8 @@ export default function Report({ site }: { site: Site }) {
   const router = useRouter()
   const current = card.categories.find((c) => c.name === selected)
   const severe = card.headline === "SEVERE"
+  const score = card.score ?? null
+  const shareText = `${site.domain} is rated ${headline}${score ? `, ${score.value}/100,` : ""} on Imbroglio, with the quotes from its own policy behind it.`
 
   // A link straight to a category (the extension's "read the quotes on the
   // full report" sends #<category key>) opens that category: on arrival,
@@ -62,9 +65,12 @@ export default function Report({ site }: { site: Site }) {
         <span className="h-1 w-1 rounded-full bg-[#aab3be]" />
         <span>Last analyzed {shortDate(card.analyzed_at)}</span>
       </div>
-      <h1 className="break-words text-3xl font-bold tracking-[-0.035em] text-[#0f253a] sm:text-[40px]">
-        {site.domain}
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h1 className="min-w-0 break-words text-3xl font-bold tracking-[-0.035em] text-[#0f253a] sm:text-[40px]">
+          {site.domain}
+        </h1>
+        <ShareButton path={`/site/${encodeURIComponent(site.domain)}`} text={shareText} />
+      </div>
 
       <section className="mt-7 grid gap-5 lg:grid-cols-[350px_1fr]">
         {/* The design shows the SEVERE card; other tiers use the same layout on white. */}
@@ -91,6 +97,13 @@ export default function Report({ site }: { site: Site }) {
                 }`}
               >
                 {headline}
+                {score && (
+                  <span className="font-semibold text-[#5a6b7e]">
+                    {" "}
+                    · {score.value}
+                    <span className="text-base font-medium">/100</span>
+                  </span>
+                )}
               </p>
               <p className={`mt-1 text-sm ${severe ? "text-[#9f4b44]" : "text-[#5a6b7e]"}`}>
                 {card.headline === "UNCLEAR"
@@ -100,13 +113,44 @@ export default function Report({ site }: { site: Site }) {
             </div>
           </div>
         </div>
+        {/* Not in the design yet: plain until the UX team designs it. */}
         <div className="flex items-center rounded-2xl border border-[#dde4ea] bg-white p-6">
-          <div>
-            <p className="text-sm font-semibold text-[#183149]">How to read this score</p>
-            <p className="mt-1 max-w-xl text-[15px] leading-6 text-[#5a6b7e]">
-              The overall rating reflects the weakest privacy category, not an average across the report.
-            </p>
-          </div>
+          {score ? (
+            <div className="w-full">
+              <p className="text-sm font-semibold text-[#183149]">How this score adds up</p>
+              <ol className="mt-2 grid max-w-xl gap-1 text-[15px] leading-6 text-[#5a6b7e]">
+                <li className="grid grid-cols-[3.5rem_1fr] gap-2">
+                  <span className="text-right font-semibold tabular-nums text-[#183149]">{score.starts_at}</span>
+                  <span>to start</span>
+                </li>
+                {score.deductions.map((d) => (
+                  <li key={d.check_id} className="grid grid-cols-[3.5rem_1fr] gap-2">
+                    <span className="text-right font-semibold tabular-nums text-[#a6461d]">−{d.points}</span>
+                    <a href={`#${d.category}`} className="underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]">
+                      {d.meaning}
+                    </a>
+                  </li>
+                ))}
+                <li className="grid grid-cols-[3.5rem_1fr] gap-2 border-t border-[#e5e9ed] pt-1">
+                  <span className="text-right font-bold tabular-nums text-[#183149]">{score.value}</span>
+                  <span className="text-[#183149]">
+                    out of 100
+                    {score.value !== score.unadjusted &&
+                      ` (${score.unadjusted} kept at ${score.value}: a ${headline.toLowerCase()} site scores ${score.band[0]} to ${score.band[1]})`}
+                  </span>
+                </li>
+              </ol>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm font-semibold text-[#183149]">How to read this score</p>
+              <p className="mt-1 max-w-xl text-[15px] leading-6 text-[#5a6b7e]">
+                {card.headline === "UNCLEAR"
+                  ? "We only give a score out of 100 when enough of the key questions are answered, so a policy that says little never scores well."
+                  : "The documents don’t say enough about any category to give a score out of 100."}
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -270,8 +314,9 @@ export default function Report({ site }: { site: Site }) {
 
       {showScoring && (
         <aside className="mt-4 max-w-2xl rounded-xl border border-[#dbe2e8] bg-white p-5 text-sm leading-6 text-[#5b6d80]">
-          Each category is scored from limited to severe using verified policy language. The overall score always
-          reflects the highest-risk category.{" "}
+          Each category is rated from limited to severe using verified policy language. The score starts at 100 and
+          loses points for each concern the documents raise, and it always stays within its overall rating’s
+          range, so the number and the word agree.{" "}
           <Link className="underline" href="/how-we-score">
             See every question, answer and rule
           </Link>

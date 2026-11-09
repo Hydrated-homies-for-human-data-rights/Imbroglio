@@ -37,10 +37,23 @@ export type Evidence = {
 
 export type CategoryScore = { key: string; name: string; tier: Tier; findings: Evidence[] }
 
+// The overall rating out of 100 (higher is better): 100 minus each
+// concern's points, kept inside the rating's range. Null for UNCLEAR and
+// NOT_DISCLOSED sites.
+export type ScoreDeduction = { check_id: string; category: string; status: string; meaning: string; points: number }
+export type SiteScore = {
+  value: number
+  starts_at: number
+  deductions: ScoreDeduction[]
+  band: [number, number]
+  unadjusted: number
+}
+
 export type Scorecard = {
   rubric_version: string
   scorer_version: string
   headline: Tier
+  score?: SiteScore | null
   headline_categories: string[]
   categories: CategoryScore[]
   analyzed_at: string
