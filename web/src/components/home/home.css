@@ -557,7 +557,7 @@
   align-self: center;
   justify-self: start;
   position: relative;
-  width: 220px;
+  width: 236px;
   border: 1px solid var(--pink);
   border-radius: 4px;
   background: var(--sheet);
@@ -600,6 +600,21 @@
   margin-top: 4px;
   font-size: 10px;
   color: var(--faint);
+}
+/* what the category covers and what its rating means, for a first-time reader */
+.pin-tag .about {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.pin-tag .about b {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 /* ---- index and recently rated: rows on a spine in the gutter ---- */

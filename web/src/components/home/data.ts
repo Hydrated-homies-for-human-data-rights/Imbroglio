@@ -111,6 +111,29 @@ export const INDEX: { key: string; name: string; tier: Tier; line: number; why: 
   { key: "government", name: "Government requests", tier: "LIMITED", line: 64, why: "discloses under legal process" },
 ]
 
+// What each category covers and what each rating means, in a reader's words.
+// Shown under the cards that pop out beside the policy, since a test user
+// couldn't tell what "Data collection: Info" meant. Keep in step with the
+// rubric's categories and docs/rubric.md's rating meanings.
+export const CATEGORY_ABOUT: Record<string, string> = {
+  selling_sharing: "Whether they sell your data or share it with other companies, like advertisers.",
+  collection: "What they collect about you, and where it comes from.",
+  retention: "How long they keep your data, and whether you can have it deleted.",
+  user_rights: "What you can see, download, or opt out of.",
+  security: "How they protect your data, and whether they'll tell you about a breach.",
+  ai_training: "Whether your data or content is used to train AI.",
+  government: "When they hand your data to police or governments.",
+}
+export const TIER_SHORT: Record<Tier, string> = {
+  SEVERE: "the practice at its broadest, with no real choice for you.",
+  EXTENSIVE: "a broad practice, with few limits.",
+  MODERATE: "the practice has clear limits, or you get a choice.",
+  LIMITED: "a narrow practice, or a promise that protects you.",
+  NOT_DISCLOSED: "the policy doesn't say.",
+  UNCLEAR: "too little was said to rate it.",
+  INFO: "we show what it says, but it doesn't lower the rating.",
+}
+
 export const FALLBACK_HEADLINE: Tier = "EXTENSIVE"
 export const ANALYZED = "2026-10-30"
 
