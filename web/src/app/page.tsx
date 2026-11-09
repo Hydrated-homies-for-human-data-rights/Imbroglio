@@ -7,6 +7,7 @@ import { Reach } from "@/components/home/reach"
 import Thread, { type Stop } from "@/components/home/Thread"
 import {
   ANALYZED,
+  CATEGORY_ABOUT,
   CLAUSES,
   EXCERPT,
   FALLBACK_HEADLINE,
@@ -15,6 +16,7 @@ import {
   INDEX,
   RECENT,
   RECENT_AS_OF,
+  TIER_SHORT,
   TIER_WORD,
 } from "@/components/home/data"
 import "@/components/home/home.css"
@@ -99,8 +101,8 @@ function IndexBody({ index }: { index: IndexData }) {
   return (
     <>
       <p className="lede">
-        <Verdict tier={index.headline} /> overall. Each pin is a line of the stored text.
-        {index.live ? "" : " (From our stored copy; the live report has the current ratings.)"}
+        <Verdict tier={index.headline} /> overall. Each category links to the sentence in the policy it’s based on.
+        {index.live ? "" : " (From our saved copy; the full report has the current ratings.)"}
       </p>
       <ol className="spine-list">
         <span className="rail" aria-hidden="true">
@@ -121,7 +123,7 @@ function IndexBody({ index }: { index: IndexData }) {
         ))}
       </ol>
       <p className="meta mono after-list">
-        {EXCERPT.domain} · rubric v0.2 · scorer s2 · analyzed {index.analyzed}
+        {EXCERPT.domain} · analyzed {index.analyzed} · <Link href="/how-we-score">how we score</Link>
       </p>
     </>
   )
@@ -170,11 +172,11 @@ export default function Home() {
       </section>
 
       <section className="band" aria-labelledby="doc-h">
-        <div className="eyebrow mono">The document</div>
-        <h2 id="doc-h">Keep scrolling. The thread reaches each clause in turn.</h2>
+        <div className="eyebrow mono">A real policy</div>
+        <h2 id="doc-h">Read along with us.</h2>
         <p className="lede">
-          This is {EXCERPT.domain}’s own policy, as we stored it. Where the thread arrives, the sentence that
-          earned a finding lights up and the finding pulls out beside it.
+          This is {EXCERPT.domain}’s actual privacy policy. As you scroll, the sentences behind each rating light up,
+          and the rating appears beside them, with what it means.
         </p>
         <div className="doc-grid">
           <div className="doc-sheet" aria-hidden="true" />
@@ -187,70 +189,72 @@ export default function Home() {
               {EXCERPT.title} · {EXCERPT.domain} · last updated {EXCERPT.updated}
             </div>
             <div className="meta mono">
-              stored version {EXCERPT.version} · fetched {EXCERPT.fetched} · {EXCERPT.lines} lines · sha256 {EXCERPT.sha256}
+              version {EXCERPT.version} · saved {EXCERPT.fetched} · {EXCERPT.lines} lines
             </div>
           </div>
           {CLAUSES.map((c) => (
             <ClauseRow key={c.line} clause={c} />
           ))}
           <div className="doc-foot meta mono">
-            the document continues · {EXCERPT.questions} questions asked · {EXCERPT.answered} answered with a verified
-            quote · <Link href={reportHref}>full report →</Link>
+            the policy continues · {EXCERPT.questions} questions asked · {EXCERPT.answered} answered with a quote we
+            checked · <Link href={reportHref}>full report →</Link>
           </div>
         </div>
         <div className="doc-exit" data-thread="doc-exit" aria-hidden="true" />
       </section>
 
       <section className="band" aria-labelledby="index-h">
-        <div className="eyebrow mono">The verdict</div>
-        <h2 id="index-h">Seven threads, one policy</h2>
+        <div className="eyebrow mono">The ratings</div>
+        <h2 id="index-h">Seven categories, one policy</h2>
         <Suspense fallback={<IndexBody index={STATIC_INDEX} />}>
           <LiveIndexBody />
         </Suspense>
       </section>
 
       <section className="band method" aria-labelledby="method-h">
-        <div className="eyebrow mono">How the thread is pulled</div>
-        <h2 id="method-h">Three knots, no trust required</h2>
+        <div className="eyebrow mono">How it works</div>
+        <h2 id="method-h">Three steps you can check yourself</h2>
         <div className="method-line" data-thread="method" aria-hidden="true" />
         <div className="stations">
           <Reach className="station">
             <div className="n">1</div>
-            <h3>Fetch and keep every version</h3>
+            <h3>We save the policy, every version</h3>
             <p>
-              The policy and the terms, from the site itself. Each version is hashed and stored, so a quiet rewrite is
-              caught and dated.
+              We copy the privacy policy and terms straight from the site and keep every version, so if a company
+              quietly changes them, we notice and note the date.
             </p>
             <div className="artifact doc mono">
               {EXCERPT.domain} · privacy policy
               <span className="meta">
-                version {EXCERPT.version} · sha256 {EXCERPT.sha256} · {EXCERPT.fetched}
+                version {EXCERPT.version} · saved {EXCERPT.fetched}
               </span>
             </div>
           </Reach>
           <Reach className="station">
             <div className="n">2</div>
-            <h3>Every answer must quote the document</h3>
+            <h3>An AI answers questions, quoting the policy</h3>
             <p>
-              Fourteen questions. Each answer carries a quote, and each quote is checked word for word against the
-              stored text before it can count. An unverified quote is never shown.
+              It answers {EXCERPT.questions} questions about the policy, and every answer has to point to the exact
+              sentence it’s based on. Our code checks that sentence is really there, word for word. If it isn’t, the
+              answer is thrown out.
             </p>
             <div className="artifact quote serif">
               “{FIRST_THREAD.quote}”
-              <span className="meta mono">found at line {FIRST_THREAD.line} · verified word for word ✓</span>
+              <span className="meta mono">line {FIRST_THREAD.line} of the policy · checked word for word ✓</span>
             </div>
           </Reach>
           <Reach className="station">
             <div className="n">3</div>
-            <h3>Plain code turns answers into the rating</h3>
+            <h3>Published rules turn the answers into a rating</h3>
             <p>
-              The rubric is public. Verified answers roll up by rules anyone can read. No model decides the grade.
+              Rules anyone can read turn the answers into a rating and a score out of 100. The AI never decides the
+              rating.
             </p>
             <div className="artifact">
               <Verdict tier={FIRST_THREAD.tier} big />
               <div className="meta mono" style={{ marginTop: 6 }}>
-                trains_ai_on_user_data = yes → {TIER_WORD[FIRST_THREAD.tier]} ·{" "}
-                <Link href="/how-we-score">the rubric</Link>
+                {FIRST_THREAD.why.charAt(0).toUpperCase() + FIRST_THREAD.why.slice(1)} → {TIER_WORD[FIRST_THREAD.tier]} ·{" "}
+                <Link href="/how-we-score">see every rule</Link>
               </div>
             </div>
           </Reach>
@@ -262,14 +266,14 @@ export default function Home() {
           Figures
         </div>
         <p>
-          Across {FIGURES.sites} sites, the model cited {FIGURES.quotes.toLocaleString("en-US")} quotes.{" "}
-          {FIGURES.found} percent were found word for word in the stored document, above the 95 percent target, and{" "}
-          {FIGURES.onTopic} percent also contained one of the question’s evidence words; only those are shown. Fifty
-          policies analyzed three times each gave the same answer in every run {FIGURES.consistency} percent of the
-          time, short of the 90 percent target. Both are published with their method.
+          Across {FIGURES.sites} sites, the AI cited {FIGURES.quotes.toLocaleString("en-US")} quotes.{" "}
+          {FIGURES.found} percent were really in the policy, word for word, above our 95 percent target, and{" "}
+          {FIGURES.onTopic} percent were also clearly about the question they answered. Only those are shown. When we
+          analyzed 50 policies three times each, the answers matched every time {FIGURES.consistency} percent of the
+          time, just short of our 90 percent target. Both numbers are published with how we measured them.
         </p>
         <p className="meta mono" style={{ fontSize: 11, marginTop: 12 }}>
-          quotes {FIGURES.measured} · consistency {FIGURES.consistencyMeasured} ·{" "}
+          quotes measured {FIGURES.measured} · consistency measured {FIGURES.consistencyMeasured} ·{" "}
           <Link href="/how-we-score">how we score</Link>
         </p>
       </section>
@@ -331,6 +335,12 @@ function ClauseRow({ clause }: { clause: (typeof CLAUSES)[number] }) {
         <Verdict tier={clause.tier} />
         <span className="note mono">
           line {clause.line} · {clause.note}
+        </span>
+        <span className="about">
+          <span>{CATEGORY_ABOUT[clause.key]}</span>
+          <span>
+            <b>{TIER_WORD[clause.tier]}:</b> {TIER_SHORT[clause.tier]}
+          </span>
         </span>
       </Link>
     </>

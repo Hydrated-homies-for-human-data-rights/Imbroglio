@@ -41,7 +41,7 @@ export default async function Image({ params }: { params: Promise<{ domain: stri
           ? card.score.deductions.slice(0, 2).map((d) => (
               <div key={d.check_id} style={{ display: "flex", marginTop: 6 }}>
                 <span style={{ width: 84, fontWeight: 700, color: "#a6461d" }}>−{d.points}</span>
-                <span>{d.meaning}</span>
+                <span>{d.plain ?? d.meaning}</span>
               </div>
             ))
           : (
