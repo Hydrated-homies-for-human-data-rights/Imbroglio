@@ -282,6 +282,16 @@ def main() -> int:
     ss.add_argument("--out", type=Path, help="also write the report to this markdown file")
     ss.add_argument("--csv", type=Path, help="also write every site's score to this CSV file")
 
+    rq = sub.add_parser("rejected-quotes",
+                        help="real quotes the evidence-word check turned away, and words that would let them in "
+                             "(read-only, no LLM calls)")
+    rq.add_argument("--rubric", default=None, help="rubric version (default: RUBRIC_VERSION)")
+    rq.add_argument("--check", help="only show this question's suggestions and samples")
+    rq.add_argument("--samples", type=int, default=12, help="turned-away quotes shown per question")
+    rq.add_argument("--top", type=int, default=15, help="suggested words per question")
+    rq.add_argument("--out", type=Path, help="also write the report to this markdown file")
+    rq.add_argument("--csv", type=Path, help="write every turned-away quote, with an on_topic column to fill in")
+
     od = sub.add_parser("offsite-documents",
                         help="list stored documents that are another site's (they never name this one)")
     # A parent company's own policy (riotgames.com for leagueoflegends.com) can
@@ -381,6 +391,29 @@ def main() -> int:
         if args.out:
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(text, encoding="utf-8")
+        return 0
+
+    if args.command == "rejected-quotes":
+        from . import db
+        from .analysis import RUBRIC_VERSION
+        from .rejected_quotes import check_quotes, load_rows, report, write_csv
+        from .rubric import load
+        rubric = load(args.rubric or RUBRIC_VERSION)
+        if args.check and args.check not in {c.id for c in rubric.checks}:
+            print(f"no check {args.check!r} in rubric {rubric.version}")
+            return 2
+        conn = db.connect()
+        try:
+            quotes = check_quotes(rubric, load_rows(conn, rubric.version))
+        finally:
+            conn.close()
+        text = report(rubric, quotes, only=args.check, samples=args.samples, top=args.top)
+        print(text)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text, encoding="utf-8")
+        if args.csv:
+            write_csv(args.csv, quotes)
         return 0
 
     if args.command == "score-spread":
