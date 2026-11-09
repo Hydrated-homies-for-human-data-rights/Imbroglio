@@ -27,6 +27,48 @@ TIERS = ["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE"]  # index = exposure level
 CONCERN_EXPOSURE = {"severe": 3, "high": 2, "medium": 1, "info": 0, None: 0}
 RATED_CONCERNS = ("severe", "high", "medium")
 
+# Evidence-word matching (rubric `evidence_matching`). `strict` (the default,
+# up to v0.2): an evidence word must appear in the quote as written.
+# `lenient` (v0.3 on), from the rejected-quotes report on 565 sites:
+#  * hyphens count as spaces, so "third part" matches "third-party" and
+#    "do not track" matches "do-not-track"
+#  * a quote that isn't in English skips the evidence-word check, since the
+#    lists are English; it must still be in the document word for word
+EVIDENCE_MATCHING = ("strict", "lenient")
+_HYPHENS = re.compile(r"[-\u2010\u2011\u2012\u2013]+")
+_WORDS = re.compile(r"[^\W\d_]+")
+_ENGLISH = frozenset("""
+the and of to a in we you your our or is are for with not that this be by as on any may will it from
+have has can do does at an us their they which when where how if""".split())
+# Common short words of the other languages policies come in (French, German,
+# Spanish, Italian, Portuguese, Dutch), none of them English words.
+_OTHER = frozenset("""
+le la les des du et vous votre vos nous notre nos est sont pour par sur avec dans une qui que pas cette ces aux
+der das und ist sind wir sie ihre nicht mit von zu den dem für auf eine ein werden wird bei nach oder auch keine
+el los las del es son para por su sus usted nuestra nuestro
+il di che sono gli della delle
+os da das dos com não você seus
+het een van en zijn uw niet voor op""".split())
+
+
+def dehyphen(text: str) -> str:
+    return _HYPHENS.sub(" ", text)
+
+
+def looks_english(text: str) -> bool:
+    """False only when `text` shows signs of another language: mostly
+    non-Latin letters (Korean, Japanese, Cyrillic, ...) or more common
+    French/German/Spanish/Italian/Portuguese/Dutch words than English ones.
+    A bare list of nouns ("name, email address, phone number") stays English,
+    so it is still checked."""
+    letters = [ch for ch in text if ch.isalpha()]
+    if letters and sum(not ("a" <= ch.lower() <= "z") and not ("\u00c0" <= ch <= "\u024f")
+                       for ch in letters) / len(letters) > 0.3:
+        return False
+    words = _WORDS.findall(text.lower())
+    other = sum(w in _OTHER for w in words)
+    return not (words and other / len(words) >= 0.12 and other > sum(w in _ENGLISH for w in words))
+
 
 @dataclass(frozen=True)
 class Status:
@@ -57,12 +99,17 @@ class Check:
     # disclosure") doesn't count. Empty = no relevance requirement.
     evidence: tuple[str, ...] = ()
     _evidence_re: re.Pattern | None = field(default=None, compare=False, repr=False)
+    lenient: bool = False      # rubric evidence_matching: lenient (see EVIDENCE_MATCHING)
 
     def allowed(self) -> list[str]:
         return [*self.statuses, NOT_DISCLOSED]
 
     def relevant(self, quote: str) -> bool:
-        return self._evidence_re is None or bool(self._evidence_re.search(quote))
+        if self._evidence_re is None:
+            return True
+        if self.lenient:
+            return not looks_english(quote) or bool(self._evidence_re.search(dehyphen(quote)))
+        return bool(self._evidence_re.search(quote))
 
 
 @dataclass(frozen=True)
@@ -98,6 +145,10 @@ def load(version: str = "v0") -> Rubric:
     raw = yaml.safe_load((RUBRIC_DIR / f"{version}.yaml").read_text(encoding="utf-8"))
     if raw.get("version") != version:
         raise RubricError(f"file {version}.yaml declares version {raw.get('version')!r}")
+    matching = raw.get("evidence_matching", "strict")
+    if matching not in EVIDENCE_MATCHING:
+        raise RubricError(f"evidence_matching must be one of {EVIDENCE_MATCHING}, got {matching!r}")
+    lenient = matching == "lenient"
     categories = raw["categories"]
     checks, seen = [], set()
     for c in raw["checks"]:
@@ -127,10 +178,11 @@ def load(version: str = "v0") -> Rubric:
         if not statuses:
             raise RubricError(f"{cid}: no statuses")
         evidence = tuple(str(e).strip().lower() for e in (c.get("evidence") or []) if str(e).strip())
-        evidence_re = (re.compile("|".join(re.escape(e) for e in evidence), re.I)
+        terms = [dehyphen(e) if lenient else e for e in evidence]
+        evidence_re = (re.compile("|".join(re.escape(e) for e in terms), re.I)
                        if evidence else None)
         checks.append(Check(cid, c["category"], c["question"].strip(),
-                            (c.get("guidance") or "").strip(), statuses, evidence, evidence_re))
+                            (c.get("guidance") or "").strip(), statuses, evidence, evidence_re, lenient))
     missing = set(categories) - {c.category for c in checks}
     if missing:
         raise RubricError(f"categories with no checks: {sorted(missing)}")

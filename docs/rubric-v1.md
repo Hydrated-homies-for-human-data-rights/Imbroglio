@@ -84,8 +84,9 @@ already exists, or by the answer key.
 
 ## Plan to the end of the semester
 
-1. **Now:** run `cli rejected-quotes` and `cli score-spread` on production; Sam decides the open items
-   above and the evidence words go into v1.0.
+1. **First, rubric v0.3:** the calibration of v0.2 from the first production reports (evidence words,
+   "as long as necessary", the AI training split, plain lines). See the end of `docs/rubric.md`. Its
+   evidence words and decisions carry into v1.0.
 2. **Answer key:** merge the `feature/gold-set` tooling and label 30 to 50 policies.
 3. **Trial:** run v1.0 on 20 to 30 sites (about $1) and read the answers against the documents. Running it
    writes v1.0 findings next to the v0.2 ones; the live site keeps showing v0.2:
