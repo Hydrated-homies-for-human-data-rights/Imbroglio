@@ -132,3 +132,34 @@ aren't in `ml/gold.py`.
 A trial run on split 1 as it stands (not frozen) gave candidate counts from 13 to 426 per gold
 document, 180 on average, which matches the effort estimate above. With single documents
 alternating, one annotator can end up with about 15% more judgments than the other.
+
+## Answers only: the label set for the v1.0 launch bar
+
+The launch bar in `docs/rubric-v1.md` asks one thing of the gold set: do Claude's answers match
+people's? That needs layer A only, which is about a third of the work, so the tooling has an
+answers-only mode. It labels against any rubric (v0.3 now, v1.0 once it is run) and spreads the work
+over all four of us.
+
+    python -m ml.gold sample data/imbroglio/v0.2-split1 --out ml/gold/answers/sample.csv \
+        --annotators gage,sam,alex,jaiden --privacy 20 --terms 10 --double 12
+    python -m ml.gold pool data/imbroglio/v0.2-split1 --sample ml/gold/answers/sample.csv \
+        --out data/imbroglio/gold-answers --rubric v0.3 --answers-only
+    python -m ml.gold serve data/imbroglio/gold-answers --labels ml/gold/answers/labels
+    python -m ml.gold disagree data/imbroglio/gold-answers --labels ml/gold/answers/labels
+    python -m ml.gold agree data/imbroglio/gold-answers --labels ml/gold/answers/labels --out runs/agree.md
+
+- **sample** with `--annotators` gives each double-labeled document to the next pair in turn (all
+  six pairs come up equally) and single documents to each person in turn; everyone labels the pilot.
+  30 documents with 12 double-labeled is about 10 to 11 documents each.
+- **pool --answers-only** writes the documents without candidates or a pool check, and records the
+  mode and the annotators in `tasks.json`.
+- **serve** shows only the answers step; "Finish document" saves and opens the next one. Each person
+  opens `?a=<their name>`.
+- **disagree** compares answers only in this mode, naming the pair on each row.
+- **agree** reads Claude's stored answers for the same documents and rubric from the database and
+  reports, per question, how often they match people's: the launch bar's figure. Each finished label
+  counts once; blanks are skipped.
+
+Effort: at about 18 minutes a document, 30 documents with 12 labeled twice is about 3 to 4 hours
+each across four people.
+

@@ -115,3 +115,98 @@ def test_server_saves_and_returns_labels_only_for_the_assigned_annotator(server)
     with pytest.raises(urllib.error.HTTPError) as e:
         call(f"{base}/api/labels/sam/7", "PUT", {**label, "version_id": 8})
     assert e.value.code == 400
+
+
+# --- answers only, any annotators, Claude against people --------------------------------
+
+from collections import Counter                                  # noqa: E402
+
+from ml.gold import agreement, agreement_report, write_disagreements   # noqa: E402
+
+TEAM = ("gage", "sam", "alex", "jaiden")
+
+
+def test_sample_spreads_the_work_over_four_annotators():
+    docs, sizes = docs_and_sizes()
+    rows = draw_sample(docs, sizes, n_privacy=20, n_terms=10, n_double=12, annotators=TEAM)
+    pilot = [r for r in rows if r["set"] == "pilot"]
+    double = [r for r in rows if r["set"] == "double"]
+    single = [r for r in rows if r["set"] == "single"]
+    assert all(r["annotators"] == "gage sam alex jaiden" for r in pilot)
+    pairs = Counter(r["annotators"] for r in double)
+    assert len(pairs) == 6 and set(pairs.values()) == {2}          # every pair twice
+    singles = Counter(r["annotators"] for r in single)
+    assert set(singles) == set(TEAM) and sum(singles.values()) == 18 and set(singles.values()) == {4, 5}
+    # each person's load differs by at most one document
+    load = Counter(a for r in double + single for a in r["annotators"].split())
+    assert max(load.values()) - min(load.values()) <= 1
+
+
+def test_two_annotators_by_default_as_before():
+    docs, sizes = docs_and_sizes()
+    rows = draw_sample(docs, sizes)
+    assert {r["annotators"] for r in rows if r["set"] == "double"} == {"gage sam"}
+
+
+@pytest.fixture
+def answers_server(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    paras = [{**para(i, f"Line {i} {LONG}"), "split": "test", "domain": "s7.com"} for i in range(20)]
+    (data / "paragraphs.jsonl").write_text("\n".join(json.dumps(p) for p in paras), encoding="utf-8")
+    (data / "documents.jsonl").write_text(json.dumps({"version_id": 7, "split": "test"}), encoding="utf-8")
+    sample = [{"order": 1, "set": "double", "annotators": "alex jaiden", "version_id": 7, "domain": "s7.com",
+               "doc_type": "privacy", "split": "test", "paragraphs": 20}]
+    write_pool(data, sample, tmp_path / "work", rubric_version="v0.3", answers_only=True)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(Store(tmp_path / "work", tmp_path / "labels")))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", tmp_path
+    srv.shutdown()
+
+
+def test_answers_only_pool_and_server(answers_server):
+    base, tmp = answers_server
+    meta = json.loads((tmp / "work" / "tasks.json").read_text(encoding="utf-8"))
+    assert meta["mode"] == "answers" and meta["rubric_version"] == "v0.3"
+    assert meta["annotators"] == ["gage", "sam", "alex", "jaiden"]
+    doc = call(f"{base}/api/doc/7")
+    assert doc["pool_check"] == [] and all(v == [] for v in doc["pools"].values()) and len(doc["lines"]) == 20
+    assert call(f"{base}/api/annotators") == {"annotators": ["gage", "sam", "alex", "jaiden"], "mode": "answers"}
+    state = call(f"{base}/api/state?a=alex")
+    assert state["mode"] == "answers" and [t["version_id"] for t in state["tasks"]] == [7]
+    assert "trains_ai_on_user_data" in [c["id"] for c in state["rubric"]["checks"]]
+    assert call(f"{base}/api/state?a=gage")["tasks"] == []      # nothing assigned here
+    with pytest.raises(urllib.error.HTTPError):
+        call(f"{base}/api/state?a=nobody")
+
+
+def test_answers_only_disagreements(answers_server):
+    _, tmp = answers_server
+    labels = tmp / "labels"
+    for who, sells in (("alex", "no"), ("jaiden", "state_law_sale")):
+        (labels / who).mkdir(parents=True)
+        (labels / who / "7.json").write_text(json.dumps({
+            "version_id": 7, "annotator": who, "finished": {"answers": "now"},
+            "answers": {"sells_personal_data": {"status": sells}, "retention_period": {"status": "vague"}}}))
+    report = write_disagreements(tmp / "work", labels, tmp / "d.csv")
+    assert "| s7.com (privacy) | 1 of 2 |" in report
+    row = (tmp / "d.csv").read_text(encoding="utf-8").splitlines()[1]
+    assert row.startswith("7,s7.com,answers,sells_personal_data,,alex,no,jaiden,state_law_sale,")
+
+
+def test_agreement_counts_each_finished_answer():
+    rubric = load("v0.3")
+    people = [
+        {"version_id": 1, "answers": {"sells_personal_data": {"status": "no"},
+                                      "retention_period": {"status": "vague"}}},
+        {"version_id": 1, "answers": {"sells_personal_data": {"status": "state_law_sale"},
+                                      "retention_period": {"status": ""}}},          # left blank: skipped
+        {"version_id": 2, "answers": {"sells_personal_data": {"status": "no"}}},  # Claude never answered
+    ]
+    claude = {(1, "sells_personal_data"): "no", (1, "retention_period"): "specific"}
+    result = agreement(people, claude, rubric)
+    assert result["per_check"]["sells_personal_data"] == [2, 1]
+    assert result["per_check"]["retention_period"] == [1, 0]
+    text = agreement_report(result, "v0.3", 3)
+    assert "3 answers compared: Claude gave the same answer 33.3% of the time." in text
+    assert "| `retention_period` | 1 | 0.0% | `vague` -> `specific` (1) |" in text

@@ -5,6 +5,15 @@
         --out data/imbroglio/gold
     python -m ml.gold serve data/imbroglio/gold --labels ml/gold/labels
     python -m ml.gold disagree data/imbroglio/gold --labels ml/gold/labels
+    python -m ml.gold agree data/imbroglio/gold --labels ml/gold/labels
+
+  Answers only (the v1.0 launch bar: do people and Claude give the same
+  answers?), labeled by all four of us against a chosen rubric:
+
+    python -m ml.gold sample data/imbroglio/v0.2-split1 --out ml/gold/answers/sample.csv \
+        --annotators gage,sam,alex,jaiden --privacy 20 --terms 10 --double 12
+    python -m ml.gold pool data/imbroglio/v0.2-split1 --sample ml/gold/answers/sample.csv \
+        --out data/imbroglio/gold-answers --rubric v0.3 --answers-only
 
   sample    draws the gold and pilot documents and says who labels each
   pool      writes each document's lines, its candidate paragraphs per check
@@ -13,6 +22,8 @@
   serve     the labeling page, on localhost only. Labels save as you go
   disagree  where the two annotators differ on the double-labeled documents,
             as a CSV to settle together
+  agree     how often Claude's stored answers match people's, per question
+            (reads the findings from the database)
 
 Label files name documents by version_id and paragraphs by line number, never
 by text, so ml/gold/ can be committed. Agreement statistics (kappa) and the
@@ -35,7 +46,8 @@ from imbroglio.rubric import NOT_DISCLOSED, load
 from ml.dataset import read_jsonl
 from ml.neardup import MIN_PARAGRAPH
 
-ANNOTATORS = ("gage", "sam")
+DEFAULT_ANNOTATORS = ("gage", "sam")
+ANNOTATORS = DEFAULT_ANNOTATORS          # kept for older callers
 SEED = 0
 RUBRIC = "v0.2"            # the rubric the dataset's labels were made under
 N_PRIVACY, N_TERMS, N_DOUBLE = 13, 11, 12
@@ -57,10 +69,15 @@ def substantive_counts(paragraphs: list[dict]) -> dict[int, int]:
 # --- sample ------------------------------------------------------------------
 
 def draw_sample(docs: list[dict], sizes: dict[int, int], n_privacy: int = N_PRIVACY,
-                n_terms: int = N_TERMS, n_double: int = N_DOUBLE, seed: int = SEED) -> list[dict]:
+                n_terms: int = N_TERMS, n_double: int = N_DOUBLE, seed: int = SEED,
+                annotators: tuple[str, ...] = DEFAULT_ANNOTATORS) -> list[dict]:
     """Gold documents from test, in proportion by type, plus one privacy and one
     terms pilot document from dev. The double-labeled set takes its share of
-    each type, and single documents alternate between the annotators."""
+    each type; each double document goes to the next pair of annotators in
+    turn, and single documents go round the annotators in turn. Everyone
+    labels the pilot."""
+    from itertools import combinations
+    pairs = list(combinations(annotators, 2)) or [tuple(annotators)]
     rng = random.Random(seed)
 
     def pick(split, doc_type, n, limit):
@@ -78,9 +95,9 @@ def draw_sample(docs: list[dict], sizes: dict[int, int], n_privacy: int = N_PRIV
     rng.shuffle(double)
     single = privacy[k:] + terms[n_double - k:]
 
-    rows = [("pilot", ANNOTATORS, d) for d in pilot]
-    rows += [("double", ANNOTATORS, d) for d in double]
-    rows += [("single", (ANNOTATORS[i % 2],), d) for i, d in enumerate(single)]
+    rows = [("pilot", tuple(annotators), d) for d in pilot]
+    rows += [("double", pairs[i % len(pairs)], d) for i, d in enumerate(double)]
+    rows += [("single", (annotators[i % len(annotators)],), d) for i, d in enumerate(single)]
     return [{"order": i + 1, "set": s, "annotators": " ".join(who), "version_id": d["version_id"],
              "domain": d["domain"], "doc_type": d["doc_type"], "split": d["split"],
              "paragraphs": sizes[d["version_id"]]} for i, (s, who, d) in enumerate(rows)]
@@ -123,7 +140,11 @@ def pool_document(paragraphs: list[dict], rubric, seed: int = SEED, n_check: int
 
 
 def write_pool(dataset: Path, sample: list[dict], out: Path, rubric_version: str = RUBRIC,
-               seed: int = SEED) -> str:
+               seed: int = SEED, answers_only: bool = False) -> str:
+    """Each document's lines, candidates and pool check, and the task list.
+    `answers_only` skips the candidates and the pool check: annotators only
+    answer the questions (the label set the launch bar's agreement figure
+    needs), which takes about a third of the time."""
     wanted = {r["version_id"] for r in sample}
     by_doc: dict[int, list[dict]] = defaultdict(list)
     for p in read_jsonl(dataset / "paragraphs.jsonl"):
@@ -138,7 +159,10 @@ def write_pool(dataset: Path, sample: list[dict], out: Path, rubric_version: str
         for r in sample:
             vid = r["version_id"]
             paras = sorted(by_doc[vid], key=lambda p: p["idx"])
-            pools, sources, check_sample = pool_document(paras, rubric, seed)
+            if answers_only:
+                pools, sources, check_sample = {c.id: [] for c in rubric.checks}, {}, []
+            else:
+                pools, sources, check_sample = pool_document(paras, rubric, seed)
             doc = {"version_id": vid, "domain": r["domain"], "doc_type": r["doc_type"],
                    "split": meta[vid]["split"], "rubric_version": rubric_version,
                    "lines": [{"idx": p["idx"], "text": p["text"]} for p in paras],
@@ -149,7 +173,12 @@ def write_pool(dataset: Path, sample: list[dict], out: Path, rubric_version: str
                     src_fh.write(json.dumps({"version_id": vid, "check": c, "idx": idx, "sources": s}) + "\n")
             lines.append(f"| {r['order']} | {r['set']} | {r['domain']} ({r['doc_type']}) | "
                          f"{sum(map(len, pools.values()))} | {len(check_sample)} |")
-    (out / "tasks.json").write_text(json.dumps({"rubric_version": rubric_version, "tasks": sample}, indent=1),
+    # everyone who labels here; the default pair always opens the page (with
+    # an empty list when they have nothing assigned), as before
+    annotators = list(dict.fromkeys([*DEFAULT_ANNOTATORS, *(a for r in sample for a in r["annotators"].split())]))
+    (out / "tasks.json").write_text(json.dumps({"rubric_version": rubric_version,
+                                                "mode": "answers" if answers_only else "full",
+                                                "annotators": annotators, "tasks": sample}, indent=1),
                                     encoding="utf-8")
     report = "\n".join(lines) + "\n"
     (out / "pools.md").write_text(report, encoding="utf-8")
@@ -179,6 +208,8 @@ class Store:
         meta = json.loads((work / "tasks.json").read_text(encoding="utf-8"))
         self.rubric = rubric_for_page(meta["rubric_version"])
         self.tasks = meta["tasks"]
+        self.mode = meta.get("mode", "full")          # "answers": answers only, no passages or pool check
+        self.annotators = list(meta.get("annotators") or DEFAULT_ANNOTATORS)
 
     def assigned(self, annotator: str, vid: int) -> bool:
         return any(t["version_id"] == vid and annotator in t["annotators"].split() for t in self.tasks)
@@ -193,7 +224,7 @@ class Store:
                 path = self.label_path(annotator, t["version_id"])
                 finished = json.loads(path.read_text(encoding="utf-8")).get("finished", {}) if path.exists() else {}
                 tasks.append({**t, "finished": finished})
-        return {"annotators": list(ANNOTATORS), "rubric": self.rubric, "tasks": tasks}
+        return {"annotators": self.annotators, "mode": self.mode, "rubric": self.rubric, "tasks": tasks}
 
     def save(self, annotator: str, vid: int, body: dict) -> None:
         if body.get("version_id") != vid or body.get("annotator") != annotator:
@@ -221,7 +252,7 @@ def make_handler(store: Store):
             self.wfile.write(data)
 
         def who(self, annotator: str, vid: int) -> bool:
-            if annotator in ANNOTATORS and store.assigned(annotator, vid):
+            if annotator in store.annotators and store.assigned(annotator, vid):
                 return True
             self.send(404, {"error": "not assigned"})
             return False
@@ -230,9 +261,11 @@ def make_handler(store: Store):
             path, _, query = self.path.partition("?")
             if path == "/":
                 return self.send(200, PAGE.read_bytes(), "text/html")
+            if path == "/api/annotators":
+                return self.send(200, {"annotators": store.annotators, "mode": store.mode})
             if path == "/api/state":
                 annotator = dict(q.split("=", 1) for q in query.split("&") if "=" in q).get("a", "")
-                if annotator not in ANNOTATORS:
+                if annotator not in store.annotators:
                     return self.send(404, {"error": "unknown annotator"})
                 return self.send(200, store.state(annotator))
             if m := _DOC_PATH.match(path):
@@ -262,8 +295,10 @@ def make_handler(store: Store):
 
 
 def serve(work: Path, labels: Path, port: int) -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(Store(work, labels)))
-    print(f"Labeling page: http://127.0.0.1:{port}/?a=gage  (or ?a=sam). Ctrl+C stops it.")
+    store = Store(work, labels)
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(store))
+    links = "  ".join(f"http://127.0.0.1:{port}/?a={a}" for a in store.annotators)
+    print(f"Labeling page ({'answers only' if store.mode == 'answers' else 'full'}): {links}. Ctrl+C stops it.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -273,6 +308,7 @@ def serve(work: Path, labels: Path, port: int) -> None:
 # --- disagree ----------------------------------------------------------------
 
 def disagreements(a: dict, b: dict) -> tuple[list[dict], dict[str, list[int]]]:
+    # rows carry the two labels as label_a / label_b; write_disagreements names them
     """Rows where two annotators' labels for one document differ, and per
     layer how many items both judged and how many of those differ. Passages
     one annotator judged and the other never saw (their own layer A marks)
@@ -280,7 +316,7 @@ def disagreements(a: dict, b: dict) -> tuple[list[dict], dict[str, list[int]]]:
     rows, counts = [], {"answers": [0, 0], "passages": [0, 0], "pool_check": [0, 0]}
 
     def row(layer, check, idx, x, y):
-        rows.append({"layer": layer, "check": check, "idx": idx, ANNOTATORS[0]: x, ANNOTATORS[1]: y})
+        rows.append({"layer": layer, "check": check, "idx": idx, "label_a": x, "label_b": y})
 
     for check in sorted(set(a.get("answers", {})) & set(b.get("answers", {}))):
         x, y = a["answers"][check].get("status"), b["answers"][check].get("status")
@@ -308,7 +344,9 @@ def disagreements(a: dict, b: dict) -> tuple[list[dict], dict[str, list[int]]]:
 
 
 def write_disagreements(work: Path, labels: Path, out: Path, include_pilot: bool = False) -> str:
-    tasks = json.loads((work / "tasks.json").read_text(encoding="utf-8"))["tasks"]
+    meta = json.loads((work / "tasks.json").read_text(encoding="utf-8"))
+    tasks = meta["tasks"]
+    last = "answers" if meta.get("mode") == "answers" else "pool_check"   # a label is finished at its last step
     sets = ("pilot", "double") if include_pilot else ("double",)
     all_rows, lines = [], ["| Document | Answers differ | Passages differ | Pool check differs |",
                            "| --- | --- | --- | --- |"]
@@ -316,13 +354,15 @@ def write_disagreements(work: Path, labels: Path, out: Path, include_pilot: bool
     for t in tasks:
         if t["set"] not in sets:
             continue
-        paths = [labels / who / f"{t['version_id']}.json" for who in ANNOTATORS]
+        names = t["annotators"].split()[:2]
+        paths = [labels / who / f"{t['version_id']}.json" for who in names]
         both = [json.loads(p.read_text(encoding="utf-8")) for p in paths if p.exists()]
-        if len(both) < 2 or not all((lab.get("finished") or {}).get("pool_check") for lab in both):
+        if len(both) < 2 or not all((lab.get("finished") or {}).get(last) for lab in both):
             lines.append(f"| {t['domain']} ({t['doc_type']}) | not finished by both yet | | |")
             continue
         rows, counts = disagreements(*both)
-        all_rows += [{"version_id": t["version_id"], "domain": t["domain"], **r, "settled": ""} for r in rows]
+        all_rows += [{"version_id": t["version_id"], "domain": t["domain"], "annotator_a": names[0],
+                      "annotator_b": names[1], **r, "settled": ""} for r in rows]
         cells = []
         for layer in ("answers", "passages", "pool_check"):
             n, d = counts[layer]
@@ -333,10 +373,67 @@ def write_disagreements(work: Path, labels: Path, out: Path, include_pilot: bool
     lines.append("| all | " + " | ".join(f"{totals[k][1]} of {totals[k][0]}"
                                          for k in ("answers", "passages", "pool_check")) + " |")
     with out.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.DictWriter(fh, ["version_id", "domain", "layer", "check", "idx", *ANNOTATORS, "settled"])
+        w = csv.DictWriter(fh, ["version_id", "domain", "layer", "check", "idx", "annotator_a", "label_a",
+                                "annotator_b", "label_b", "settled"])
         w.writeheader()
         w.writerows(all_rows)
     return "\n".join(lines) + "\n"
+
+
+# --- agree: Claude against people --------------------------------------------
+
+def agreement(people: list[dict], claude: dict[tuple[int, str], str], rubric) -> dict:
+    """Per question, how often Claude's answer matches a person's, over every
+    finished label (each annotator counts once per document). `claude` maps
+    (version_id, check_id) to Claude's stored answer. Answers a person left
+    blank, or that Claude never gave, are skipped."""
+    per: dict[str, list[int]] = {c.id: [0, 0] for c in rubric.checks}
+    misses: dict[str, dict[tuple[str, str], int]] = {c.id: defaultdict(int) for c in rubric.checks}
+    for lab in people:
+        for check_id, ans in (lab.get("answers") or {}).items():
+            mine, theirs = (ans or {}).get("status"), claude.get((lab["version_id"], check_id))
+            if check_id not in per or not mine or not theirs:
+                continue
+            per[check_id][0] += 1
+            if mine == theirs:
+                per[check_id][1] += 1
+            else:
+                misses[check_id][(mine, theirs)] += 1
+    return {"per_check": per, "misses": misses}
+
+
+def agreement_report(result: dict, rubric_version: str, labels: int) -> str:
+    per, misses = result["per_check"], result["misses"]
+    n = sum(v[0] for v in per.values())
+    agree = sum(v[1] for v in per.values())
+    lines = [f"# Claude against people, rubric {rubric_version}", "",
+             f"{labels} finished labels, {n} answers compared: Claude gave the same answer "
+             f"{agree / n:.1%} of the time." if n else f"{labels} finished labels, nothing to compare yet.", "",
+             "| Question | Answers compared | Same answer | Most common difference (person -> Claude) |",
+             "| --- | --- | --- | --- |"]
+    for check_id, (total, same) in sorted(per.items(), key=lambda kv: (kv[1][1] / kv[1][0] if kv[1][0] else 2)):
+        if not total:
+            continue
+        top = max(misses[check_id].items(), key=lambda kv: kv[1], default=None)
+        diff = f"`{top[0][0]}` -> `{top[0][1]}` ({top[1]})" if top else ""
+        lines.append(f"| `{check_id}` | {total} | {same / total:.1%} | {diff} |")
+    return "\n".join(lines) + "\n"
+
+
+def write_agreement(work: Path, labels: Path, conn, rubric_version: str | None = None) -> str:
+    meta = json.loads((work / "tasks.json").read_text(encoding="utf-8"))
+    version = rubric_version or meta["rubric_version"]
+    rubric = load(version)
+    people = []
+    for path in sorted(labels.glob("*/*.json")):
+        lab = json.loads(path.read_text(encoding="utf-8"))
+        if (lab.get("finished") or {}).get("answers"):
+            people.append(lab)
+    vids = sorted({lab["version_id"] for lab in people})
+    claude = {(v, c): s for v, c, s in conn.execute(
+        "SELECT version_id, check_id, status FROM findings WHERE rubric_version = %s AND version_id = ANY(%s)",
+        (version, vids))} if vids else {}
+    return agreement_report(agreement(people, claude, rubric), version, len(people))
 
 
 # --- cli ---------------------------------------------------------------------
@@ -352,11 +449,15 @@ def main() -> int:
     s.add_argument("--double", type=int, default=N_DOUBLE)
     s.add_argument("--seed", type=int, default=SEED)
     s.add_argument("--force", action="store_true", help="replace an existing sample")
+    s.add_argument("--annotators", default=",".join(DEFAULT_ANNOTATORS),
+                   help="comma-separated names, e.g. gage,sam,alex,jaiden (default gage,sam)")
     p = sub.add_parser("pool", help="candidate paragraphs and pool-check samples")
     p.add_argument("dataset", type=Path)
     p.add_argument("--sample", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--rubric", default=RUBRIC)
+    p.add_argument("--answers-only", action="store_true",
+                   help="answers only: no candidate passages or pool check (the launch-bar label set)")
     v = sub.add_parser("serve", help="the labeling page")
     v.add_argument("work", type=Path, help="directory written by pool")
     v.add_argument("--labels", type=Path, required=True)
@@ -366,6 +467,11 @@ def main() -> int:
     d.add_argument("--labels", type=Path, required=True)
     d.add_argument("--out", type=Path, help="CSV path (default: disagreements.csv in the labels folder)")
     d.add_argument("--pilot", action="store_true", help="compare the pilot documents too")
+    g = sub.add_parser("agree", help="how often Claude's answers match people's (reads the database)")
+    g.add_argument("work", type=Path)
+    g.add_argument("--labels", type=Path, required=True)
+    g.add_argument("--rubric", help="compare against Claude's answers under this rubric (default: the task's)")
+    g.add_argument("--out", type=Path, help="also write the report to this markdown file")
     args = ap.parse_args()
 
     if args.cmd == "sample":
@@ -373,7 +479,10 @@ def main() -> int:
             ap.error(f"{args.out} exists; the gold sample is drawn once (use --force to replace it)")
         docs = list(read_jsonl(args.dataset / "documents.jsonl"))
         sizes = substantive_counts(list(read_jsonl(args.dataset / "paragraphs.jsonl")))
-        rows = draw_sample(docs, sizes, args.privacy, args.terms, args.double, args.seed)
+        names = tuple(a.strip().lower() for a in args.annotators.split(",") if a.strip())
+        if len(names) < 2:
+            ap.error("--annotators needs at least two names, for the double-labeled documents")
+        rows = draw_sample(docs, sizes, args.privacy, args.terms, args.double, args.seed, names)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         with args.out.open("w", encoding="utf-8", newline="") as fh:
             w = csv.DictWriter(fh, SAMPLE_FIELDS)
@@ -383,9 +492,21 @@ def main() -> int:
             print(f"{r['order']:>3} {r['set']:<7} {r['annotators']:<9} {r['domain']} ({r['doc_type']}, "
                   f"{r['paragraphs']} paragraphs)")
     elif args.cmd == "pool":
-        print(write_pool(args.dataset, read_sample(args.sample), args.out, args.rubric))
+        print(write_pool(args.dataset, read_sample(args.sample), args.out, args.rubric,
+                         answers_only=args.answers_only))
     elif args.cmd == "serve":
         serve(args.work, args.labels, args.port)
+    elif args.cmd == "agree":
+        from imbroglio import db
+        conn = db.connect()
+        try:
+            text = write_agreement(args.work, args.labels, conn, args.rubric)
+        finally:
+            conn.close()
+        print(text)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text, encoding="utf-8")
     else:
         print(write_disagreements(args.work, args.labels, args.out or args.labels / "disagreements.csv", args.pilot))
     return 0

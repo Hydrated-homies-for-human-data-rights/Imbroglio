@@ -83,7 +83,10 @@
   <section id="task" aria-label="Task"></section>
 </main>
 <script>
-const LAYERS = ["answers", "passages", "pool_check"];
+// "full": answers, then passages, then the pool check. "answers": answers only
+// (the launch-bar label set), so a document is done once its answers are.
+let MODE = "full", LAYERS = ["answers", "passages", "pool_check"];
+const lastLayer = () => LAYERS[LAYERS.length - 1];
 const annotator = new URLSearchParams(location.search).get("a") || "";
 let rubric, tasks, doc, label, layer = "answers";
 let activeCheck = 0;                       // layer A: open question
@@ -169,7 +172,7 @@ function highlight(marked, current) {
 function renderAnswers() {
   const locked = !!label.finished.answers;
   const done = rubric.checks.filter(c => label.answers[c.id].status).length;
-  let h = `<p class="muted">${locked ? "Answers are locked (passages have been shown)." :
+  let h = `<p class="muted">${locked ? (MODE === "answers" ? "Finished. Your answers are saved." : "Answers are locked (passages have been shown).") :
     "Answer each question from the document. Open a question, then click lines on the left to mark what the answer rests on."}</p>`;
   rubric.checks.forEach((c, i) => {
     const a = label.answers[c.id], open = i === activeCheck;
@@ -189,7 +192,7 @@ function renderAnswers() {
     h += `</div>`;
   });
   h += `<div class="bar"><span class="muted">${done} of ${rubric.checks.length} answered</span>
-    ${locked ? "" : `<button class="primary" id="finish" ${done < rubric.checks.length ? "disabled" : ""}>Finish answers</button>`}</div>`;
+    ${locked ? "" : `<button class="primary" id="finish" ${done < rubric.checks.length ? "disabled" : ""}>${MODE === "answers" ? "Finish document" : "Finish answers"}</button>`}</div>`;
   $("#task").innerHTML = h;
 
   for (const q of document.querySelectorAll(".q > .head"))
@@ -199,7 +202,13 @@ function renderAnswers() {
     r.onchange = () => { a.status = r.value; changed(); render(); };
   if ($("#unsure")) $("#unsure").onchange = e => { a.unsure = e.target.checked; changed(); render(); };
   if ($("#note")) $("#note").oninput = e => { a.note = e.target.value; changed(); };
-  if ($("#finish")) $("#finish").onclick = () => {
+  if ($("#finish")) $("#finish").onclick = async () => {
+    if (MODE === "answers") {
+      if (!confirm("Finish this document? Your answers are saved and locked.")) return;
+      label.finished.answers = new Date().toISOString();
+      dirty = true; await save(); await loadTasks(true);     // on to the next unfinished document
+      return;
+    }
     if (!confirm("Lock your answers and go on to passages? Answers can't be changed after you see the candidates.")) return;
     label.finished.answers = new Date().toISOString();
     changed(); setLayer("passages");
@@ -340,7 +349,7 @@ async function openDoc(vid) {
   label = await api(`/api/labels/${annotator}/${vid}`) || emptyLabel();
   activeCheck = 0;
   cur = { check: 0, item: 0 };
-  layer = LAYERS.find(l => !label.finished[l]) || "pool_check";
+  layer = LAYERS.find(l => !label.finished[l]) || lastLayer();
   if (layer === "passages") cur = nextUnjudged() || cur;
   renderDoc(); render();
   $("#saved").textContent = "";
@@ -349,26 +358,32 @@ async function openDoc(vid) {
 async function loadTasks(open) {
   const state = await api(`/api/state?a=${encodeURIComponent(annotator)}`);
   rubric = state.rubric; tasks = state.tasks;
+  MODE = state.mode || "full";
+  LAYERS = MODE === "answers" ? ["answers"] : ["answers", "passages", "pool_check"];
+  for (const b of document.querySelectorAll(".tabs button")) b.hidden = !LAYERS.includes(b.dataset.layer);
   const pick = $("#docpick"), keep = pick.value;
   pick.innerHTML = tasks.map(t => {
-    const f = t.finished || {}, mark = f.pool_check ? "done" : f.answers ? "in progress" : "";
+    const f = t.finished || {}, mark = f[lastLayer()] ? "done" : f.answers ? "in progress" : "";
     return `<option value="${t.version_id}">${t.order}. ${esc(t.set)}: ${esc(t.domain)} (${t.doc_type})${mark ? " - " + mark : ""}</option>`;
   }).join("");
   if (keep) pick.value = keep;
   if (open) {
-    const first = tasks.find(t => !(t.finished || {}).pool_check) || tasks[0];
+    const first = tasks.find(t => !(t.finished || {})[lastLayer()]) || tasks[0];
     pick.value = first.version_id;
     await openDoc(first.version_id);
   }
 }
 
 $("#docpick").onchange = e => openDoc(+e.target.value);
-if (!["gage", "sam"].includes(annotator)) {
-  $("#task").innerHTML = `<p>Open this page as <a href="?a=gage">?a=gage</a> or <a href="?a=sam">?a=sam</a>.</p>`;
-} else {
+api("/api/annotators").then(({ annotators }) => {
+  if (!annotators.includes(annotator)) {
+    $("#task").innerHTML = "<p>Open this page as " +
+      annotators.map(a => `<a href="?a=${encodeURIComponent(a)}">?a=${esc(a)}</a>`).join(", ") + ".</p>";
+    return;
+  }
   $("#who").textContent = "Labeling as " + annotator;
-  loadTasks(true).catch(e => $("#task").textContent = "Couldn't load: " + e);
-}
+  return loadTasks(true);
+}).catch(e => $("#task").textContent = "Couldn't load: " + e);
 </script>
 </body>
 </html>
