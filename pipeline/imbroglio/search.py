@@ -33,6 +33,8 @@ class Entry:
     concerns: tuple[str, ...] = ()           # category names rated EXTENSIVE or SEVERE
     analyzed_at: datetime | None = None
     last_changed: datetime | None = None      # newest detected policy change
+    score: int | None = None                  # out of 100; None until analyzed, or UNCLEAR/NOT_DISCLOSED
+    reason: str | None = None                 # the answer that takes the most points off, in plain words
 
 
 def normalize(query: str) -> str:
@@ -95,10 +97,16 @@ def catalogue(conn, rubric_version: str) -> list[Entry]:
     heads: dict[str, str] = {}
     concerns: dict[str, set[str]] = {}
     analyzed: dict[str, datetime] = {}
+    scores: dict[str, tuple[int | None, str | None]] = {}
     for domain, found in db.site_findings(conn, rubric_version).items():
-        tiers, heads[domain] = scorer.rate(rubric, [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found])
+        scored = [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found]
+        tiers, heads[domain] = scorer.rate(rubric, scored)
         concerns[domain] = {rubric.categories[c] for c, t in tiers.items() if t in ("EXTENSIVE", "SEVERE")}
         analyzed[domain] = max(created for *_, created in found)
+        sc = scorer.score(rubric, scored, heads[domain])
+        top = sc.deductions[0] if sc and sc.deductions else None
+        status = rubric.check(top.check_id).statuses[top.status] if top else None
+        scores[domain] = (sc.value if sc else None, (status.plain or status.meaning) if status else None)
     rows = conn.execute(
         """SELECT s.domain, s.name,
                   coalesce(array_agg(DISTINCT d.doc_type ORDER BY d.doc_type)
@@ -108,7 +116,8 @@ def catalogue(conn, rubric_version: str) -> list[Entry]:
            FROM services s LEFT JOIN documents d ON d.service_id = s.id
            GROUP BY s.id, s.domain, s.name""").fetchall()
     entries = [Entry(domain, name, tuple(docs), heads.get(domain),
-                     tuple(sorted(concerns.get(domain, ()))), analyzed.get(domain), changed)
+                     tuple(sorted(concerns.get(domain, ()))), analyzed.get(domain), changed,
+                     *scores.get(domain, (None, None)))
                for domain, name, docs, changed in rows]
     with _lock:
         _cache = (time.monotonic(), entries)

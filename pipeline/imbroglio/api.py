@@ -820,6 +820,10 @@ class SearchResult(BaseModel):
     concerns: list[str] = Field(description="Categories rated EXTENSIVE or SEVERE")
     analyzed_at: datetime | None
     last_changed: datetime | None = Field(description="When a policy change was last detected")
+    score: int | None = Field(None, description="Out of 100, as on the scorecard; null until analyzed, "
+                                                "or when the rating is UNCLEAR or NOT_DISCLOSED")
+    reason: str | None = Field(None, description="The answer that takes the most points off, in plain "
+                                                 "words when the rubric has them; null when nothing does")
 
 
 class SearchResponse(BaseModel):
@@ -855,7 +859,38 @@ def search_sites(q: str, response: Response, limit: int = 10):
     response.headers["Cache-Control"] = "private, max-age=30"
     return SearchResponse(
         query=q,
-        results=[SearchResult(domain=e.domain, name=e.name, documents=list(e.documents),
-                              headline=e.headline, concerns=list(e.concerns),
-                              analyzed_at=e.analyzed_at, last_changed=e.last_changed) for e in hits],
+        results=[_search_result(e) for e in hits],
         can_request=as_domain if as_domain and as_domain not in known else None)
+
+
+def _search_result(e) -> SearchResult:
+    return SearchResult(domain=e.domain, name=e.name, documents=list(e.documents), headline=e.headline,
+                        concerns=list(e.concerns), analyzed_at=e.analyzed_at, last_changed=e.last_changed,
+                        score=e.score, reason=e.reason)
+
+
+class RecentResponse(BaseModel):
+    sites: list[SearchResult] = Field(description="Most recently analyzed first")
+
+
+@router.get("/recent", response_model=RecentResponse,
+            responses={503: {"model": ApiError}},
+            summary="The sites analyzed most recently")
+def recent_sites(response: Response, limit: int = 10):
+    """The most recently analyzed sites with their ratings and scores, for
+    the website's "Most recently rated" list. Same data as search."""
+    from . import search
+    from .analysis import RUBRIC_VERSION
+
+    try:
+        conn = db.connect()
+    except Exception:
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        entries = search.catalogue(conn, RUBRIC_VERSION)
+    finally:
+        conn.close()
+    rated = sorted((e for e in entries if e.headline is not None and e.analyzed_at is not None),
+                   key=lambda e: (e.analyzed_at, e.domain), reverse=True)
+    response.headers["Cache-Control"] = "private, max-age=60"
+    return RecentResponse(sites=[_search_result(e) for e in rated[: max(1, min(limit, 25))]])

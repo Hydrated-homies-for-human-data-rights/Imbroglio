@@ -95,3 +95,46 @@ def test_unknown_domain_can_be_requested(conn):
     assert body["results"] == []
     assert body["can_request"] == "brand-new.example"
     assert client.get("/v1/search", params={"q": "notion.so"}).json()["can_request"] is None
+
+
+def _rated(conn, domain, answers, rubric_version="v0.3"):
+    from imbroglio import analysis
+    from imbroglio.rubric import load
+    rubric = load(rubric_version)
+    text = f"{domain} policy. " * 100
+    sid = db.upsert_service(conn, domain)
+    did = db.upsert_document(conn, sid, "privacy", f"https://{domain}/privacy", "link-text")
+    vid = db.insert_version(conn, did, content_hash(text), text, "static")
+    for check_id, status in answers:
+        conn.execute(
+            """INSERT INTO findings (version_id, rubric_version, check_id, category, status, quotes,
+                                     quotes_verified, verified, model)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, true, 'test')""",
+            (vid, rubric_version, check_id, rubric.check(check_id).category, status, [f"{domain} policy."], [True]))
+    analysis._write_scores(conn, vid, rubric_version)
+    conn.commit()
+
+
+CLEAN = [("sells_personal_data", "no"), ("retention_period", "specific"),
+         ("deletion_on_request", "all_users"), ("access_and_export", "all_users")]
+
+
+def test_search_and_recent_carry_the_score_and_biggest_reason(conn, monkeypatch):
+    from imbroglio import analysis
+    monkeypatch.setattr(analysis, "RUBRIC_VERSION", "v0.3")
+    search.clear_cache()
+    _rated(conn, "older.example", CLEAN)
+    _rated(conn, "aitrain.example", CLEAN + [("trains_ai_on_user_data", "private_content"),
+                                             ("shares_for_advertising", "yes")])
+    _rated(conn, "thin.example", CLEAN[:1])
+
+    hit = client.get("/v1/search", params={"q": "aitrain.example"}).json()["results"][0]
+    assert (hit["headline"], hit["score"]) == ("EXTENSIVE", 46)
+    assert hit["reason"] == "They can use your private content, like messages, files or AI chats, to train AI."
+
+    sites = client.get("/v1/recent", params={"limit": 5}).json()["sites"]
+    assert [s["domain"] for s in sites] == ["thin.example", "aitrain.example", "older.example"]
+    assert [(s["score"], s["reason"]) for s in sites] == [
+        (None, None), (46, hit["reason"]), (100, None)]
+    assert client.get("/v1/recent", params={"limit": 1}).json()["sites"][0]["domain"] == "thin.example"
+    search.clear_cache()
