@@ -93,7 +93,7 @@ def _reanalyze_cmd(args) -> int:
 
     from . import db
     from .analysis import (average_cost, extraction_enabled, reanalysis_targets, reanalyze_checks,
-                           spent_last_24h)
+                           reread_versions, spent_last_24h)
     from .rubric import load
 
     where: dict[str, list[str]] = {}
@@ -115,7 +115,15 @@ def _reanalyze_cmd(args) -> int:
 
     logging.basicConfig(level=logging.WARNING)
     conn = db.connect()
-    groups = reanalysis_targets(conn, args.from_version, where)[: args.limit]
+    groups = reanalysis_targets(conn, args.from_version, where)
+    if args.skip_done:
+        # Already read under the new rubric: a run that stopped on the budget
+        # picks up where it left off instead of paying for every document again.
+        done = reread_versions(conn, args.rubric)
+        before = len(groups)
+        groups = [g for g in groups if done.isdisjoint(g)]
+        print(f"{before - len(groups)} already read under {args.rubric}, skipped")
+    groups = groups[: args.limit]
     docs = sum(len(g) for g in groups)
     print(f"{len(groups)} distinct documents to read ({docs} stored copies), for "
           + "; ".join(f"{c} in {s}" for c, s in where.items()))
@@ -327,6 +335,9 @@ def main() -> int:
     ra.add_argument("--model", help="override EXTRACTION_MODEL")
     ra.add_argument("--workers", type=int, default=3)
     ra.add_argument("--dry-run", action="store_true", help="count the documents and estimate the cost only")
+    ra.add_argument("--skip-done", action="store_true",
+                    help="leave out documents the model has already read under --rubric, so a run that "
+                         "stopped on the daily budget can finish without paying twice")
 
     cs = sub.add_parser("consistency", help="run-to-run consistency study (N2), read-only")
     cs.add_argument("--sample", type=int, default=50)
