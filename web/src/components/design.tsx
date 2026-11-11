@@ -164,7 +164,7 @@ export function DetailCard({
           </div>
         </div>
         <span
-          className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium ${
+          className={`shrink-0 self-start rounded-full border px-4 py-1.5 text-xs font-medium ${
             green
               ? "border-[#a9cfb7] bg-[#eef8f1] text-[#39714f]"
               : "border-[#ccd9e7] bg-[#f1f6fb] text-[#4a6079]"

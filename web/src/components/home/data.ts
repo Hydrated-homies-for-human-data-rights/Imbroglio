@@ -146,7 +146,8 @@ const NOT_FOR_THE_FRONT_PAGE =
   /(^|[.-])(porn|xxx|sex|nudes?|nsfw|hentai|escorts?|onlyfans|casino|gambl|fetish|cam(s|girls)?)([.-]|$)/i
 export const showable = (domain: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain) && !NOT_FOR_THE_FRONT_PAGE.test(domain)
 
-// Hand-kept until the API has a recent-sites endpoint. These are the ratings
+// The fallback for the front page's recent list, which now comes from
+// GET /v1/recent; shown while that loads or when the API is down. These are the ratings
 // the live site showed on the date given.
 export const RECENT_AS_OF = "2026-11-02"
 const RECENT_RAW: { domain: string; tier: Tier; why: string }[] = [

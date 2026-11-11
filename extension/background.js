@@ -130,7 +130,7 @@ const BADGE = {
     UNCLEAR: { shape: "dot", color: "#99a4b2" },
 };
 
-function drawIcon(size, headline) {
+function drawIcon(size, headline, corner = true) {
     const canvas = new OffscreenCanvas(size, size);
     const ctx = canvas.getContext("2d");
     const badge = headline ? BADGE[headline] : null;
@@ -167,8 +167,9 @@ function drawIcon(size, headline) {
         ctx.stroke();
     }
 
-    // the badge in the corner, on a white plate so it reads on the pink
-    if (badge) {
+    // the badge in the corner, on a white plate so it reads on the pink.
+    // Left off when the toolbar shows the score there instead (see setBadge).
+    if (badge && corner) {
         ctx.globalAlpha = 1;
         const c = size * 0.78;
         const w = size * 0.42;
@@ -202,11 +203,17 @@ function drawIcon(size, headline) {
 
 const icons = new Map();
 
-function iconFor(headline) {
-    const key = headline || "none";
-    if (!icons.has(key)) icons.set(key, { 16: drawIcon(16, headline), 32: drawIcon(32, headline) });
+function iconFor(headline, corner = true) {
+    const key = `${headline || "none"}${corner ? "" : "-plain"}`;
+    if (!icons.has(key)) icons.set(key, { 16: drawIcon(16, headline, corner), 32: drawIcon(32, headline, corner) });
     return icons.get(key);
 }
+
+// The score on the toolbar: Chrome draws badge text in the corner where the
+// rating's shape sits, so a site with a score shows the number on the
+// rating's color instead, and the hover text names the rating. Sites without
+// a score (UNCLEAR, NOT_DISCLOSED) keep the shape.
+const BADGE_COLORS = { SEVERE: "#b73329", EXTENSIVE: "#c76017", MODERATE: "#546579", LIMITED: "#39704e" };
 
 // --- the two notifications --------------------------------------------------------
 //
@@ -281,6 +288,7 @@ chrome.notifications.onClicked.addListener((id) => {
 
 async function setBadge(tabId, url, loaded = false) {
     let headline = null;
+    let score = null;
     let title = "Imbroglio: this site's privacy rating";
     try {
         const u = new URL(url || "");
@@ -288,7 +296,9 @@ async function setBadge(tabId, url, loaded = false) {
             const data = await getData(u.hostname);
             if (data.status === "ready") {
                 headline = data.headline;
-                title = `Imbroglio: ${data.domain} is rated ${headline.toLowerCase().replace("_", " ")}`;
+                score = data.score ?? null;
+                title = `Imbroglio: ${data.domain} is rated ${headline.toLowerCase().replace("_", " ")}`
+                    + (score != null ? `, ${score} out of 100` : "");
                 if (loaded) {
                     maybeNudge(data).catch((err) => console.warn("imbroglio BG: nudge failed", err));
                     maybeChangeAlert(data).catch((err) => console.warn("imbroglio BG: change alert failed", err));
@@ -302,9 +312,15 @@ async function setBadge(tabId, url, loaded = false) {
     } catch (err) {
         console.warn("imbroglio BG: badge lookup failed", err);
     }
+    const showScore = score != null && BADGE_COLORS[headline];
     try {
-        await chrome.action.setIcon({ tabId, imageData: iconFor(headline) });
+        await chrome.action.setIcon({ tabId, imageData: iconFor(headline, !showScore) });
         await chrome.action.setTitle({ tabId, title });
+        await chrome.action.setBadgeText({ tabId, text: showScore ? String(score) : "" });
+        if (showScore) {
+            await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLORS[headline] });
+            if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ tabId, color: "#ffffff" });
+        }
     } catch {
         // the tab may have closed meanwhile
     }

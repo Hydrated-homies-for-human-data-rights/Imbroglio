@@ -118,12 +118,16 @@ export default function SearchResults({
                 </span>
                 <span className="flex items-center gap-3 sm:gap-6">
                   {rating && <RatingMark rating={rating} />}
-                  <span
-                    className={`hidden text-xs font-bold uppercase tracking-[0.07em] sm:block ${
-                      ratingStyles[rating ?? "Not disclosed"]
-                    }`}
-                  >
-                    {rating ?? "Not rated"}
+                  <span className={`text-right ${ratingStyles[rating ?? "Not disclosed"]}`}>
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.06em] sm:text-xs sm:tracking-[0.07em]">
+                      {rating ?? "Not rated"}
+                    </span>
+                    {result.score != null && (
+                      <span className="block text-lg font-bold leading-tight tabular-nums">
+                        {result.score}
+                        <span className="text-xs font-semibold opacity-75">/100</span>
+                      </span>
+                    )}
                   </span>
                   <span className="text-[#8d9aa8] transition group-hover:translate-x-1 group-hover:text-[#455d73]">
                     <Chevron />
