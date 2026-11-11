@@ -213,7 +213,7 @@ export default function Report({ site }: { site: Site }) {
                   <RatingMark rating={rating} />
                   <span className="text-[15px] font-medium text-[#193149]">{category.name}</span>
                   <span
-                    className={`hidden text-xs font-bold uppercase tracking-[0.07em] sm:block ${ratingStyles[rating]}`}
+                    className={`text-right text-[11px] font-bold uppercase tracking-[0.06em] sm:text-xs sm:tracking-[0.07em] ${ratingStyles[rating]}`}
                   >
                     {rating}
                   </span>
