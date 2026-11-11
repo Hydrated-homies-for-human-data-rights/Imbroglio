@@ -1,23 +1,43 @@
 import type { Metadata } from "next"
-import { IBM_Plex_Mono, Instrument_Sans, Inter, Newsreader } from "next/font/google"
+import localFont from "next/font/local"
 import Footer from "@/components/Footer"
 import "./globals.css"
 
+// The site's fonts are served from the repo (app/fonts, SIL Open Font
+// License, from Fontsource) instead of fetched from Google Fonts on every
+// build: that fetch failed CI twice. Same faces and CSS variables as before.
+
 // The design's font stack starts with Inter (Figma Make src/index.css).
 // italic too: quotes are italic, and the design turns off synthesized italics
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"], style: ["normal", "italic"] })
+const inter = localFont({
+  variable: "--font-inter",
+  src: [
+    { path: "./fonts/inter-latin-wght-normal.woff2", weight: "100 900", style: "normal" },
+    { path: "./fonts/inter-latin-wght-italic.woff2", weight: "100 900", style: "italic" },
+  ],
+})
 
 // The front page's own three faces (see components/home): a serif for the
 // document and the headline, a grotesk for the interface, a monospace for
 // line numbers, hashes and dates. The report pages keep Inter.
-const newsreader = Newsreader({
+const newsreader = localFont({
   variable: "--font-newsreader",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  weight: ["300", "400", "500"],
+  src: [
+    { path: "./fonts/newsreader-latin-wght-normal.woff2", weight: "200 800", style: "normal" },
+    { path: "./fonts/newsreader-latin-wght-italic.woff2", weight: "200 800", style: "italic" },
+  ],
 })
-const instrument = Instrument_Sans({ variable: "--font-instrument", subsets: ["latin"], weight: ["400", "500", "600"] })
-const plexMono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], weight: ["400", "500"] })
+const instrument = localFont({
+  variable: "--font-instrument",
+  src: [{ path: "./fonts/instrument-sans-latin-wght-normal.woff2", weight: "400 700", style: "normal" }],
+})
+const plexMono = localFont({
+  variable: "--font-plex-mono",
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
+})
 
 const DESCRIPTION = "Privacy policies and terms of service, rated with the exact quotes behind every rating."
 
