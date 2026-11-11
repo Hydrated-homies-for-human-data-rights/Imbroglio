@@ -160,12 +160,49 @@ def _site_score(rubric, scored: list, head: str) -> SiteScore | None:
                     for d in sc.deductions])
 
 
+# "In short" on the report: the protections worth saying first, in this order
+# (the answers that count most for a reader who signs up).
+SUMMARY_PROTECTIONS = ["sells_personal_data", "trains_ai_on_user_data", "deletion_on_request",
+                       "access_and_export", "opt_out_of_tracking", "retention_period",
+                       "breach_notification", "shares_for_advertising", "security_measures"]
+SUMMARY_CONCERNS = 2
+SUMMARY_LENGTH = 4
+
+
+def _summary(rubric, scored: list, head: str, sc) -> list[str] | None:
+    """A few sentences in the reader's words, from the rubric's plain lines
+    (no model involved): what takes the most points off, then the most
+    important protections. None for a rubric without plain lines."""
+    if not any(st.plain for c in rubric.checks for st in c.statuses.values()):
+        return None
+    out: list[str] = []
+    if head == "UNCLEAR":
+        out.append("Their documents answer too few of the key questions to give a full rating.")
+    for d in (sc.deductions if sc else [])[:SUMMARY_CONCERNS]:
+        out.append(rubric.check(d.check_id).statuses[d.status].plain)
+    answers = scorer.site_answers(rubric, scored)
+    for check_id in SUMMARY_PROTECTIONS:
+        if len(out) >= SUMMARY_LENGTH:
+            break
+        if check_id not in answers or check_id not in {c.id for c in rubric.checks}:
+            continue
+        status = rubric.check(check_id).statuses[answers[check_id]]
+        if status.concern is None and status.plain not in out:
+            out.append(status.plain)
+    if not sc or not sc.deductions:
+        out.insert(1 if head == "UNCLEAR" else 0, "Nothing in their documents took points off.")
+    return out[:SUMMARY_LENGTH]
+
+
 class Scorecard(BaseModel):
     rubric_version: str
     scorer_version: str
     headline: Literal["LIMITED", "MODERATE", "EXTENSIVE", "SEVERE", "NOT_DISCLOSED", "UNCLEAR"]
     score: SiteScore | None = Field(
         None, description="The overall rating out of 100; null when it is UNCLEAR or NOT_DISCLOSED")
+    summary: list[str] | None = Field(
+        None, description="\"In short\": a few sentences from the rubric's plain lines (no model), biggest "
+                          "concerns first, then protections. Null when the rubric has no plain lines")
     headline_categories: list[str] = Field(description="Categories at the headline tier")
     categories: list[CategoryScore]
     analyzed_at: datetime
@@ -301,6 +338,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
     return Scorecard(
         rubric_version=rubric.version, scorer_version=scorer.version_for(rubric), headline=head,
         score=_site_score(rubric, scored, head),
+        summary=_summary(rubric, scored, head, scorer.score(rubric, scored, head)),
         # s2 can rate a site above any one category (two high concerns make it
         # SEVERE); then the categories behind it are the EXTENSIVE/SEVERE ones
         headline_categories=[rubric.categories[c] for c, t in tiers.items() if t == head]
@@ -820,6 +858,10 @@ class SearchResult(BaseModel):
     concerns: list[str] = Field(description="Categories rated EXTENSIVE or SEVERE")
     analyzed_at: datetime | None
     last_changed: datetime | None = Field(description="When a policy change was last detected")
+    score: int | None = Field(None, description="Out of 100, as on the scorecard; null until analyzed, "
+                                                "or when the rating is UNCLEAR or NOT_DISCLOSED")
+    reason: str | None = Field(None, description="The answer that takes the most points off, in plain "
+                                                 "words when the rubric has them; null when nothing does")
 
 
 class SearchResponse(BaseModel):
@@ -855,7 +897,38 @@ def search_sites(q: str, response: Response, limit: int = 10):
     response.headers["Cache-Control"] = "private, max-age=30"
     return SearchResponse(
         query=q,
-        results=[SearchResult(domain=e.domain, name=e.name, documents=list(e.documents),
-                              headline=e.headline, concerns=list(e.concerns),
-                              analyzed_at=e.analyzed_at, last_changed=e.last_changed) for e in hits],
+        results=[_search_result(e) for e in hits],
         can_request=as_domain if as_domain and as_domain not in known else None)
+
+
+def _search_result(e) -> SearchResult:
+    return SearchResult(domain=e.domain, name=e.name, documents=list(e.documents), headline=e.headline,
+                        concerns=list(e.concerns), analyzed_at=e.analyzed_at, last_changed=e.last_changed,
+                        score=e.score, reason=e.reason)
+
+
+class RecentResponse(BaseModel):
+    sites: list[SearchResult] = Field(description="Most recently analyzed first")
+
+
+@router.get("/recent", response_model=RecentResponse,
+            responses={503: {"model": ApiError}},
+            summary="The sites analyzed most recently")
+def recent_sites(response: Response, limit: int = 10):
+    """The most recently analyzed sites with their ratings and scores, for
+    the website's "Most recently rated" list. Same data as search."""
+    from . import search
+    from .analysis import RUBRIC_VERSION
+
+    try:
+        conn = db.connect()
+    except Exception:
+        return JSONResponse({"error": "database unavailable"}, status_code=503)
+    try:
+        entries = search.catalogue(conn, RUBRIC_VERSION)
+    finally:
+        conn.close()
+    rated = sorted((e for e in entries if e.headline is not None and e.analyzed_at is not None),
+                   key=lambda e: (e.analyzed_at, e.domain), reverse=True)
+    response.headers["Cache-Control"] = "private, max-age=60"
+    return RecentResponse(sites=[_search_result(e) for e in rated[: max(1, min(limit, 25))]])

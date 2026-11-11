@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Suspense } from "react"
+import { Suspense, cache } from "react"
 import { connection } from "next/server"
 import { BottomBar, Masthead, Verdict } from "@/components/home/chrome"
 import Knot from "@/components/home/Knot"
@@ -16,11 +16,12 @@ import {
   INDEX,
   RECENT,
   RECENT_AS_OF,
+  showable,
   TIER_SHORT,
   TIER_WORD,
 } from "@/components/home/data"
 import "@/components/home/home.css"
-import { getSite, type Tier } from "@/lib/api"
+import { getRecent, getSite, type Tier } from "@/lib/api"
 
 // The front page: "Know what you agreed to." The opening screen says what
 // Imbroglio is and shows one real finding. One pink line runs from the tangle
@@ -74,22 +75,34 @@ function Search({ wide = false, label }: { wide?: boolean; label: string }) {
 }
 
 type IndexRow = (typeof INDEX)[number]
-type IndexData = { rows: IndexRow[]; headline: Tier; analyzed: string; live: boolean }
+type IndexData = { rows: IndexRow[]; headline: Tier; score: number | null; analyzed: string; live: boolean }
 
-const STATIC_INDEX: IndexData = { rows: INDEX, headline: FALLBACK_HEADLINE, analyzed: ANALYZED, live: false }
+const STATIC_INDEX: IndexData = {
+  rows: INDEX,
+  headline: FALLBACK_HEADLINE,
+  score: null,
+  analyzed: ANALYZED,
+  live: false,
+}
 
-// The live scorecard for the excerpt's site, if the API answers in time.
-async function liveIndex(): Promise<IndexData> {
+// The excerpt site's live report, if the API answers in time: one fetch per
+// request, shared by the opening card's score and the ratings list.
+const liveSite = cache(async () => {
   await connection() // per request, never at build time
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-  const site = await Promise.race([getSite(EXCERPT.domain).catch(() => null), timeout])
+  return Promise.race([getSite(EXCERPT.domain).catch(() => null), timeout])
+})
+
+// The live scorecard for the excerpt's site.
+async function liveIndex(): Promise<IndexData> {
+  const site = await liveSite()
   const sc = site?.scorecard ?? null
   if (!sc) return STATIC_INDEX
   const rows = INDEX.map((row) => {
     const live = sc.categories.find((c) => c.key === row.key)
     return { ...row, name: live?.name ?? row.name, tier: live?.tier ?? row.tier }
   })
-  return { rows, headline: sc.headline, analyzed: sc.analyzed_at.slice(0, 10), live: true }
+  return { rows, headline: sc.headline, score: sc.score?.value ?? null, analyzed: sc.analyzed_at.slice(0, 10), live: true }
 }
 
 const reportHref = `/site/${EXCERPT.domain}`
@@ -101,7 +114,8 @@ function IndexBody({ index }: { index: IndexData }) {
   return (
     <>
       <p className="lede">
-        <Verdict tier={index.headline} /> overall. Each category links to the sentence in the policy it’s based on.
+        <Verdict tier={index.headline} score={index.score} /> overall. Each category links to the sentence in the
+        policy it’s based on.
         {index.live ? "" : " (From our saved copy; the full report has the current ratings.)"}
       </p>
       <ol className="spine-list">
@@ -133,6 +147,63 @@ async function LiveIndexBody() {
   return <IndexBody index={await liveIndex()} />
 }
 
+// The site's overall score on the opening card, once the live report answers.
+async function HeroScore() {
+  const score = (await liveSite())?.scorecard?.score?.value
+  return score == null ? null : <span className="finding-score mono">{score}/100 overall</span>
+}
+
+type RecentRow = { domain: string; tier: Tier; why: string; score: number | null; when: string }
+
+const STATIC_RECENT: RecentRow[] = RECENT.map((s) => ({ ...s, score: null, when: RECENT_AS_OF }))
+
+// The latest sites through the pipeline, from the API (GET /v1/recent), with
+// the hand-kept list as the fallback while it loads or when it is down. The
+// same front-page gate (showable) applies to both.
+async function liveRecent(): Promise<RecentRow[]> {
+  await connection()
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+  const got = await Promise.race([getRecent(25).catch(() => null), timeout])
+  const rows = (got?.sites ?? [])
+    .filter((s) => s.headline && showable(s.domain))
+    .slice(0, 9)
+    .map((s) => ({
+      domain: s.domain,
+      tier: s.headline as Tier,
+      why:
+        (s.reason && s.reason.charAt(0).toLowerCase() + s.reason.slice(1).replace(/\.$/, "")) ??
+        (s.headline === "UNCLEAR"
+          ? "too few of the key questions answered"
+          : s.concerns.length
+            ? s.concerns.join(", ").toLowerCase()
+            : "no points taken off"),
+      score: s.score ?? null,
+      when: (s.analyzed_at ?? "").slice(0, 10),
+    }))
+  return rows.length ? rows : STATIC_RECENT
+}
+
+function RecentRows({ rows }: { rows: RecentRow[] }) {
+  return (
+    <>
+      {rows.map((s) => (
+        <Reach as="li" key={s.domain}>
+          <span className="name">
+            <Link href={`/site/${s.domain}`}>{s.domain}</Link>
+          </span>
+          <span className="why">{s.why}</span>
+          <Verdict tier={s.tier} score={s.score} />
+          <span className="ref mono meta">{s.when}</span>
+        </Reach>
+      ))}
+    </>
+  )
+}
+
+async function LiveRecentRows() {
+  return <RecentRows rows={await liveRecent()} />
+}
+
 export default function Home() {
   return (
     <div className="home">
@@ -155,6 +226,9 @@ export default function Home() {
           <span className="finding-head">
             <span>
               <span className="finding-site">{EXCERPT.domain}</span>
+              <Suspense fallback={null}>
+                <HeroScore />
+              </Suspense>
               <span className="finding-cat mono">{FIRST_THREAD.category}</span>
             </span>
             <Verdict tier={FIRST_THREAD.tier} />
@@ -287,16 +361,9 @@ export default function Home() {
             <i data-thread="recent-top" style={{ position: "absolute", top: 0 }} />
             <i data-thread="recent-bottom" style={{ position: "absolute", bottom: 0 }} />
           </span>
-          {RECENT.map((s) => (
-            <Reach as="li" key={s.domain}>
-              <span className="name">
-                <Link href={`/site/${s.domain}`}>{s.domain}</Link>
-              </span>
-              <span className="why">{s.why}</span>
-              <Verdict tier={s.tier} />
-              <span className="ref mono meta">{RECENT_AS_OF}</span>
-            </Reach>
-          ))}
+          <Suspense fallback={<RecentRows rows={STATIC_RECENT} />}>
+            <LiveRecentRows />
+          </Suspense>
         </ol>
         <p className="spine-more">
           <Link href="/search?q=">All {FIGURES.sites} sites, by name or rating →</Link>

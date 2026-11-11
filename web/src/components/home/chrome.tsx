@@ -16,11 +16,18 @@ export function Wordmark() {
   )
 }
 
-export function Verdict({ tier, big = false }: { tier: Tier; big?: boolean }) {
+export function Verdict({ tier, big = false, score }: { tier: Tier; big?: boolean; score?: number | null }) {
   return (
     <span className={`verdict t-${tier}${big ? " big" : ""}`}>
       <i className="mark" aria-hidden="true" />
       {TIER_WORD[tier]}
+      {score != null && (
+        <span className="score">
+          <span className="sep" aria-hidden="true">·</span>
+          {score}
+          <small>/100</small>
+        </span>
+      )}
     </span>
   )
 }

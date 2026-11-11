@@ -73,6 +73,17 @@ export default function Report({ site }: { site: Site }) {
         <ShareButton path={`/site/${encodeURIComponent(site.domain)}`} text={shareText} />
       </div>
 
+      {/* Not in the design yet: plain until the UX team designs it. Built from the
+          rubric's plain lines by the API, no model involved. */}
+      {card.summary && card.summary.length > 0 && (
+        <section aria-labelledby="in-short" className="mt-4 max-w-3xl">
+          <h2 id="in-short" className="text-xs font-bold uppercase tracking-[0.14em] text-[#56687c]">
+            In short
+          </h2>
+          <p className="mt-1.5 text-[17px] leading-7 text-[#183149]">{card.summary.join(" ")}</p>
+        </section>
+      )}
+
       <section className="mt-7 grid gap-5 lg:grid-cols-[350px_1fr]">
         {/* The design shows the SEVERE card; other tiers use the same layout on white. */}
         <div
@@ -213,7 +224,7 @@ export default function Report({ site }: { site: Site }) {
                   <RatingMark rating={rating} />
                   <span className="text-[15px] font-medium text-[#193149]">{category.name}</span>
                   <span
-                    className={`hidden text-xs font-bold uppercase tracking-[0.07em] sm:block ${ratingStyles[rating]}`}
+                    className={`text-right text-[11px] font-bold uppercase tracking-[0.06em] sm:text-xs sm:tracking-[0.07em] ${ratingStyles[rating]}`}
                   >
                     {rating}
                   </span>
