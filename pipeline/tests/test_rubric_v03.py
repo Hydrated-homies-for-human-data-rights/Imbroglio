@@ -171,3 +171,63 @@ def test_reanalyze_command_dry_run_and_bad_input(conn, monkeypatch, capsys):
                                      "--where", "trains_ai_on_user_data=private_content"])
     assert main() == 2          # not a v0.2 answer
     assert "aren't answers in v0.2" in capsys.readouterr().out
+
+
+# --- "In short" on the report --------------------------------------------------------------
+
+from fastapi import FastAPI                     # noqa: E402
+from fastapi.testclient import TestClient       # noqa: E402
+
+from imbroglio.api import router                # noqa: E402
+
+_app = FastAPI()
+_app.include_router(router)
+_client = TestClient(_app)
+
+
+def _site(conn, domain, answers, version):
+    rubric = load(version)
+    vid = _doc(conn, domain, f"{domain} policy. " * 100)
+    for check_id, status in answers:
+        conn.execute(
+            """INSERT INTO findings (version_id, rubric_version, check_id, category, status, quotes,
+                                     quotes_verified, verified, model)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, true, 'test')""",
+            (vid, version, check_id, rubric.check(check_id).category, status, [f"{domain} policy."], [True]))
+    analysis._write_scores(conn, vid, version)
+    conn.commit()
+
+
+CLEAN_ANSWERS = [("sells_personal_data", "no"), ("retention_period", "specific"),
+                 ("deletion_on_request", "all_users"), ("access_and_export", "all_users")]
+
+
+def test_in_short_puts_the_biggest_concerns_first_then_protections(conn, monkeypatch):
+    monkeypatch.setattr(analysis, "RUBRIC_VERSION", "v0.3")
+    _site(conn, "ai.example", CLEAN_ANSWERS + [("trains_ai_on_user_data", "private_content"),
+                                               ("shares_for_advertising", "yes")], "v0.3")
+    summary = _client.get("/v1/sites/ai.example").json()["scorecard"]["summary"]
+    assert summary == [
+        "They can use your private content, like messages, files or AI chats, to train AI.",
+        "They share your information with other companies for advertising or marketing.",
+        "They say they don't sell your personal information.",
+        "Anyone can ask them to delete their information.",
+    ]
+
+
+def test_in_short_for_a_clean_site_and_a_thin_one(conn, monkeypatch):
+    monkeypatch.setattr(analysis, "RUBRIC_VERSION", "v0.3")
+    _site(conn, "clean.example", CLEAN_ANSWERS, "v0.3")
+    _site(conn, "thin.example", CLEAN_ANSWERS[:1], "v0.3")
+    clean = _client.get("/v1/sites/clean.example").json()["scorecard"]["summary"]
+    assert clean[0] == "Nothing in their documents took points off." and len(clean) == 4
+    thin = _client.get("/v1/sites/thin.example").json()["scorecard"]["summary"]
+    assert thin == ["Their documents answer too few of the key questions to give a full rating.",
+                    "Nothing in their documents took points off.",
+                    "They say they don't sell your personal information."]
+
+
+def test_no_in_short_without_plain_lines(conn, monkeypatch):
+    monkeypatch.setattr(analysis, "RUBRIC_VERSION", "v0.2")
+    _site(conn, "old.example", CLEAN_ANSWERS, "v0.2")
+    assert _client.get("/v1/sites/old.example").json()["scorecard"]["summary"] is None

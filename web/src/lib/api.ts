@@ -63,6 +63,8 @@ export type Scorecard = {
   scorer_version: string
   headline: Tier
   score?: SiteScore | null
+  // "In short": sentences from the rubric's plain lines, biggest concerns first (rubric v0.3 on)
+  summary?: string[] | null
   headline_categories: string[]
   categories: CategoryScore[]
   analyzed_at: string
