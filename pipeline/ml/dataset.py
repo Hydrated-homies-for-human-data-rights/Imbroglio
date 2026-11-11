@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from imbroglio.rubric import NOT_DISCLOSED
-from imbroglio.verify import quote_offsets
+from imbroglio.verify import canon, quote_offsets
 
 SPLITS = ("train", "dev", "test")
 FRACTIONS = (0.70, 0.15, 0.15)
@@ -42,6 +42,7 @@ class Paragraph:
     neg: list[str] = field(default_factory=list)         # checks the document doesn't address
     kw_failed: list[str] = field(default_factory=list)   # found word for word, no evidence word
     split: str = ""
+    in_train: bool = False   # dev/test only: the same text is a training paragraph too
 
 
 @dataclass
@@ -178,7 +179,18 @@ def build(export: Path, extra_groups: dict[str, str] | None = None, seed: int = 
                          "doc_type": d["doc_type"], "split": split, "group": group_of[d["domain"]],
                          "answers": {lab["check_id"]: {"status": lab["status"], "verified": lab["verified"]}
                                      for lab in labels[d["version_id"]]}})
+    mark_in_train(paragraphs)
     return paragraphs, doc_rows, counts
+
+
+def mark_in_train(paragraphs: list[Paragraph]) -> None:
+    """Flag dev and test paragraphs whose text is also a training paragraph.
+    Grouping keeps copied documents together, but stock sentences ("we may
+    update this policy") recur across unrelated sites; evaluation can report
+    with and without them."""
+    seen = {canon(p.text) for p in paragraphs if p.split == "train"}
+    for p in paragraphs:
+        p.in_train = p.split != "train" and canon(p.text) in seen
 
 
 def stats(paragraphs: list[Paragraph], doc_rows: list[dict], counts: QuoteCounts,
@@ -196,6 +208,9 @@ def stats(paragraphs: list[Paragraph], doc_rows: list[dict], counts: QuoteCounts
     lines += ["", f"Paragraph length in characters: median {statistics.median(chars):.0f}, "
               f"90th percentile {chars[int(0.9 * len(chars))]}, "
               f"{sum(c < 40 for c in chars)} under 40 (mostly headings).", "",
+              "Test paragraphs of 40 characters or more whose text is also in training (`in_train`): "
+              f"{sum(p.in_train for p in paragraphs if p.split == 'test' and len(p.text) >= 40)} of "
+              f"{sum(1 for p in paragraphs if p.split == 'test' and len(p.text) >= 40)}.", "",
               "## Per check", "",
               "Positive paragraphs (and the documents they come from) per split, then negative "
               "paragraphs and keyword-failed paragraphs over all splits.", "",
