@@ -15,7 +15,8 @@
 
 const DEFAULT_API_BASE = "https://imbroglio.io/api";
 const PREFIX_LENGTH = 5; // the website's lookup route only accepts 5 (the API itself takes 4 to 8)
-const CACHE_MS = 10 * 60 * 1000; // a site's result is reused this long before being looked up again
+const CACHE_MS = 10 * 60 * 1000; // a rated site's result is reused this long before being looked up again
+const MISS_MS = 60 * 1000; // an unrated or unknown site is looked up again sooner, since it may be rated any minute
 
 async function settings() {
     const s = await chrome.storage.local.get(["apiBase", "apiUser", "apiPassword"]);
@@ -79,12 +80,17 @@ function toSiteData(domain, entry) {
     };
 }
 
-// Results by hostname, so switching tabs doesn't repeat the lookup.
+// Results by hostname, so switching tabs doesn't repeat the lookup. `fresh`
+// (the popup opening) looks again unless the site is already rated, so
+// someone who just requested a site sees its rating once it's ready.
 const recent = new Map();
 
-async function getData(hostname) {
+async function getData(hostname, fresh = false) {
     const hit = recent.get(hostname);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
+    if (hit) {
+        const ready = hit.data.status === "ready";
+        if (Date.now() - hit.at < (ready ? CACHE_MS : MISS_MS) && (ready || !fresh)) return hit.data;
+    }
     const api = await settings();
     let data = { status: "unknown" };
     for (const domain of candidates(hostname)) {
@@ -102,7 +108,7 @@ async function getData(hostname) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "getData") {
-        getData(request.domain)
+        getData(request.domain, request.fresh === true)
             .then((data) => sendResponse({ data }))
             .catch((err) => {
                 console.error("imbroglio BG: lookup failed", err);
