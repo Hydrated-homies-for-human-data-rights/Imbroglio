@@ -452,7 +452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("domain").textContent = shown;
     setFavicon(tab.favIconUrl);
 
-    chrome.runtime.sendMessage({ action: "getData", domain: url.hostname }, (response) => {
+    chrome.runtime.sendMessage({ action: "getData", domain: url.hostname, fresh: true }, (response) => {
       if (chrome.runtime.lastError || !response) {
         console.error("Error communicating with background:", chrome.runtime.lastError);
         showMessage(shown, "Something went wrong. Close this and try again.");
