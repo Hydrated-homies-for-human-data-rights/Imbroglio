@@ -159,6 +159,30 @@ def test_reanalyze_waits_for_the_rebase(conn, monkeypatch):
         "skipped:no v0.3 findings yet")
 
 
+def test_skip_done_leaves_out_documents_already_read(conn, monkeypatch, capsys):
+    read, unread = _doc(conn, "read.example"), _doc(conn, "unread.example", "Other text. " * 300)
+    copy = _doc(conn, "copy.example")          # same text as read.example: one group with it
+    for vid in (read, unread, copy):
+        _v02(conn, vid, ANSWERS)
+        analysis.rebase(conn, vid, "v0.2", "v0.3")
+    monkeypatch.setattr(analysis, "extraction_enabled", lambda: True)
+    monkeypatch.setattr(analysis, "extract", _fake_extract([
+        ("trains_ai_on_user_data", "private_content", "We use your messages to train our machine-learning models.")]))
+    assert analysis.reanalyze_checks(conn, [read, copy], "v0.3", ["trains_ai_on_user_data"]) == "reanalyzed"
+    assert analysis.reread_versions(conn, "v0.3") == {read}
+
+    args = ["imbroglio.cli", "reanalyze", "--rubric", "v0.3", "--from", "v0.2",
+            "--where", "trains_ai_on_user_data=yes,yes_with_opt_out", "--dry-run"]
+    monkeypatch.setattr("sys.argv", args)
+    assert main() == 0
+    assert "2 distinct documents to read (3 stored copies)" in capsys.readouterr().out
+    monkeypatch.setattr("sys.argv", args + ["--skip-done"])
+    assert main() == 0
+    out = capsys.readouterr().out
+    assert "1 already read under v0.3, skipped" in out
+    assert "1 distinct documents to read (1 stored copies)" in out
+
+
 def test_reanalyze_command_dry_run_and_bad_input(conn, monkeypatch, capsys):
     vid = _doc(conn, "a.example")
     _v02(conn, vid, ANSWERS)
