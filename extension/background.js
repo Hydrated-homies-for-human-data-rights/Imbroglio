@@ -115,11 +115,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // --- the toolbar badge ------------------------------------------------------------
 //
 // The icon is drawn here rather than shipped as files: the logo, and in the
-// corner the site's worst level in the scorecard's own shape, white on a disc
-// of the level's color (the Figma's "toolbar badge = the site's worst
-// level"). The score itself stays in the hover text, not on the icon. A site
-// we haven't rated gets the
-// icon dimmed with no badge. At 16 px the curvy i becomes a slanted bar with
+// corner the site's worst level in the scorecard's own shape and color (the
+// Figma's "toolbar badge = the site's worst level"), straight on the pink.
+// The score stays in the hover text, not on the icon. A site we haven't rated
+// gets the icon dimmed with no badge. At 16 px the curvy i becomes a slanted bar with
 // a bigger dot, so it still reads at toolbar size.
 
 const LOGO_PATH = "M450 398C478 382 530 378 560 402C588 425 585 465 565 505L492 632C478 658 485 690 510 705C527 715 545 715 560 710L583 795C555 815 525 823 497 822C450 821 410 800 393 760C378 723 385 670 405 630L478 492C492 465 485 448 470 440C460 434 446 432 436 433Z";
@@ -169,23 +168,13 @@ function drawIcon(size, headline) {
         ctx.stroke();
     }
 
-    // the badge in the corner: a disc in the level's color, edged in white so
-    // it stands off the pink, with the level's shape in white on it
+    // the badge in the corner: the level's shape in its color, no plate
     if (badge) {
         ctx.globalAlpha = 1;
-        const c = size * 0.74;
-        const r = size * 0.27;
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(c, c, r + Math.max(1, size * 0.05), 0, Math.PI * 2);
-        ctx.fill();
+        const c = size * 0.76;
+        const w = size * 0.54;
         ctx.fillStyle = badge.color;
-        ctx.beginPath();
-        ctx.arc(c, c, r, 0, Math.PI * 2);
-        ctx.fill();
-        const w = r * 1.35;
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = badge.color;
         ctx.beginPath();
         if (badge.shape === "triangle") {
             ctx.moveTo(c, c - w * 0.42);
