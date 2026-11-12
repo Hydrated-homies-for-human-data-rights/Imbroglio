@@ -138,3 +138,19 @@ def test_search_and_recent_carry_the_score_and_biggest_reason(conn, monkeypatch)
         (None, None), (46, hit["reason"]), (100, None)]
     assert client.get("/v1/recent", params={"limit": 1}).json()["sites"][0]["domain"] == "thin.example"
     search.clear_cache()
+
+
+def test_sites_lists_every_rated_site_and_leaves_out_unrated_ones(conn, monkeypatch):
+    from imbroglio import analysis
+    monkeypatch.setattr(analysis, "RUBRIC_VERSION", "v0.3")
+    search.clear_cache()
+    _site(conn, "stored-only.example")
+    _rated(conn, "older.example", CLEAN)
+    _rated(conn, "aitrain.example", CLEAN + [("trains_ai_on_user_data", "private_content"),
+                                             ("shares_for_advertising", "yes")])
+
+    body = client.get("/v1/sites").json()
+    assert body["count"] == 2
+    assert [(s["domain"], s["headline"], s["score"]) for s in body["sites"]] == [
+        ("aitrain.example", "EXTENSIVE", 46), ("older.example", "LIMITED", 100)]
+    search.clear_cache()

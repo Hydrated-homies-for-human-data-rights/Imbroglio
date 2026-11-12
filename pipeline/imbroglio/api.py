@@ -911,12 +911,8 @@ class RecentResponse(BaseModel):
     sites: list[SearchResult] = Field(description="Most recently analyzed first")
 
 
-@router.get("/recent", response_model=RecentResponse,
-            responses={503: {"model": ApiError}},
-            summary="The sites analyzed most recently")
-def recent_sites(response: Response, limit: int = 10):
-    """The most recently analyzed sites with their ratings and scores, for
-    the website's "Most recently rated" list. Same data as search."""
+def _rated_sites() -> list | JSONResponse:
+    """Every analyzed site, most recently analyzed first, or a 503 response."""
     from . import search
     from .analysis import RUBRIC_VERSION
 
@@ -928,7 +924,37 @@ def recent_sites(response: Response, limit: int = 10):
         entries = search.catalogue(conn, RUBRIC_VERSION)
     finally:
         conn.close()
-    rated = sorted((e for e in entries if e.headline is not None and e.analyzed_at is not None),
-                   key=lambda e: (e.analyzed_at, e.domain), reverse=True)
+    return sorted((e for e in entries if e.headline is not None and e.analyzed_at is not None),
+                  key=lambda e: (e.analyzed_at, e.domain), reverse=True)
+
+
+@router.get("/recent", response_model=RecentResponse,
+            responses={503: {"model": ApiError}},
+            summary="The sites analyzed most recently")
+def recent_sites(response: Response, limit: int = 10):
+    """The most recently analyzed sites with their ratings and scores, for
+    the website's "Most recently rated" list. Same data as search."""
+    rated = _rated_sites()
+    if isinstance(rated, JSONResponse):
+        return rated
     response.headers["Cache-Control"] = "private, max-age=60"
     return RecentResponse(sites=[_search_result(e) for e in rated[: max(1, min(limit, 25))]])
+
+
+class SiteList(BaseModel):
+    count: int = Field(description="How many sites are listed")
+    sites: list[SearchResult] = Field(description="Every analyzed site, most recently analyzed first")
+
+
+@router.get("/sites", response_model=SiteList,
+            responses={503: {"model": ApiError}},
+            summary="Every site we have rated")
+def list_sites(response: Response):
+    """Every analyzed site with its rating, score and biggest reason, for the
+    website's index of rated sites. Same data as search and recent; sorting
+    and filtering are left to the reader, since the whole list is small."""
+    rated = _rated_sites()
+    if isinstance(rated, JSONResponse):
+        return rated
+    response.headers["Cache-Control"] = "private, max-age=60"
+    return SiteList(count=len(rated), sites=[_search_result(e) for e in rated])
