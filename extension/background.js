@@ -115,8 +115,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // --- the toolbar badge ------------------------------------------------------------
 //
 // The icon is drawn here rather than shipped as files: the logo, and in the
-// corner the site's worst level in the scorecard's own shape (the Figma's
-// "toolbar badge = the site's worst level"). A site we haven't rated gets the
+// corner the site's worst level in the scorecard's own shape, white on a disc
+// of the level's color (the Figma's "toolbar badge = the site's worst
+// level"). The score itself stays in the hover text, not on the icon. A site
+// we haven't rated gets the
 // icon dimmed with no badge. At 16 px the curvy i becomes a slanted bar with
 // a bigger dot, so it still reads at toolbar size.
 
@@ -130,7 +132,7 @@ const BADGE = {
     UNCLEAR: { shape: "dot", color: "#99a4b2" },
 };
 
-function drawIcon(size, headline, corner = true) {
+function drawIcon(size, headline) {
     const canvas = new OffscreenCanvas(size, size);
     const ctx = canvas.getContext("2d");
     const badge = headline ? BADGE[headline] : null;
@@ -167,18 +169,23 @@ function drawIcon(size, headline, corner = true) {
         ctx.stroke();
     }
 
-    // the badge in the corner, on a white plate so it reads on the pink.
-    // Left off when the toolbar shows the score there instead (see setBadge).
-    if (badge && corner) {
+    // the badge in the corner: a disc in the level's color, edged in white so
+    // it stands off the pink, with the level's shape in white on it
+    if (badge) {
         ctx.globalAlpha = 1;
-        const c = size * 0.78;
-        const w = size * 0.42;
+        const c = size * 0.74;
+        const r = size * 0.27;
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
-        ctx.arc(c, c, w * 0.62, 0, Math.PI * 2);
+        ctx.arc(c, c, r + Math.max(1, size * 0.05), 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = badge.color;
-        ctx.strokeStyle = badge.color;
+        ctx.beginPath();
+        ctx.arc(c, c, r, 0, Math.PI * 2);
+        ctx.fill();
+        const w = r * 1.35;
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#ffffff";
         ctx.beginPath();
         if (badge.shape === "triangle") {
             ctx.moveTo(c, c - w * 0.42);
@@ -203,17 +210,11 @@ function drawIcon(size, headline, corner = true) {
 
 const icons = new Map();
 
-function iconFor(headline, corner = true) {
-    const key = `${headline || "none"}${corner ? "" : "-plain"}`;
-    if (!icons.has(key)) icons.set(key, { 16: drawIcon(16, headline, corner), 32: drawIcon(32, headline, corner) });
+function iconFor(headline) {
+    const key = headline || "none";
+    if (!icons.has(key)) icons.set(key, { 16: drawIcon(16, headline), 32: drawIcon(32, headline) });
     return icons.get(key);
 }
-
-// The score on the toolbar: Chrome draws badge text in the corner where the
-// rating's shape sits, so a site with a score shows the number on the
-// rating's color instead, and the hover text names the rating. Sites without
-// a score (UNCLEAR, NOT_DISCLOSED) keep the shape.
-const BADGE_COLORS = { SEVERE: "#b73329", EXTENSIVE: "#c76017", MODERATE: "#546579", LIMITED: "#39704e" };
 
 // --- the two notifications --------------------------------------------------------
 //
@@ -312,15 +313,9 @@ async function setBadge(tabId, url, loaded = false) {
     } catch (err) {
         console.warn("imbroglio BG: badge lookup failed", err);
     }
-    const showScore = score != null && BADGE_COLORS[headline];
     try {
-        await chrome.action.setIcon({ tabId, imageData: iconFor(headline, !showScore) });
+        await chrome.action.setIcon({ tabId, imageData: iconFor(headline) });
         await chrome.action.setTitle({ tabId, title });
-        await chrome.action.setBadgeText({ tabId, text: showScore ? String(score) : "" });
-        if (showScore) {
-            await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLORS[headline] });
-            if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ tabId, color: "#ffffff" });
-        }
     } catch {
         // the tab may have closed meanwhile
     }
