@@ -35,7 +35,7 @@ export function Verdict({ tier, big = false, score }: { tier: Tier; big?: boolea
 const NAV = [
   { href: "/how-we-score", label: "How we score" },
   { href: "/learn", label: "What you can do" },
-  { href: "/#recent", label: "Recently rated" },
+  { href: "/sites", label: "Every site" },
   { href: "/about", label: "About" },
 ]
 
@@ -72,6 +72,7 @@ export function BottomBar() {
           <div className="links">
             <Link href="/how-we-score">How we score</Link>
             <Link href="/learn">What you can do</Link>
+            <Link href="/sites">Every site</Link>
             <Link href="/about">About</Link>
             <Link href="/report">Report a problem</Link>
           </div>
