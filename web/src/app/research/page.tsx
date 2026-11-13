@@ -578,10 +578,13 @@ export default function ResearchPage() {
           </p>
           <h4>Checked by hand</h4>
           <p>
-            Before the split is frozen for good, 34 pairs across the whole similarity range are marked by hand as the
-            same template, shared stock wording, or different.
+            Before the split was frozen, 34 pairs across the whole similarity range were marked as the same template,
+            shared stock wording, or different. Sam marked 17 by hand, and Claude marked the other 17 following her
+            calls; the review file records which is which. The threshold misses some templates: 7 of the 12 pairs below
+            0.3 look like one. Lowering it to 0.2 leaves leakage where it is, though, so it stayed at 0.3 and the split
+            is now frozen.
           </p>
-          <Table head={["Hand review of 34 pairs", "Result"]}>
+          <Table head={["Review of 34 pairs", "Result"]}>
             {NEARDUP_REVIEW.map((r) => (
               <tr key={r.label}>
                 <th scope="row">{r.label}</th>

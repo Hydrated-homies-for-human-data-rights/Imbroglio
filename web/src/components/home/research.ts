@@ -90,7 +90,7 @@ export const STATUS: { work: string; who: string; state: State; when: string }[]
   { work: "Fine-tuned transformers and four controlled experiments", who: "Gage", state: "done", when: "" },
   { work: "Gold-set protocol and labeling tool", who: "Gage", state: "done", when: "" },
   { work: "Gold-set decision rules, fixed thresholds and scoring tool", who: "Gage", state: "done", when: "" },
-  { work: "Hand review of 34 near-duplicate pairs, then freeze the split", who: "Sam", state: "now", when: "week 13" },
+  { work: "Review of 34 near-duplicate pairs, then freeze the split", who: "Sam", state: "done", when: "Nov 12" },
   { work: "Error analysis write-up for the classical models", who: "Sam", state: "now", when: "week 13" },
   { work: "OPP-115 neural classifier and calibration", who: "Alex", state: "now", when: "week 14" },
   { work: "Gold-set pilot, 2 documents", who: "Everyone", state: "later", when: "week 13" },
@@ -152,12 +152,14 @@ export const LEAKAGE = [
   { threshold: "0.1", mean: 1.0, range: "0.8 to 1.1", groups: 45, largest: 13 },
 ]
 
-// the 34 pairs marked by hand (Sam); null until the review is done
+// the 34 pairs in neardup/review.csv: 17 marked by Sam, 17 by Claude following her calls (its `by` column)
 export const NEARDUP_REVIEW: { label: string; value: Fig | string }[] = [
-  { label: "Pairs marked the same template", value: null },
-  { label: "Pairs marked shared stock wording", value: null },
-  { label: "Pairs marked different", value: null },
-  { label: "Threshold kept or changed", value: null },
+  { label: "Pairs marked the same template", value: 28 },
+  { label: "Pairs marked shared stock wording", value: 5 },
+  { label: "Pairs marked different", value: 1 },
+  { label: "Marked by hand", value: "17 of 34" },
+  { label: "Templates among the 12 pairs below 0.3", value: 7 },
+  { label: "Threshold kept or changed", value: "kept at 0.3" },
 ]
 
 // ---- question 3: consistency ----
