@@ -271,3 +271,16 @@ def test_scorecard_and_lookup_carry_the_same_score(conn, monkeypatch):
     full = hashlib.sha256(b"onehigh.example").hexdigest()
     entry = next(s for s in client.get(f"/v1/lookup/{full[:5]}").json()["sites"] if s["hash"] == full)
     assert entry["scores"]["score"] == 46
+
+
+@pytest.mark.parametrize("scorer_name, rubric_file, message", [
+    ("s4", "v0.2.yaml", "scorer must be one of"),
+    ("s3", "v0.1.yaml", "scorer s3 needs answers with concern levels"),
+])
+def test_a_named_scorer_must_exist_and_fit_the_rubric(tmp_path, monkeypatch, scorer_name, rubric_file, message):
+    raw = yaml.safe_load((rubric_mod.RUBRIC_DIR / rubric_file).read_text(encoding="utf-8"))
+    raw["version"], raw["scorer"] = "vtest", scorer_name
+    (tmp_path / "vtest.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.setattr(rubric_mod, "RUBRIC_DIR", tmp_path)
+    with pytest.raises(RubricError, match=message):
+        rubric_mod.load.__wrapped__("vtest")
