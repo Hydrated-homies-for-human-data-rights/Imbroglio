@@ -17,7 +17,7 @@ CLEAN = [scorer.ScoredFinding("sells_personal_data", "no", True),
 
 def test_same_questions_with_plain_lines_and_the_ai_split():
     assert [c.id for c in V03.checks] == [c.id for c in V02.checks]
-    assert V03.categories == V02.categories and scorer.version_for(V03) == "s2"
+    assert V03.categories == V02.categories and scorer.version_for(V03) == "s3"
     assert all(s.plain for c in V03.checks for s in c.statuses.values())
     assert set(V03.check("trains_ai_on_user_data").statuses) == {
         "private_content", "private_content_opt_out", "other_data", "other_data_opt_out", "opt_in", "no"}
@@ -30,14 +30,46 @@ def test_as_long_as_necessary_is_shown_but_costs_nothing():
     sc = scorer.score(V03, [CLEAN[0], scorer.ScoredFinding("retention_period", "vague", True), *CLEAN[2:],
                             scorer.ScoredFinding("shares_for_advertising", "yes", True)])
     assert sc.value == 88      # v0.2: 76, two medium concerns
+    assert sc.band == (60, 89)  # one medium concern: MODERATE under s3
 
 
 @pytest.mark.parametrize("answer, headline", [
-    ("private_content", "EXTENSIVE"), ("private_content_opt_out", "LIMITED"),
-    ("other_data", "LIMITED"), ("other_data_opt_out", "LIMITED"),
+    ("private_content", "EXTENSIVE"), ("private_content_opt_out", "MODERATE"),
+    ("other_data", "MODERATE"), ("other_data_opt_out", "LIMITED"),
 ])
 def test_ai_training_rated_by_what_is_trained_on(answer, headline):
     assert scorer.rate(V03, [*CLEAN, scorer.ScoredFinding("trains_ai_on_user_data", answer, True)])[1] == headline
+
+
+# Scorer s3: LIMITED means nothing in the documents took points off.
+
+def test_s3_limited_means_nothing_took_points_off():
+    head = scorer.rate(V03, CLEAN)[1]
+    sc = scorer.score(V03, CLEAN)
+    assert head == "LIMITED" and (sc.value, sc.band, sc.deductions) == (100, (90, 100), [])
+
+
+def test_s3_one_medium_concern_is_moderate_where_s2_said_limited():
+    ads = [*CLEAN, scorer.ScoredFinding("shares_for_advertising", "yes", True)]
+    assert scorer.rate(V02, ads)[1] == "LIMITED" and scorer.score(V02, ads).value == 88
+    assert scorer.rate(V03, ads)[1] == "MODERATE"
+    sc = scorer.score(V03, ads)
+    assert (sc.value, sc.band, sc.adjusted) == (88, (60, 89), False)
+
+
+def test_s3_keeps_s2_for_high_and_severe_concerns():
+    high = [*CLEAN, scorer.ScoredFinding("trains_ai_on_user_data", "private_content", True)]
+    assert scorer.rate(V03, high)[1] == "EXTENSIVE" and scorer.score(V03, high).value == 58
+    sells = [scorer.ScoredFinding("sells_personal_data", "sold_for_money", True), *CLEAN[1:]]
+    assert scorer.rate(V03, sells)[1] == "SEVERE"
+
+
+def test_s3_only_applies_to_rubrics_that_name_it():
+    assert [scorer.version_for(load(v)) for v in ("v0.1", "v0.2", "v0.3", "v1.0")] == ["s1", "s2", "s3", "s2"]
+    assert scorer.bands_for(V02)["LIMITED"] == (80, 100) and scorer.bands_for(V03)["LIMITED"] == (90, 100)
+    rules = " ".join(scorer.rules_for(V03))
+    assert "MODERATE for any medium one" in rules and "LIMITED 90 to 100, MODERATE 60 to 89" in rules
+    assert "LIMITED 80 to 100" in " ".join(scorer.rules_for(V02))
 
 
 @pytest.mark.parametrize("check_id, quote", [

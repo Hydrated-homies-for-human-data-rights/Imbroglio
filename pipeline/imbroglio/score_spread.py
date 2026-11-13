@@ -77,7 +77,7 @@ def report(rubric: Rubric, scored: list[SiteScore]) -> str:
     lines += ["## By rating", "",
               "| Rating | Range | Sites | Min | Median | Max | Distinct values | Most common (share) | Kept in range |",
               "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
-    for tier, (lo, hi) in scorer.BANDS.items():
+    for tier, (lo, hi) in scorer.bands_for(rubric).items():
         group = [s for s in with_score if s.headline == tier]
         if not group:
             lines.append(f"| {tier} | {lo} to {hi} | 0 | | | | | | |")

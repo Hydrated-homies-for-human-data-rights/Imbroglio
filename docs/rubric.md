@@ -62,6 +62,9 @@ number, so the two always agree, and it is made by the same code (`scorer.score(
 | SEVERE | 0 to 39 |
 | UNCLEAR, NOT DISCLOSED | no score |
 
+Under scorer s3 (rubric v0.3) LIMITED is 90 to 100 and MODERATE 60 to 89, because any medium concern
+makes a site MODERATE. A LIMITED site then always scores 100: nothing took points off.
+
 The points are set so that under s2 the subtraction alone nearly always lands in the right range: one
 high concern gives 58 (EXTENSIVE), two medium ones give 76 (MODERATE), one severe concern gives 35 and
 two high ones give 16 (SEVERE). Step 4 only matters for unusual mixes, such as four medium concerns
@@ -315,6 +318,15 @@ Same 14 questions. The changes come from the first two production reports, on 56
 | AI training "yes" cost 72 sites 42 points, most of the EXTENSIVE ones, whatever was trained on | Split by what is trained on: private content or AI chats is high (medium with an opt-out); public content or usage data is medium (informational with an opt-out) |
 | Opt-out "limited" on 158 sites, often for not honoring Do Not Track | Guidance: ignoring Do Not Track alone is neither `no` nor `limited` |
 | The report shows the rubric's wording | Every answer has a plain line in the reader's words |
+| With vague retention informational, 224 of 565 sites came out LIMITED, most of them for sharing with advertisers alone | Scorer s3: any medium concern makes a site MODERATE (s2 needed two), and LIMITED scores 90 to 100, MODERATE 60 to 89 |
+
+Scorer s3 is v0.3's own: v0.3.yaml names it (`scorer: s3`), so v0.2 keeps s2 and the live ratings
+don't move until the switch. On the production findings, simulated before building it, s3 gives
+LIMITED 57, MODERATE 343, EXTENSIVE 46, SEVERE 16, UNCLEAR 96 (v0.3 under s2: 224, 176, 46, 16, 96;
+v0.2: 90, 251, 75, 14, 124). LIMITED then means what a reader expects it to: nothing in the
+documents took points off. The typical site that shares data with advertisers is MODERATE, "about as
+much as most sites do". The most common score is 88 (one medium concern), on 36% of scored sites,
+down from two piles under v0.2 (76 at 31%, 40 at 12%), and 50 scores are kept in range (v0.2: 104).
 
 The evidence lists leave out generic words the report suggested ("collect", "account", "address"):
 they would let in quotes that aren't about the question. A quote is judged to be in another language
