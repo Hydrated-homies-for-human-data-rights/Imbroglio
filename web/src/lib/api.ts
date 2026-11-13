@@ -197,6 +197,7 @@ async function get<T>(path: string): Promise<T> {
 export const getSite = (domain: string) => get<Site>(`/v1/sites/${encodeURIComponent(domain)}`)
 export const search = (q: string) => get<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}&limit=25`)
 export const getRecent = (limit = 10) => get<{ sites: SearchResult[] }>(`/v1/recent?limit=${limit}`)
+export const getSites = () => get<{ count: number; sites: SearchResult[] }>("/v1/sites")
 export const getLearn = () => get<Learn>("/v1/learn")
 export const getRubric = () => get<RubricInfo>("/v1/rubric")
 export const getRequest = (id: number) => get<AnalysisRequest>(`/v1/requests/${id}`)
