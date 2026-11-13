@@ -1,0 +1,196 @@
+/* The every-site page: a headline beside the search, then one shelf per
+   rating, worst first. Each shelf has its own short length of thread and a
+   pin, like the chapters of the editorial pages. */
+
+.sites .sites-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+.sites .sites-head h1 {
+  max-width: 16ch;
+}
+
+.sites .sites-find {
+  margin: 36px 0 12px;
+  max-width: 520px;
+}
+.sites .sites-search {
+  width: 100%;
+  box-sizing: border-box;
+  height: 52px;
+  padding: 0 18px;
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  background: var(--sheet);
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  outline: none;
+}
+.sites .sites-search:focus {
+  border-color: var(--pin);
+  box-shadow: 0 0 0 3px rgba(247, 154, 192, 0.45);
+}
+.sites .sites-count {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sites .shelf {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 40px;
+  padding: 36px 0;
+  border-top: 1px solid var(--rule);
+}
+.sites .shelf-head {
+  position: relative;
+  padding-left: 28px;
+}
+/* the thread down the shelf's left edge, and its pin */
+.sites .shelf-head::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  bottom: -36px;
+  width: 2.5px;
+  background: var(--pink);
+}
+.sites .shelf-head::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--pin);
+}
+.sites .shelf-head h2 {
+  margin: 0;
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1.05;
+}
+.sites .shelf-head h2 .verdict.big {
+  font-size: inherit;
+  font-weight: inherit;
+}
+.sites .shelf-n {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sites .shelf-meaning {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #3c4d60;
+}
+
+.sites .tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 28px;
+}
+.sites .tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e3e8ee;
+  color: var(--ink);
+  text-decoration: none;
+}
+.sites .tile .d {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sites .tile .s {
+  font-family: var(--font-newsreader), Newsreader, Georgia, serif;
+  font-size: 22px;
+  line-height: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sites .tile .r {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sites .tile:hover .d,
+.sites .tile:focus-visible .d {
+  text-decoration: underline;
+  text-decoration-color: var(--pink);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.sites .shelf-more {
+  margin-top: 22px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 18px;
+  border: 1.5px solid var(--ink);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.sites .shelf-more:hover {
+  background: var(--ink);
+  color: #fff;
+}
+
+.sites .sites-none {
+  padding: 40px 0;
+  border-top: 1px solid var(--rule);
+}
+.sites .sites-none .serif {
+  margin: 0;
+  font-size: 26px;
+}
+.sites .sites-none p + p {
+  margin: 10px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+.sites .sites-none a {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 1023px) {
+  .sites .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .sites .shelf {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding: 28px 0;
+  }
+  .sites .shelf-head::before {
+    bottom: 0;
+  }
+  .sites .shelf-head h2 {
+    font-size: 28px;
+  }
+  .sites .tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

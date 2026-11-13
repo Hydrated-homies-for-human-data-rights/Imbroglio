@@ -366,7 +366,7 @@ export default function Home() {
           </Suspense>
         </ol>
         <p className="spine-more">
-          <Link href="/search?q=">All {FIGURES.sites} sites, by name or rating →</Link>
+          <Link href="/sites">Every site we’ve rated, worst first →</Link>
         </p>
       </section>
 
