@@ -41,17 +41,27 @@ MIN_HIGH_ANSWERED = 4            # s2 coverage gate: of the rubric's high-concer
 START = 100
 POINTS = {3: 65, 2: 42, 1: 12}   # by the answer's exposure: severe, high, medium concern
 BANDS = {"LIMITED": (80, 100), "MODERATE": (60, 79), "EXTENSIVE": (40, 59), "SEVERE": (0, 39)}
-_SCORE_COMMON = (
-    "The score always stays in its rating's range: LIMITED 80 to 100, MODERATE 60 to 79, "
-    "EXTENSIVE 40 to 59, SEVERE 0 to 39. An UNCLEAR or NOT DISCLOSED site gets no score, so "
-    "silence never earns points."
-)
+# s3: LIMITED means nothing took points off, so its range starts at 90 and a
+# site with one medium concern (88) is MODERATE.
+BANDS_S3 = {"LIMITED": (90, 100), "MODERATE": (60, 89), "EXTENSIVE": (40, 59), "SEVERE": (0, 39)}
+
+
+def _score_common(bands: dict[str, tuple[int, int]]) -> str:
+    ranges = ", ".join(f"{t} {lo} to {hi}" for t, (lo, hi) in bands.items())
+    return (f"The score always stays in its rating's range: {ranges}. An UNCLEAR or NOT DISCLOSED "
+            "site gets no score, so silence never earns points.")
+
+
+_SCORE_COMMON = _score_common(BANDS)
 SCORE_RULE_S1 = ("Every rated site also gets a score out of 100, higher is better. It starts at 100 and "
                  "loses 65 points for each SEVERE answer, 42 for each EXTENSIVE one and 12 for each "
                  "MODERATE one. " + _SCORE_COMMON)
 SCORE_RULE_S2 = ("Every rated site also gets a score out of 100, higher is better. It starts at 100 and "
                  "loses 65 points for each severe concern, 42 for each high one and 12 for each medium "
                  "one, counted the same way as the overall rating. " + _SCORE_COMMON)
+SCORE_RULE_S3 = ("Every rated site also gets a score out of 100, higher is better. It starts at 100 and "
+                 "loses 65 points for each severe concern, 42 for each high one and 12 for each medium "
+                 "one, counted the same way as the overall rating. " + _score_common(BANDS_S3))
 # Published on the website's "How we score" page (GET /v1/rubric). Keep these
 # in step with the code below: they are the rules each version applies.
 _COMMON_FIRST = [
@@ -94,6 +104,19 @@ RULES_S2 = [
     SCORE_RULE_S2,
     _NO_MODEL,
 ]
+# s3 (rubric v0.3): as s2, but any medium concern makes a site MODERATE, so
+# LIMITED means nothing took points off; LIMITED scores 90-100.
+RULES_S3 = [
+    *RULES_S2[:-3],
+    "The overall rating counts concerns across the whole site: SEVERE for any severe concern "
+    "(selling data for money, or no way to delete it) or two or more high ones, EXTENSIVE for "
+    "one high concern, MODERATE for any medium one, and LIMITED only when nothing takes points "
+    "off. Two answers about the same practice count once. It is never below an EXTENSIVE or "
+    "SEVERE category, so one serious practice can't be hidden, and never an average.",
+    RULES_S2[-3],
+    SCORE_RULE_S3,
+    _NO_MODEL,
+]
 TIER_MEANINGS = {
     "SEVERE": "The practice is present at its broadest, with no meaningful limit or choice disclosed.",
     "EXTENSIVE": "The practice is present and broad, with some limit or choice disclosed.",
@@ -112,11 +135,18 @@ _RANK = {NOT_DISCLOSED_TIER: -1, **{t: i for i, t in enumerate(TIERS)}, INFO_TIE
 
 
 def version_for(rubric: Rubric) -> str:
+    if rubric.scorer:
+        return rubric.scorer
     return "s2" if rubric.uses_concerns else "s1"
 
 
 def rules_for(rubric: Rubric) -> list[str]:
-    return RULES_S2 if rubric.uses_concerns else RULES_S1
+    return {"s1": RULES_S1, "s2": RULES_S2, "s3": RULES_S3}[version_for(rubric)]
+
+
+def bands_for(rubric: Rubric) -> dict[str, tuple[int, int]]:
+    """Each rating's score range under this rubric's scorer."""
+    return BANDS_S3 if version_for(rubric) == "s3" else BANDS
 
 
 def tier_meanings(rubric: Rubric) -> dict[str, str]:
@@ -210,7 +240,10 @@ def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str],
         flags = "SEVERE"
     elif high:
         flags = "EXTENSIVE"
-    elif concerns.count("medium") >= 2:
+    # s2: two medium concerns make a site MODERATE. s3: any one does, so
+    # LIMITED means nothing took points off (sharing with advertisers alone
+    # no longer reads as limited).
+    elif concerns.count("medium") >= (1 if version_for(rubric) == "s3" else 2):
         flags = "MODERATE"
     else:
         flags = "LIMITED"
@@ -246,12 +279,13 @@ def score(rubric: Rubric, findings: list[ScoredFinding], head: str | None = None
     overall rating is UNCLEAR or NOT_DISCLOSED. Pass the headline from rate()
     if you already have it."""
     head = head if head is not None else rate(rubric, findings)[1]
-    if head not in BANDS:
+    bands = bands_for(rubric)
+    if head not in bands:
         return None
     answers = site_answers(rubric, findings)
     deductions = sorted(
         (Deduction(c, s, POINTS[rubric.check(c).statuses[s].exposure]) for c, s in _concerns(rubric, answers)),
         key=lambda d: (-d.points, [c.id for c in rubric.checks].index(d.check_id)))
     raw = START - sum(d.points for d in deductions)
-    lo, hi = BANDS[head]
+    lo, hi = bands[head]
     return Score(min(max(raw, lo), hi), deductions, (lo, hi), raw)

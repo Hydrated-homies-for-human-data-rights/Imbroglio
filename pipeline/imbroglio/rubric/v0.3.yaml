@@ -40,6 +40,11 @@
 
 version: v0.3
 evidence_matching: lenient
+# Scorer s3 (scorer.py): as s2, but any medium concern makes a site MODERATE,
+# so LIMITED means nothing took points off, and LIMITED scores 90-100. Under s2
+# with "as long as necessary" now informational, sharing with advertisers alone
+# left 224 of 565 sites LIMITED; under s3 it's 57.
+scorer: s3
 categories:
   selling_sharing: Data selling and sharing
   collection: Collection scope
