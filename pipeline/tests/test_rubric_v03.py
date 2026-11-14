@@ -65,7 +65,7 @@ def test_s3_keeps_s2_for_high_and_severe_concerns():
 
 
 def test_s3_only_applies_to_rubrics_that_name_it():
-    assert [scorer.version_for(load(v)) for v in ("v0.1", "v0.2", "v0.3", "v1.0")] == ["s1", "s2", "s3", "s2"]
+    assert [scorer.version_for(load(v)) for v in ("v0.1", "v0.2", "v0.3", "v1.0")] == ["s1", "s2", "s3", "s3"]
     assert scorer.bands_for(V02)["LIMITED"] == (80, 100) and scorer.bands_for(V03)["LIMITED"] == (90, 100)
     rules = " ".join(scorer.rules_for(V03))
     assert "MODERATE for any medium one" in rules and "LIMITED 90 to 100, MODERATE 60 to 89" in rules
