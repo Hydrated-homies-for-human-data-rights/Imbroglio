@@ -123,6 +123,7 @@ export const CATEGORY_ABOUT: Record<string, string> = {
   security: "How they protect your data, and whether they'll tell you about a breach.",
   ai_training: "Whether your data or content is used to train AI.",
   government: "When they hand your data to police or governments.",
+  terms: "The rules you agree to: disputes, account bans, what you paid for, and what you post.",
 }
 export const TIER_SHORT: Record<Tier, string> = {
   SEVERE: "the practice at its broadest, with no real choice for you.",
