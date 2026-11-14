@@ -96,6 +96,16 @@ function documentNames(documents) {
   return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
+// "Policy checked Nov 2, 2026", saying so when one of the two documents
+// wasn't found, since the rating then rests on the other alone.
+function checkedLine(site) {
+  const date = formatDate(site.analyzedAt);
+  const docs = site.documents || [];
+  if (docs.length === 1 && docs[0] === "privacy") return `Privacy policy checked ${date}. Terms not found`;
+  if (docs.length === 1 && docs[0] === "terms") return `Terms checked ${date}. Privacy policy not found`;
+  return `Policy checked ${date}`;
+}
+
 // Popup links don't open on their own, so open them in a new tab.
 function openInTab(url) {
   if (typeof chrome !== "undefined" && chrome.tabs) chrome.tabs.create({ url });
@@ -172,7 +182,7 @@ const RECENT_DAYS = 30;
 function renderOverview(site) {
   const sorted = sortedCategories(site);
   $("domain").textContent = site.domain;
-  $("checked").textContent = `Policy checked ${formatDate(site.analyzedAt)}`;
+  $("checked").textContent = checkedLine(site);
 
   // A recent change to the policy, with the history page behind it.
   const changed = site.changedAt ? new Date(site.changedAt) : null;
