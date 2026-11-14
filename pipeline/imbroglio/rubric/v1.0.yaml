@@ -11,20 +11,23 @@
 #    and ToS;DR care about: third-party trackers, precise location,
 #    children's data, data kept after deletion, notice before policy or terms
 #    changes, forced arbitration, outside AI providers, human review of
-#    content, transparency reports. 23 questions, up from 14.
+#    content, transparency reports. 28 questions, up from 14, with the terms
+#    category and the coverage check below.
 #  * Every answer has a `plain` line: what it means for the reader, in their
 #    words, shown on the report and the link preview. `meaning` stays the
 #    precise wording the model answers against.
 #  * access_and_export gets a tie-break rule: it was the least steady
 #    question (72% the same across three runs).
 #
-# Left open for v0.3 calibration data (score-spread, rejected-quotes on
-# production), then carried into this file:
-#  * OPEN: evidence word lists, especially collects_from_third_parties (51% of
-#    real quotes counted), collects_sensitive_data (67%), access_and_export (71%)
-#  * OPEN: retention_period `vague` medium or info. "As long as necessary" is
-#    in nearly every policy, and with ad sharing it piles EXTENSIVE sites on
-#    a score of 40.
+# Carried in from v0.3 (Nov 15), the calibration from the first production
+# reports (score-spread, rejected-quotes):
+#  * lenient evidence matching and v0.3's wider evidence word lists (v1.0's
+#    own additions kept; location words stay out of sensitive data, since
+#    precise_location asks about them)
+#  * retention_period `vague` is info: "as long as necessary" is in nearly
+#    every policy, and as a medium concern it piled sites on one score
+#  * v0.3's guidance for opt-outs (Do Not Track alone is neither `no` nor
+#    `limited`) and for AI training (another company's policy doesn't count)
 #  * DECIDED (Nov 14): forced_arbitration is a medium concern, with or
 #    without an opt-out. Arbitration favors the company, and the opt-out is
 #    usually a letter within 30 days of signing up that almost nobody sends.
@@ -32,12 +35,16 @@
 # Terms of service (Nov 14): a test user asked about Steam's Subscriber
 # Agreement. v0.2 reads terms documents but asks nothing about them, so a
 # site's terms only counted when they mentioned data. The new terms category
-# asks five questions: arbitration and change notice (moved from user
-# rights), closing accounts, losing what you paid for, and the license to
-# your content (moved from AI). Boilerplate nearly every site has ("as is",
+# asks six questions: arbitration and change notice (moved from user
+# rights), closing accounts, losing what you paid for, price or subscription
+# changes without notice, and the license to your content (moved from AI). Boilerplate nearly every site has ("as is",
 # liability caps) is left out: it wouldn't tell sites apart. A site needs an
 # answer from the terms category to be LIMITED (limited_requires), so a site
 # whose terms we never found can't come out clean.
+#
+# Coverage check against ToS;DR's case list (Nov 15, docs/rubric-v1.md) added
+# three more: subscription_changes (terms), honors_gpc (user rights, Global
+# Privacy Control) and combines_across_products (collection, info).
 #
 # Concern levels work as in v0.2 (severe, high, medium, info, none), and
 # exposure follows the concern. Scorer s3 (from v0.3) applies: any medium
@@ -45,6 +52,7 @@
 # answer: 8 here, up from 6, still needing 4 answered.
 
 version: v1.0
+evidence_matching: lenient
 scorer: s3
 limited_requires: [terms]
 categories:
@@ -63,7 +71,7 @@ checks:
   - id: sells_personal_data
     category: selling_sharing
     question: Does the company sell users' personal information?
-    evidence: ["sell", "sale", "sold"]
+    evidence: ["sell", "sale", "sold", "rent", "trade", "share", "sharing", "third part", "outside part", "cross context", "targeted advertising", "custom audience"]
     guidance: >
       `sold_for_money` only if the document says personal information is sold
       or rented for money, for example to data brokers. US state privacy laws
@@ -80,7 +88,7 @@ checks:
   - id: shares_for_advertising
     category: selling_sharing
     question: Is personal information shared with third parties for advertising or marketing?
-    evidence: ["advertis", "marketing", "ad network", " ads", "partner", "third part"]
+    evidence: ["advertis", "marketing", "ad network", " ads", "partner", "third part", "share", "sharing", "pixel", "custom audience", "lookalike", "retarget", "remarketing", "targeted", "on our behalf", "vendor", "processor", "outside part"]
     guidance: >
       Includes advertising partners, ad networks, cross-context behavioral
       advertising, and "marketing partners". Sharing only with processors that
@@ -111,7 +119,7 @@ checks:
   - id: collects_sensitive_data
     category: collection
     question: Does the company collect sensitive categories of data (biometrics, health, financial details, government ID, or other special categories such as race, religion or sexual orientation)?
-    evidence: ["biometric", "health", "medical", "financial", "bank", "credit card", "payment card", "government", "social security", "passport", "driver", "fingerprint", "face", "genetic", "sexual", "racial", "religio", "sensitive"]
+    evidence: ["biometric", "health", "medical", "financial", "bank", "credit card", "payment card", "government", "social security", "passport", "driver", "fingerprint", "face", "genetic", "sexual", "racial", "religio", "sensitive", "special categor", "payment information", "credit history", "voice", "recording", "facial", "ethnic", "political", "trade union", "criminal", "personally identifiable"]
     guidance: >
       Quote the passage naming the sensitive categories collected. Precise
       location is its own question (precise_location), so it doesn't count here.
@@ -136,11 +144,27 @@ checks:
   - id: collects_from_third_parties
     category: collection
     question: Does the company obtain information about users from other companies or people (data brokers, partners, social networks, other users)?
-    evidence: ["third part", "partner", "data broker", "other sources", "other companies", "social media", "social network", "publicly available", "affiliate", "service provider", "other users"]
+    evidence: ["third part", "partner", "data broker", "other sources", "other companies", "social media", "social network", "publicly available", "affiliate", "service provider", "receive", "obtain", "from other", "external", "credit bureau", "provider", "facebook", "google", "instagram", "apple", "microsoft", "linkedin", "twitter", "stripe", "paypal", "other users", "sign in with", "log in with", "you provide", "directly from you", "do not collect"]
     guidance: Collection directly from the user or their device alone is `no`.
     statuses:
       "yes": {exposure: 0, concern: info, meaning: "Information about users is obtained from third parties", plain: "They get information about you from other companies or people, not just from you."}
       "no": {exposure: 0, meaning: "Information is collected only from the user and their use of the service", plain: "They only collect what you give them and how you use the service."}
+
+  - id: combines_across_products
+    category: collection
+    question: Does the company combine what it knows about a user across its different products, services or affiliated companies?
+    evidence: ["combine", "across", "our products", "our services", "affiliate", "family of companies", "group companies", "subsidiar"]
+    guidance: >
+      `yes` if the document says information from one of the company's
+      products, services or affiliated companies is combined with, linked to,
+      or used for another (for example one profile across a search engine,
+      email and video service). Sharing with outside companies is a different
+      question. `no` if it says information stays within the one service.
+      A company with a single product that says nothing about this is
+      `not_disclosed`.
+    statuses:
+      "yes": {exposure: 0, concern: info, meaning: "Information is combined across the company's products, services or affiliates", plain: "They combine what they know about you across their other products and companies."}
+      "no": {exposure: 0, meaning: "Information is kept within this service", plain: "They say what they know about you stays within this service."}
 
   - id: childrens_data
     category: collection
@@ -163,20 +187,21 @@ checks:
   - id: retention_period
     category: retention
     question: How long is personal information kept?
-    evidence: ["retain", "retention", "store", "keep", "kept", "delete", "period", "days", "months", "years"]
+    evidence: ["retain", "retention", "store", "keep", "kept", "delete", "period", "days", "months", "years", "maintain", "until", "duration", "as long as", "remain", "purge", "hours", "weeks"]
     guidance: >
       `specific` needs a concrete period or a clear trigger ("deleted 30 days
       after account closure"). "As long as necessary" or similar is `vague`.
     statuses:
       specific: {exposure: 0, meaning: "A concrete retention period or deletion trigger is stated", plain: "They say how long they keep your information."}
-      # OPEN: medium or info, from v0.3 calibration (see the header)
-      vague: {exposure: 1, concern: medium, meaning: "Retention is described only in open-ended terms", plain: "They keep your information \"as long as necessary\", with no clear limit."}
+      # Info since v0.3: nearly every policy says it, and as a medium concern it
+      # piled sites on one score.
+      vague: {exposure: 0, concern: info, meaning: "Retention is described only in open-ended terms", plain: "They keep your information \"as long as necessary\", with no clear limit."}
       indefinite: {exposure: 2, concern: high, meaning: "Information may be kept indefinitely", plain: "They may keep your information forever."}
 
   - id: deletion_on_request
     category: retention
     question: Can users have their personal information deleted?
-    evidence: ["delete", "deletion", "erase", "erasure", "remove"]
+    evidence: ["delete", "deletion", "erase", "erasure", "remove", "deleting", "terminate", "cancel", "close your account", "closing your account", "destroy", "purge", "rights", "right to"]
     guidance: >
       `all_users` if any user can request deletion; `some_jurisdictions` if the
       right is limited to residents of certain places (for example the EU or California).
@@ -216,7 +241,7 @@ checks:
   - id: access_and_export
     category: user_rights
     question: Can users access or export the personal information held about them?
-    evidence: ["access", "copy", "export", "portab", "download"]
+    evidence: ["access", "copy", "export", "portab", "download", "obtain", "transfer", "machine readable", "structured", "format", "right to know", "right to request", "request information", "review", "view", "rights"]
     guidance: >
       `all_users` if any user can get a copy of or access to their information,
       even if the document also lists extra rights for some places (for example
@@ -234,24 +259,43 @@ checks:
   - id: opt_out_of_tracking
     category: user_rights
     question: Can users opt out of tracking, targeted advertising, or the sale or sharing of their information?
-    evidence: ["opt out", "opt-out", "unsubscribe", "do not sell", "do not track", "preference", "choice", "settings", "withdraw", "disable", "cookie", "object"]
+    evidence: ["opt out", "unsubscribe", "do not sell", "do not track", "preference", "choice", "settings", "withdraw", "disable", "cookie", "object", "dnt", "global privacy control", "gpc", "consent", "opted out", "personalized", "tailored"]
     guidance: >
       `no` only if the document says users can't opt out of tracking, targeted
-      advertising, or the sale or sharing of their information. Not responding
-      to browser "Do Not Track" signals is not `no` on its own. If the company
+      advertising, or the sale or sharing of their information. If the company
       says it doesn't track users for advertising or sell or share their
-      information, and so offers no opt-out, answer `not_disclosed`.
+      information, and so offers no opt-out, answer `not_disclosed`. Not
+      responding to browser "Do Not Track" signals says nothing about other ways
+      to opt out, so it is neither `no` nor `limited` on its own: answer from
+      what the document says about opting out otherwise, or `not_disclosed` if
+      it says nothing more. `limited` means the opt-out the document describes
+      is narrow (for example only marketing emails) or only for residents of
+      some places.
     statuses:
       "yes": {exposure: 0, meaning: "An opt-out is offered to users", plain: "You can opt out of tracking or targeted ads."}
       limited: {exposure: 1, concern: medium, meaning: "An opt-out exists but is narrow or only for some users", plain: "You can opt out of some tracking, or only in some places."}
       "no": {exposure: 2, concern: high, meaning: "The document says users can't opt out", plain: "They say you can't opt out of tracking or targeted ads."}
+
+  - id: honors_gpc
+    category: user_rights
+    question: Does the company say it honors Global Privacy Control (GPC) or similar browser signals as a request to opt out?
+    evidence: ["global privacy control", "gpc", "opt out preference signal", "preference signal", "browser signal", "universal opt out"]
+    guidance: >
+      `yes` if the document says it treats Global Privacy Control, or browser
+      opt-out preference signals in general, as a request to opt out of sale,
+      sharing or targeted advertising (even only in some states). `no` if it
+      says it does not respond to such signals. Do Not Track alone is not GPC:
+      a statement only about Do Not Track is `not_disclosed`.
+    statuses:
+      "yes": {exposure: 0, meaning: "Global Privacy Control or browser opt-out signals are honored", plain: "They honor Global Privacy Control, a browser setting that opts you out automatically."}
+      "no": {exposure: 0, concern: info, meaning: "Browser opt-out signals such as Global Privacy Control are not honored", plain: "They say they ignore Global Privacy Control and similar browser opt-out settings."}
 
   # --- Security -------------------------------------------------------------------
 
   - id: security_measures
     category: security
     question: Does the document describe specific security measures (such as encryption, access controls, or audits)?
-    evidence: ["secur", "encrypt", "safeguard", "protect", "access control", "audit"]
+    evidence: ["secur", "encrypt", "safeguard", "protect", "access control", "audit", "unauthorized", "measures", "two factor", "2fa", "hash", "cipher", "cryptograph", "confidential", "pseudonym", "surveillance", "firewall", "physical", "organizational", "technical"]
     guidance: A generic promise of "reasonable" or "industry-standard" security without specifics is `generic`.
     statuses:
       specific: {exposure: 0, meaning: "Specific security measures are described", plain: "They describe specific security measures, such as encryption."}
@@ -274,22 +318,22 @@ checks:
   - id: trains_ai_on_user_data
     category: ai_training
     question: Does the company use users' data or content to train AI or machine-learning models, and which data?
-    evidence: ["train", "machine learning", "artificial intelligence", " ai ", " ai,", "ai model", "model", "generative"]
+    evidence: ["train", "machine learning", "artificial intelligence", " ai ", " ai,", "ai model", "model", "generative", "llm", "language model", "learning"]
     guidance: >
-      Only training or improving AI or machine-learning models counts
-      (including "improve our models" and training on user content). Using
-      automated tools or algorithms to personalize, rank or moderate is not
-      training. A license to user content, or permission to use it to
-      "develop" or "improve the service", is not training on its own: the
-      document has to say the data or content is used for AI or
-      machine-learning models. Count only the company's own use of this
-      service's users' data. Private content means messages, private files,
-      private posts, voice or video recordings, or conversations with an AI
-      feature; everything else (public posts, usage and device data) is other
-      data. Answer `private_content` if private content is used, even if other
-      data is too. Add `_opt_out` when the document says users can turn the
-      training off. If training happens only with explicit opt-in consent,
-      answer `opt_in`.
+      Only training or improving AI or machine-learning models counts (including
+      "improve our models" and training on user content). Using automated tools
+      or algorithms to personalize, rank or moderate is not training. A license
+      to user content, or permission to use it to "develop" or "improve the
+      service", is not training on its own: the document has to say the data or
+      content is used for AI or machine-learning models. Count only the
+      company's own use of this service's users' data; another company's policy
+      quoted or linked by the document does not count. Private content means
+      messages, private files, private posts, voice or video recordings, or
+      conversations with an AI feature; everything else (public posts, usage and
+      device data) is other data. Answer `private_content` if private content is
+      used, even if other data is too. Add `_opt_out` when the document says
+      users can turn the training off. If training happens only with explicit
+      opt-in consent, answer `opt_in`.
     statuses:
       private_content: {exposure: 2, concern: high, meaning: "Users' private content or AI conversations are used to train AI models", plain: "They can use your private content, like messages, files or AI chats, to train AI."}
       private_content_opt_out: {exposure: 1, concern: medium, meaning: "Private content is used to train AI models unless the user opts out", plain: "They can use your private content to train AI unless you opt out."}
@@ -334,7 +378,7 @@ checks:
   - id: discloses_to_government
     category: government
     question: Under what conditions does the company disclose information to governments or law enforcement?
-    evidence: ["government", "law enforcement", "subpoena", "court", "legal process", "authorit", "police", "regulator", "warrant", "lawful request", "legal request", "public agenc", "national security", "legal obligation", "applicable law"]
+    evidence: ["government", "law enforcement", "subpoena", "court", "legal process", "authorit", "police", "regulator", "warrant", "lawful request", "legal request", "public agenc", "national security", "legal obligation", "applicable law", "by law", "the law", "comply with", "compelled", "legally", "law requires"]
     guidance: >
       `legal_process_required` if they disclose to governments or law
       enforcement to comply with law or legal process (subpoena, warrant,
@@ -351,7 +395,7 @@ checks:
   - id: notifies_users_of_requests
     category: government
     question: Does the company commit to notifying users about government requests for their data?
-    evidence: ["notify", "notice", "inform", "tell", "notif"]
+    evidence: ["notify", "notice", "inform", "tell", "notif", "advise"]
     statuses:
       "yes": {exposure: 0, meaning: "Users are notified of government requests where legally allowed", plain: "They tell you when authorities ask for your data, where the law allows."}
       "no": {exposure: 0, concern: info, meaning: "The document states users are not notified, or disclaims notification", plain: "They say they won't necessarily tell you when authorities ask for your data."}
@@ -432,10 +476,25 @@ checks:
       lost_without_refund: {exposure: 1, concern: medium, meaning: "Purchases, subscriptions or credits are lost without a refund when the company closes the account", plain: "If they close your account, you can lose what you paid for, with no refund."}
       refunded_or_kept: {exposure: 0, meaning: "Users are refunded or keep what they paid for when the company closes the account", plain: "If they close your account, you get a refund or keep what you bought."}
 
+  - id: subscription_changes
+    category: terms
+    question: Can the company change prices, fees or subscription terms without telling users before the change applies to them?
+    evidence: ["price", "pricing", "fees", "subscription", "renew", "billing", "charge"]
+    guidance: >
+      `without_notice` if prices, fees or subscription terms can change at
+      any time, or take effect for existing subscribers without telling them
+      first. `with_notice` if users are told before a change applies to them,
+      with time to cancel (for example at the next renewal, with an email
+      ahead). If nothing is sold through the service, answer
+      `not_disclosed`.
+    statuses:
+      without_notice: {exposure: 1, concern: medium, meaning: "Prices, fees or subscription terms can change without notice to existing users", plain: "They can change prices or subscription terms without telling you first."}
+      with_notice: {exposure: 0, meaning: "Users are told before price or subscription changes apply to them, with time to cancel", plain: "They tell you before price or subscription changes apply to you, so you can cancel."}
+
   - id: content_license
     category: terms
     question: Do users grant the company a broad license to their content (for example worldwide, royalty-free, sublicensable), and does it last after they delete it?
-    evidence: ["licen", "royalty", "sublicens", "worldwide", "right to use", "perpetual", "irrevocable"]
+    evidence: ["licen", "royalty", "sublicens", "worldwide", "right to use", "grant", "intellectual property", "ownership", "own all", "right, title", "title and interest", "retain", "distribute", "publish", "perpetual", "irrevocable"]
     guidance: >
       `broad_continues` if the license is broad and lasts after the user
       deletes the content or the account (perpetual, irrevocable, or "for the
