@@ -62,3 +62,10 @@ def test_advice_for_the_v1_terms_questions():
         assert book.for_finding(check_id, status) is not None, (check_id, status)
     assert book.for_finding("forced_arbitration", "no") is None
     assert "forced_arbitration" not in advice.load("v0.2").checks    # only rubrics that ask it
+
+
+def test_advice_for_the_gap_check_questions():
+    book = advice.load("v1.0")
+    assert book.for_finding("subscription_changes", "without_notice") is not None
+    assert book.for_finding("honors_gpc", "no") is not None
+    assert book.for_finding("honors_gpc", "yes") is None

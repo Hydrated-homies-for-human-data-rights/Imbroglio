@@ -28,7 +28,7 @@ def rate(*extra):
 def test_v1_keeps_every_category_and_v02_question():
     assert V1.categories == {**V02.categories, "terms": "Terms of service"}
     assert {c.id for c in V02.checks} <= {c.id for c in V1.checks}
-    assert len(V1.checks) == 25 and scorer.version_for(V1) == "s3"
+    assert len(V1.checks) == 28 and scorer.version_for(V1) == "s3"
     assert V1.high_concern_checks == {
         "sells_personal_data", "retention_period", "deletion_on_request", "access_and_export",
         "opt_out_of_tracking", "trains_ai_on_user_data", "shares_with_ai_providers", "childrens_data"}
@@ -73,7 +73,7 @@ def test_new_concerns_add_up():
 def test_terms_category_holds_the_terms_questions():
     assert [c.id for c in V1.checks if c.category == "terms"] == [
         "policy_change_notice", "forced_arbitration", "account_termination",
-        "purchases_on_termination", "content_license"]
+        "purchases_on_termination", "subscription_changes", "content_license"]
     concerns = {(c.id, n): s.concern for c in V1.checks if c.category == "terms" for n, s in c.statuses.items()}
     assert concerns[("forced_arbitration", "yes")] == concerns[("forced_arbitration", "yes_with_opt_out")] == "medium"
     assert all(v in (None, "info", "medium") for v in concerns.values())   # terms alone never make a site EXTENSIVE
@@ -83,6 +83,7 @@ def test_terms_category_holds_the_terms_questions():
     F("forced_arbitration", "yes", True), F("forced_arbitration", "yes_with_opt_out", True),
     F("account_termination", "any_reason", True), F("purchases_on_termination", "lost_without_refund", True),
     F("content_license", "broad_continues", True), F("policy_change_notice", "posted_only", True),
+    F("subscription_changes", "without_notice", True),
 ])
 def test_each_terms_concern_alone_makes_a_site_moderate(finding):
     assert rate(finding) == "MODERATE"
@@ -98,6 +99,27 @@ def test_steam_like_terms_take_points_off_a_clean_privacy_policy():
              F("purchases_on_termination", "lost_without_refund", True),
              F("content_license", "broad_continues", True)]
     assert scorer.rate(V1, steam)[1] == "MODERATE" and scorer.score(V1, steam).value == 76
+
+
+def test_v03_calibration_carried_into_v1():
+    v03 = load("v0.3")
+    assert V1.check("retention_period").statuses["vague"].concern == "info"
+    assert V1.check("opt_out_of_tracking").guidance == v03.check("opt_out_of_tracking").guidance
+    assert V1.check("trains_ai_on_user_data").guidance == v03.check("trains_ai_on_user_data").guidance
+    for c in v03.checks:     # every v0.3 evidence word, except location words that moved to precise_location
+        missing = set(c.evidence) - set(V1.check(c.id).evidence)
+        assert missing <= ({"location", "precise", "coordinates", "latitude", "geolocat", "gps"}
+                           if c.id == "collects_sensitive_data" else set()), (c.id, missing)
+    assert V1.check("collects_sensitive_data").relevant("we collect voice recordings")
+    assert V1.check("third_party_trackers").relevant("third-party cookies")       # lenient: hyphen as space
+
+
+def test_gap_check_questions_are_shown_but_only_price_changes_cost_points():
+    assert rate(F("honors_gpc", "no", True)) == "LIMITED"                         # info
+    assert rate(F("combines_across_products", "yes", True)) == "LIMITED"          # info
+    assert rate(F("subscription_changes", "without_notice", True)) == "MODERATE"
+    assert V1.check("honors_gpc").relevant("We honor Global Privacy Control signals.")
+    assert V1.check("subscription_changes").relevant("We may change our fees at any time.")
 
 
 def test_no_terms_answer_means_no_limited_rating():
@@ -128,7 +150,7 @@ def test_extraction_prompt_covers_every_question():
     for c in V1.checks:      # the model answers against `meaning`, never the reader's line
         for s in c.statuses.values():
             assert s.plain not in prompt
-    assert len(output_schema(V1)["properties"]["findings"]["items"]["properties"]["check_id"]["enum"]) == 25
+    assert len(output_schema(V1)["properties"]["findings"]["items"]["properties"]["check_id"]["enum"]) == 28
 
 
 def test_advice_loads_for_v1_and_covers_the_new_ai_answers():

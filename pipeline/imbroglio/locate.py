@@ -256,7 +256,8 @@ def rank(doc_type: str, url: str, via: str, text: str = "") -> int:
     return r
 
 
-_TRACKING_PARAM = re.compile(r"^(utm_\w+|__hs\w+|_ga|_gl|ref_?|fbclid|gclid|mc_[ce]id)$", re.I)
+# snr: Steam's link-source tag (?snr=1_4_4__global-responsive-menu)
+_TRACKING_PARAM = re.compile(r"^(utm_\w+|__hs\w+|_ga|_gl|ref_?|fbclid|gclid|mc_[ce]id|snr)$", re.I)
 
 
 def _strip_tracking(url: str) -> str:
