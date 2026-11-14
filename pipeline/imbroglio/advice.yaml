@@ -153,6 +153,23 @@ checks:
       - text: Where you can, buy DRM-free copies you can download and keep, rather than access that lives only in your account.
       - text: Read the site's conduct rules, since breaking them is the usual reason accounts lose purchases.
 
+  subscription_changes:
+    title: When prices can change without notice
+    why: A subscription can cost more at the next renewal without anyone telling you first.
+    applies_to: [without_notice]
+    steps:
+      - text: Note your renewal date, and check the price in your account's billing page shortly before it.
+      - text: If you don't need the subscription to renew, turn off auto-renew now. You keep access until the period ends.
+
+  honors_gpc:
+    title: When a site says it ignores Global Privacy Control
+    why: Global Privacy Control is a browser setting that tells every site you visit not to sell or share your data.
+    applies_to: ["no"]
+    steps:
+      - text: Turn it on anyway. In California, Colorado and several other states, businesses that sell or share data must treat it as an opt-out request, whatever their policy says.
+        link: https://globalprivacycontrol.org
+      - text: Use the site's own "Do Not Sell or Share" link as well, so your opt-out is on record with them.
+
   discloses_to_government:
     title: When the site may share data with authorities
     why: Almost every company complies with valid legal orders. What differs is whether it also shares voluntarily.

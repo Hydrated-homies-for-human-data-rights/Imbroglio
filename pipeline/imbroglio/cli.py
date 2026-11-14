@@ -291,7 +291,9 @@ def main() -> int:
     s.add_argument("--max-pages", type=int, help="stop after N pages of 500 (for quick tests)")
 
     b = sub.add_parser("batch", help="run discovery + extraction over a file of domains")
-    b.add_argument("file", type=Path, help=".txt (one domain per line) or .csv (domain column)")
+    b.add_argument("file", type=Path, nargs="?", help=".txt (one domain per line) or .csv (domain column)")
+    b.add_argument("--missing", choices=["privacy", "terms"],
+                   help="instead of a file: every stored site without this document, to look for it again")
     b.add_argument("--limit", type=int, help="only the first N domains")
     b.add_argument("--sample", type=int, help="random sample of N domains (reproducible with --seed)")
     b.add_argument("--seed", type=int, default=42)
@@ -562,8 +564,21 @@ def main() -> int:
 
     if args.command == "batch":
         from .batch import load_domains, run_batch
-        domains = load_domains(args.file)
-        source = args.file.name
+        if (args.file is None) == (args.missing is None):
+            print("give a file of domains, or --missing privacy|terms")
+            return 2
+        if args.missing:
+            from . import db
+            conn = db.connect()
+            try:
+                domains = db.domains_missing(conn, args.missing)
+            finally:
+                conn.close()
+            source = f"missing {args.missing}"
+            print(f"{len(domains)} stored sites have no {args.missing} document")
+        else:
+            domains = load_domains(args.file)
+            source = args.file.name
         if args.sample:
             import random
             domains = random.Random(args.seed).sample(domains, min(args.sample, len(domains)))

@@ -196,6 +196,19 @@ def insert_attempt(conn: psycopg.Connection, batch_id: int | None, domain: str,
     )
 
 
+def domains_missing(conn: psycopg.Connection, doc_type: str) -> list[str]:
+    """Domains with a stored document of some kind but none of `doc_type`,
+    such as sites rated on their privacy policy alone."""
+    rows = conn.execute(
+        """SELECT s.domain FROM services s
+           JOIN documents d ON d.service_id = s.id
+           JOIN document_versions v ON v.document_id = d.id
+           GROUP BY s.domain
+           HAVING NOT bool_or(d.doc_type = %s)
+           ORDER BY s.domain""", (doc_type,)).fetchall()
+    return [r[0] for r in rows]
+
+
 def domains_with_privacy(conn: psycopg.Connection) -> set[str]:
     """Domains that already have a stored privacy policy version."""
     rows = conn.execute(

@@ -19,7 +19,7 @@ The goal is a rating people can trust when the site launches publicly at the end
 
 ## What v1.0 changes
 
-25 questions, up from 14, in eight categories: v0.2's seven and a new **Terms of service** category.
+28 questions, up from 14, in eight categories: v0.2's seven and a new **Terms of service** category.
 Every v0.2 question is kept, so v0.2 and v1.0 results can be compared question by question.
 
 **Every answer gets a `plain` line,** the answer in the reader's words ("They can sell your personal
@@ -48,6 +48,12 @@ the precise wording the model answers against, and the "How we score" page keeps
 | `shares_with_ai_providers` | AI | may train (high), unspecified (medium) | Data sent to outside AI companies is the newest gap in most policies |
 | `human_review` | AI | private content or AI chats (medium) | People reading AI conversations is a common surprise |
 | `transparency_report` | Government | none (protective only) | Rewards publishing request statistics |
+| `combines_across_products` | Collection | yes (info) | One profile across a company's products; from the coverage check |
+| `honors_gpc` | User rights | says it ignores Global Privacy Control (info) | The browser opt-out several state laws require businesses to honor |
+
+**Carried in from v0.3:** lenient evidence matching and v0.3's wider evidence words, "as long as necessary"
+retention as info, and v0.3's guidance for opt-outs and AI training. Location words stay out of sensitive
+data's list, since `precise_location` asks about them.
 
 **Terms of service** (added Nov 14, after a test user asked about Steam's Subscriber Agreement):
 
@@ -57,6 +63,7 @@ the precise wording the model answers against, and the "How we score" page keeps
 | `forced_arbitration` | yes, with or without an opt-out (medium) | Arbitration favors the company, and the opt-out is a letter within 30 days that almost nobody sends |
 | `account_termination` | any reason, at their discretion (medium) | Closing accounts only for breaking the rules is normal; "for any reason" is not |
 | `purchases_on_termination` | lost without a refund (medium) | Games, media and credits are licenses tied to the account |
+| `subscription_changes` | prices or terms change without notice (medium) | ToS;DR's most heavily weighted bad case we didn't cover |
 | `content_license` | broad and lasting after you delete it (medium); broad but ending on deletion is info | Moved from AI: it's a terms clause, and ToS;DR rates a license that outlives deletion as bad |
 
 Every terms answer is at most a medium concern, so terms alone can make a site MODERATE but never
@@ -91,9 +98,9 @@ and still needs 4 answered, so fewer sites should be UNCLEAR.
 4. **Security has 2 questions,** the design spec planned 3. Policies rarely say more than encryption and
    breach notice; a third question would mostly come back "not disclosed".
 5. **Human review in the AI category,** or in collection. It is there because AI chats are the main case.
-6. **Carry v0.3 into v1.0.** v0.3's evidence words, lenient matching and "as long as necessary" as info
-   aren't in this file yet.
-7. **The gap check below:** which of its candidates join v1.0.
+6. ~~Carry v0.3 into v1.0.~~ Done Nov 15.
+7. ~~The gap check below.~~ Decided Nov 15: price and subscription changes, Global Privacy Control, and
+   combining data across products joined v1.0; the rest stay out.
 
 ## Coverage check against ToS;DR (Nov 14)
 
@@ -107,13 +114,18 @@ government requests, changing terms without notice, closing accounts without a r
 your content, forced arbitration and class-action waivers. Their blocker "the policy refers to documents
 that are missing or unfindable" is what the missing-document notice and the terms rule handle.
 
-**Candidates, not yet in v1.0:**
+**Added to v1.0 from this check (Nov 15):**
+
+| Gap | ToS;DR | In v1.0 |
+| --- | --- | --- |
+| Prices or subscription terms change without notice | bad (80) | `subscription_changes`, medium |
+| Data combined across the company's products and affiliates | bad | `combines_across_products`, info |
+| Global Privacy Control honored | (not a case) | `honors_gpc`; ignoring it is info |
+
+**Still out, could join later:**
 
 | Gap | ToS;DR | Proposal |
 | --- | --- | --- |
-| Prices or subscription terms change without notice; auto-renewal | bad (80) | A terms question, medium for changes without notice. The most-weighted bad case we don't cover |
-| Data combined across the company's products and affiliates | bad | A collection question, info or medium |
-| Global Privacy Control honored | (not a case) | Law in California, Colorado and other states; a protective answer under opt-outs |
 | Automated decisions or profiling with real effects (credit, pricing, hiring) | blocker (50, with AI training) | Info; rare for consumer sites |
 | Shorter deadline to sue (often one year) | bad | Fold into `forced_arbitration`'s guidance, or info |
 | Data transferred if the company is sold or goes bankrupt | bad | Info at most: nearly every policy says it |
@@ -149,9 +161,13 @@ already exists, or by the answer key.
    RUBRIC_VERSION=v1.0 python -m imbroglio.cli extract tiktok.com reddit.com discord.com --force
    ```
 
-4. **Full run:** every stored document under v1.0 (about $35 to $40 at $0.036 a document), then the launch
-   bar measurements. Before it, find and store the terms for the sites that have none (129), starting
-   with the most requested; Steam's has to be stored by hand (`cli store-document`), since its pages
-   don't load for the crawler.
+4. **Full run:** every stored document under v1.0 (about $40 to $50: $0.036 a document for 23 questions, more for 28 and the extra terms documents), then the launch
+   bar measurements. Before it, look again for the terms of the 129 sites that have none, from a
+   computer whose network Steam doesn't block, then analyze what's new:
+
+   ```
+   python -m imbroglio.cli batch --missing terms
+   python -m imbroglio.cli extract --all --limit 200
+   ```
 5. **Switch:** set `RUBRIC_VERSION=v1.0` on Railway, update `docs/rubric.md` and the "How we score" page.
 6. **Launch.**
