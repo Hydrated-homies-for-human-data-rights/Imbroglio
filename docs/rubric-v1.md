@@ -14,13 +14,13 @@ The goal is a rating people can trust when the site launches publicly at the end
 | Real quotes are thrown out | Only 51% of real quotes count for data from third parties, 67% for sensitive data, 71% for access and export; the rest lack an evidence word | 118 of 550 sites (21%) are UNCLEAR |
 | Common boilerplate costs points | "Kept as long as necessary" and ad sharing are in most policies; with AI training they push the score below 40, where EXTENSIVE's range holds it | Many sites score exactly 40 |
 | Some answers aren't steady | Access and export gives the same answer in all three runs only 72% of the time | Overall rating repeats only 66% of the time |
-| Terms of service go mostly unread | Only the content license question is about the terms | Arbitration and changing terms without notice aren't rated |
+| Terms of service go mostly unread | Terms are read for 438 sites but no v0.2 question is about them; 129 of 569 sites (23%) have no terms on file at all, and the report didn't say so | Steam scores 100 on its privacy policy alone; its Subscriber Agreement was never found |
 | Answers are written for the model | "The document states personal information is not sold" | The report reads like a spec |
 
 ## What v1.0 changes
 
-23 questions, up from 14, in the same seven categories. Every v0.2 question is kept, so v0.2 and v1.0
-results can be compared question by question.
+25 questions, up from 14, in eight categories: v0.2's seven and a new **Terms of service** category.
+Every v0.2 question is kept, so v0.2 and v1.0 results can be compared question by question.
 
 **Every answer gets a `plain` line,** the answer in the reader's words ("They can sell your personal
 information for money."). The report, the score breakdown and link previews show it. `meaning` stays
@@ -45,29 +45,83 @@ the precise wording the model answers against, and the "How we score" page keeps
 | `precise_location` | Collection | yes (medium); with permission is info | Split out of sensitive data, since most apps ask permission |
 | `childrens_data` | Collection | collected without parental consent (high) | Required reading for any service kids use |
 | `kept_after_deletion` | Retention | kept for other purposes with no limit (medium) | "Delete your account" often doesn't delete everything |
-| `policy_change_notice` | User rights | changes take effect when posted (medium) | Fits the change monitor: can they change the deal without telling you? |
-| `forced_arbitration` | User rights | yes (medium) | A terms-of-service staple that limits how users enforce their rights |
 | `shares_with_ai_providers` | AI | may train (high), unspecified (medium) | Data sent to outside AI companies is the newest gap in most policies |
 | `human_review` | AI | private content or AI chats (medium) | People reading AI conversations is a common surprise |
 | `transparency_report` | Government | none (protective only) | Rewards publishing request statistics |
 
+**Terms of service** (added Nov 14, after a test user asked about Steam's Subscriber Agreement):
+
+| Question | Concern answers | Why |
+| --- | --- | --- |
+| `policy_change_notice` | changes take effect when posted (medium) | Can they change the deal without telling you? Fits the change monitor |
+| `forced_arbitration` | yes, with or without an opt-out (medium) | Arbitration favors the company, and the opt-out is a letter within 30 days that almost nobody sends |
+| `account_termination` | any reason, at their discretion (medium) | Closing accounts only for breaking the rules is normal; "for any reason" is not |
+| `purchases_on_termination` | lost without a refund (medium) | Games, media and credits are licenses tied to the account |
+| `content_license` | broad and lasting after you delete it (medium); broad but ending on deletion is info | Moved from AI: it's a terms clause, and ToS;DR rates a license that outlives deletion as bad |
+
+Every terms answer is at most a medium concern, so terms alone can make a site MODERATE but never
+EXTENSIVE: losing legal options isn't the same as having your data sold. Boilerplate nearly every site has
+("as is", liability capped at what you paid) is left out because it wouldn't tell sites apart.
+
+**No LIMITED without the terms.** A site needs at least one answer from the terms category to be rated
+LIMITED (`limited_requires: [terms]` in the rubric file). A site whose terms we couldn't find, or whose terms
+say nothing we ask about, is MODERATE at best, with its score kept at 89. It's the same principle as the
+coverage gate: silence never earns the best rating. The report and the extension now say when a document
+wasn't found, and the crawler now recognizes subscriber, customer and license agreements.
+
+Steam under v1.0, from its current agreement: disputes go to court (good), 30 days' email notice of
+changes (good), accounts closed only for breaking the rules (good), but purchases are lost without a
+refund when that happens, and the license to what you post lasts as long as its copyright. Two medium
+concerns: MODERATE, 76.
+
 **Sharper guidance:** access and export now has a tie-break rule (offered to everyone, with extra rights
 in some places, is `all_users`). `collects_sensitive_data` no longer covers precise location.
 
-**Scoring is unchanged:** scorer s2 and the score out of 100 apply as they are. The coverage gate now
-counts 8 questions with a high or severe answer (up from 6) and still needs 4 answered, so fewer sites
-should be UNCLEAR.
+**Scoring:** scorer s3 from v0.3 (any medium concern makes a site MODERATE; LIMITED scores 90 to 100), plus
+the terms rule above. The coverage gate now counts 8 questions with a high or severe answer (up from 6)
+and still needs 4 answered, so fewer sites should be UNCLEAR.
 
 ## Open decisions for Sam
 
 1. **Evidence words.** Settle them from `cli rejected-quotes` on production before the v1.0 run, starting
    with data from third parties, sensitive data, and access and export. v1.0 already adds "other users".
 2. **"As long as necessary" retention:** keep it a medium concern or make it info. `cli score-spread`
-   shows how many sites it holds at 40. This can be tested on stored v0.2 findings at no cost.
-3. **Forced arbitration:** medium or info. It limits legal options rather than exposing data.
+   shows how many sites it holds at 40. Decided in v0.3: info.
+3. ~~Forced arbitration: medium or info.~~ Decided Nov 14: medium, with or without an opt-out.
 4. **Security has 2 questions,** the design spec planned 3. Policies rarely say more than encryption and
    breach notice; a third question would mostly come back "not disclosed".
 5. **Human review in the AI category,** or in collection. It is there because AI chats are the main case.
+6. **Carry v0.3 into v1.0.** v0.3's evidence words, lenient matching and "as long as necessary" as info
+   aren't in this file yet.
+7. **The gap check below:** which of its candidates join v1.0.
+
+## Coverage check against ToS;DR (Nov 14)
+
+To find what else we miss, every active case in ToS;DR's public list (`api.tosdr.org/case/v3`: 234 cases,
+58 bad and 17 blockers) was compared with v1.0's questions.
+
+**Covered.** Most bad and blocker cases map to a v1.0 question: selling and sharing for ads, tracking
+cookies, pixels and fingerprinting, location, sensitive and voice data, data from third parties, retention
+and deletion, data kept after deletion, access, opt-outs, AI training, people reading private content,
+government requests, changing terms without notice, closing accounts without a reason, the license to
+your content, forced arbitration and class-action waivers. Their blocker "the policy refers to documents
+that are missing or unfindable" is what the missing-document notice and the terms rule handle.
+
+**Candidates, not yet in v1.0:**
+
+| Gap | ToS;DR | Proposal |
+| --- | --- | --- |
+| Prices or subscription terms change without notice; auto-renewal | bad (80) | A terms question, medium for changes without notice. The most-weighted bad case we don't cover |
+| Data combined across the company's products and affiliates | bad | A collection question, info or medium |
+| Global Privacy Control honored | (not a case) | Law in California, Colorado and other states; a protective answer under opt-outs |
+| Automated decisions or profiling with real effects (credit, pricing, hiring) | blocker (50, with AI training) | Info; rare for consumer sites |
+| Shorter deadline to sue (often one year) | bad | Fold into `forced_arbitration`'s guidance, or info |
+| Data transferred if the company is sold or goes bankrupt | bad | Info at most: nearly every policy says it |
+| Your name and photo used in ads shown to others | blocker (90) | Rare outside social networks; info |
+
+**Left out on purpose:** liability caps, "as is" and no-guarantee clauses, and indemnity (boilerplate on
+almost every site); moderation and conduct rules (about speech, not your data or money); legal-name
+and identity requirements; where data is stored; app permissions (not in the documents).
 
 ## The launch bar
 
@@ -96,6 +150,8 @@ already exists, or by the answer key.
    ```
 
 4. **Full run:** every stored document under v1.0 (about $35 to $40 at $0.036 a document), then the launch
-   bar measurements.
+   bar measurements. Before it, find and store the terms for the sites that have none (129), starting
+   with the most requested; Steam's has to be stored by hand (`cli store-document`), since its pages
+   don't load for the crawler.
 5. **Switch:** set `RUBRIC_VERSION=v1.0` on Railway, update `docs/rubric.md` and the "How we score" page.
 6. **Launch.**
