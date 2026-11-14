@@ -43,6 +43,7 @@ const ACTIONS = {
   collection: { title: "Limit what you share", why: "Optional fields can stay empty, and an app's permissions can be trimmed.", verb: "Open setting", check: "collects_sensitive_data" },
   security: { title: "Lock down your account", why: "A unique password and two-step sign-in limit what a breach exposes.", verb: "Open setting", check: "security_measures" },
   government: { title: "Government requests", why: "Whether they tell you when your data is requested is in the policy.", verb: "Read it", check: "notifies_users_of_requests" },
+  terms: { title: "Opt out of arbitration", why: "Some terms let you keep your right to go to court if you opt out soon after signing up.", verb: "Read it", check: "forced_arbitration" },
 };
 
 const $ = (id) => document.getElementById(id);
