@@ -141,7 +141,13 @@ def version_for(rubric: Rubric) -> str:
 
 
 def rules_for(rubric: Rubric) -> list[str]:
-    return {"s1": RULES_S1, "s2": RULES_S2, "s3": RULES_S3}[version_for(rubric)]
+    rules = {"s1": RULES_S1, "s2": RULES_S2, "s3": RULES_S3}[version_for(rubric)]
+    if rubric.limited_requires:
+        names = " and ".join(rubric.categories[c] for c in rubric.limited_requires)
+        rules = [*rules[:-2], f"A site is only rated LIMITED if its documents answer at least one question "
+                              f"about {names}, so a site whose terms we couldn't find or that say nothing "
+                              f"there is MODERATE at best.", *rules[-2:]]
+    return rules
 
 
 def bands_for(rubric: Rubric) -> dict[str, tuple[int, int]]:
@@ -252,7 +258,17 @@ def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str],
     head = max(flags, worst if worst in SERIOUS else "LIMITED", key=lambda t: _RANK[t])
     if head == "LIMITED" and len(rubric.high_concern_checks & answers.keys()) < MIN_HIGH_ANSWERED:
         head = UNCLEAR_TIER
+    if head == "LIMITED" and not _answers_required_categories(rubric, answers):
+        head = "MODERATE"
     return tiers, head
+
+
+def _answers_required_categories(rubric: Rubric, answers: dict[str, str]) -> bool:
+    """LIMITED needs a counted answer from each category the rubric names in
+    limited_requires: silence, or a document we never found, never earns
+    the best rating."""
+    answered = {rubric.check(c).category for c in answers}
+    return all(cat in answered for cat in rubric.limited_requires)
 
 
 @dataclass(frozen=True)

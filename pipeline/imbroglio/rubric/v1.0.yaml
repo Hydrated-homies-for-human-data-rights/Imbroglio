@@ -25,15 +25,28 @@
 #  * OPEN: retention_period `vague` medium or info. "As long as necessary" is
 #    in nearly every policy, and with ad sharing it piles EXTENSIVE sites on
 #    a score of 40.
-#  * OPEN: forced_arbitration medium or info (it limits how users can enforce
-#    their rights, but it isn't data exposure)
+#  * DECIDED (Nov 14): forced_arbitration is a medium concern, with or
+#    without an opt-out. Arbitration favors the company, and the opt-out is
+#    usually a letter within 30 days of signing up that almost nobody sends.
+#
+# Terms of service (Nov 14): a test user asked about Steam's Subscriber
+# Agreement. v0.2 reads terms documents but asks nothing about them, so a
+# site's terms only counted when they mentioned data. The new terms category
+# asks five questions: arbitration and change notice (moved from user
+# rights), closing accounts, losing what you paid for, and the license to
+# your content (moved from AI). Boilerplate nearly every site has ("as is",
+# liability caps) is left out: it wouldn't tell sites apart. A site needs an
+# answer from the terms category to be LIMITED (limited_requires), so a site
+# whose terms we never found can't come out clean.
 #
 # Concern levels work as in v0.2 (severe, high, medium, info, none), and
-# exposure follows the concern. Scorer s2 and the score out of 100 apply
-# unchanged. The coverage gate counts the questions with a severe or high
+# exposure follows the concern. Scorer s3 (from v0.3) applies: any medium
+# concern makes a site MODERATE, and LIMITED scores 90 to 100. The coverage gate counts the questions with a severe or high
 # answer: 8 here, up from 6, still needing 4 answered.
 
 version: v1.0
+scorer: s3
+limited_requires: [terms]
 categories:
   selling_sharing: Data selling and sharing
   collection: Collection scope
@@ -42,6 +55,7 @@ categories:
   security: Security
   ai_training: AI and model training
   government: Government requests
+  terms: Terms of service
 
 checks:
   # --- Data selling and sharing -------------------------------------------------
@@ -232,37 +246,6 @@ checks:
       limited: {exposure: 1, concern: medium, meaning: "An opt-out exists but is narrow or only for some users", plain: "You can opt out of some tracking, or only in some places."}
       "no": {exposure: 2, concern: high, meaning: "The document says users can't opt out", plain: "They say you can't opt out of tracking or targeted ads."}
 
-  - id: policy_change_notice
-    category: user_rights
-    question: Does the company commit to telling users before material changes to its privacy policy or terms take effect?
-    evidence: ["change", "update", "modif", "amend", "revis"]
-    guidance: >
-      `advance_notice` if users are told before material changes take effect
-      (for example by email or in the app, or a stated number of days ahead).
-      `notice_on_change` if users are told, but changes can take effect
-      immediately. `posted_only` if changes take effect once posted, with the
-      user expected to check for them, or continued use counts as acceptance
-      with no notice.
-    statuses:
-      advance_notice: {exposure: 0, meaning: "Users are told before material changes take effect", plain: "They tell you before big changes to their policy or terms take effect."}
-      notice_on_change: {exposure: 0, concern: info, meaning: "Users are told of material changes, which can take effect immediately", plain: "They tell you about big changes, but the changes can apply right away."}
-      posted_only: {exposure: 1, concern: medium, meaning: "Changes take effect when posted, without telling users", plain: "They can change their policy or terms just by posting a new version, without telling you."}
-
-  - id: forced_arbitration
-    category: user_rights
-    question: Do the terms require users to settle disputes through binding arbitration, or to give up class actions or jury trials?
-    evidence: ["arbitrat", "class action", "class-action", "jury", "waive"]
-    guidance: >
-      `yes` if disputes must go to binding individual arbitration or users
-      waive class actions or jury trials. `yes_with_opt_out` if the terms let
-      users opt out of arbitration (for example by writing within 30 days).
-      `no` if disputes go to court and no waiver applies.
-    statuses:
-      # OPEN: medium or info (see the header)
-      "yes": {exposure: 1, concern: medium, meaning: "Disputes must go to binding arbitration, or class actions are waived", plain: "You give up your right to sue them in court or join a class action."}
-      yes_with_opt_out: {exposure: 0, concern: info, meaning: "Arbitration applies unless the user opts out", plain: "Disputes go to arbitration unless you opt out."}
-      "no": {exposure: 0, meaning: "Disputes can go to court", plain: "You can take disputes to court."}
-
   # --- Security -------------------------------------------------------------------
 
   - id: security_measures
@@ -346,14 +329,6 @@ checks:
       reported_only: {exposure: 0, concern: info, meaning: "People review only reported, public, or legally required content", plain: "People review your content only when it's reported or needed for safety or legal reasons."}
       "no": {exposure: 0, meaning: "The document states no person reviews private content", plain: "They say no person reads your private content."}
 
-  - id: content_license
-    category: ai_training
-    question: Do users grant the company a broad license to their content (for example worldwide, royalty-free, sublicensable)?
-    evidence: ["licen", "royalty", "sublicens", "worldwide", "right to use"]
-    statuses:
-      broad: {exposure: 0, concern: info, meaning: "A broad, sublicensable license to user content is granted", plain: "You give them a broad license to use what you post, and to let others use it."}
-      limited: {exposure: 0, meaning: "The license is limited to operating the service", plain: "They only get the rights to your content they need to run the service."}
-
   # --- Government requests --------------------------------------------------------
 
   - id: discloses_to_government
@@ -391,3 +366,84 @@ checks:
       mention one, answer `not_disclosed`.
     statuses:
       "yes": {exposure: 0, meaning: "The company publishes a transparency report on government requests", plain: "They publish a report on how often authorities ask for user data."}
+
+  # --- Terms of service ------------------------------------------------------------
+
+  - id: policy_change_notice
+    category: terms
+    question: Does the company commit to telling users before material changes to its privacy policy or terms take effect?
+    evidence: ["change", "update", "modif", "amend", "revis"]
+    guidance: >
+      `advance_notice` if users are told before material changes take effect
+      (for example by email or in the app, or a stated number of days ahead).
+      `notice_on_change` if users are told, but changes can take effect
+      immediately. `posted_only` if changes take effect once posted, with the
+      user expected to check for them, or continued use counts as acceptance
+      with no notice.
+    statuses:
+      advance_notice: {exposure: 0, meaning: "Users are told before material changes take effect", plain: "They tell you before big changes to their policy or terms take effect."}
+      notice_on_change: {exposure: 0, concern: info, meaning: "Users are told of material changes, which can take effect immediately", plain: "They tell you about big changes, but the changes can apply right away."}
+      posted_only: {exposure: 1, concern: medium, meaning: "Changes take effect when posted, without telling users", plain: "They can change their policy or terms just by posting a new version, without telling you."}
+
+  - id: forced_arbitration
+    category: terms
+    question: Do the terms require users to settle disputes through binding arbitration, or to give up class actions or jury trials?
+    evidence: ["arbitrat", "class action", "class-action", "jury", "waive"]
+    guidance: >
+      `yes` if disputes must go to binding individual arbitration or users
+      waive class actions or jury trials. `yes_with_opt_out` if the terms let
+      users opt out of arbitration (for example by writing within 30 days).
+      `no` if disputes go to court and no waiver applies. Small claims court
+      left open alongside arbitration is still `yes`.
+    statuses:
+      "yes": {exposure: 1, concern: medium, meaning: "Disputes must go to binding arbitration, or class actions are waived", plain: "You give up your right to sue them in court or join a class action."}
+      # Medium even with an opt-out: it's usually a letter within 30 days of
+      # signing up, and almost nobody sends one.
+      yes_with_opt_out: {exposure: 1, concern: medium, meaning: "Arbitration applies unless the user opts out", plain: "You give up your right to sue them in court unless you opt out, usually within 30 days of signing up."}
+      "no": {exposure: 0, meaning: "Disputes can go to court", plain: "You can take disputes to court."}
+
+  - id: account_termination
+    category: terms
+    question: Can the company suspend or close a user's account for any reason, rather than only for breaking its rules or the law?
+    evidence: ["terminat", "suspend", "close your account", "disable", "deactivat", "any reason", "sole discretion", "without notice"]
+    guidance: >
+      `any_reason` if the company can suspend or close accounts at any time
+      for any reason, or no reason, or at its sole discretion. `for_cause` if
+      accounts are suspended or closed only for breaking the terms or the law,
+      or for other reasons the terms list (such as the service shutting
+      down), with or without notice. Answer from the terms' own words, not
+      from how often they ban people.
+    statuses:
+      any_reason: {exposure: 1, concern: medium, meaning: "Accounts can be suspended or closed for any reason, at the company's discretion", plain: "They can close your account at any time, for any reason."}
+      for_cause: {exposure: 0, meaning: "Accounts are suspended or closed only for breaking the rules, the law, or other stated reasons", plain: "They only close accounts for breaking their rules or the law, or other reasons they spell out."}
+
+  - id: purchases_on_termination
+    category: terms
+    question: If the company closes a user's account, does the user lose what they paid for (games, media, subscriptions, credits) without a refund?
+    evidence: ["refund", "forfeit", "purchase", "paid", "fees", "subscription", "wallet", "credit", "virtual", "digital", "licen", "lose"]
+    guidance: >
+      `lost_without_refund` if the terms say purchased content, subscriptions,
+      credits or balances are lost, forfeited or not refunded when the company
+      suspends or closes the account, even if only for breaking the rules.
+      `refunded_or_kept` if users get a refund, keep access, or can download
+      what they bought. If nothing is sold through the service, answer
+      `not_disclosed`.
+    statuses:
+      lost_without_refund: {exposure: 1, concern: medium, meaning: "Purchases, subscriptions or credits are lost without a refund when the company closes the account", plain: "If they close your account, you can lose what you paid for, with no refund."}
+      refunded_or_kept: {exposure: 0, meaning: "Users are refunded or keep what they paid for when the company closes the account", plain: "If they close your account, you get a refund or keep what you bought."}
+
+  - id: content_license
+    category: terms
+    question: Do users grant the company a broad license to their content (for example worldwide, royalty-free, sublicensable), and does it last after they delete it?
+    evidence: ["licen", "royalty", "sublicens", "worldwide", "right to use", "perpetual", "irrevocable"]
+    guidance: >
+      `broad_continues` if the license is broad and lasts after the user
+      deletes the content or the account (perpetual, irrevocable, or "for the
+      duration of the intellectual property rights"); content other people
+      already shared or copied doesn't count. `broad` if it is broad but ends
+      when the content or account is deleted. `limited` if it only covers
+      running the service.
+    statuses:
+      broad_continues: {exposure: 1, concern: medium, meaning: "A broad license to user content continues after the user deletes it", plain: "You give them a broad license to what you post, and it can last even after you delete it."}
+      broad: {exposure: 0, concern: info, meaning: "A broad, sublicensable license to user content is granted, ending when it is deleted", plain: "You give them a broad license to use what you post, and to let others use it, until you delete it."}
+      limited: {exposure: 0, meaning: "The license is limited to operating the service", plain: "They only get the rights to your content they need to run the service."}

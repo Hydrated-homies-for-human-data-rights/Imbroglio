@@ -145,10 +145,11 @@ def test_published_rules_and_tiers_follow_the_version():
 
 def test_every_advice_answer_exists_in_some_rubric():
     raw = yaml.safe_load(advice.ADVICE_FILE.read_text(encoding="utf-8"))
-    versions = [load("v0.1"), V02, load("v1.0")]
+    versions = [load("v0.1"), V02, load("v0.3"), load("v1.0")]
     for check_id, a in raw["checks"].items():
         for status in a["applies_to"]:
-            assert any(status in r.check(check_id).statuses for r in versions), (check_id, status)
+            assert any(c.id == check_id and status in c.statuses for r in versions for c in r.checks), \
+                (check_id, status)
     book = advice.load("v0.2")
     assert book.for_finding("sells_personal_data", "state_law_sale").title
     assert book.for_finding("sells_personal_data", "yes") is None

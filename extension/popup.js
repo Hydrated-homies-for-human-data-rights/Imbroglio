@@ -43,6 +43,7 @@ const ACTIONS = {
   collection: { title: "Limit what you share", why: "Optional fields can stay empty, and an app's permissions can be trimmed.", verb: "Open setting", check: "collects_sensitive_data" },
   security: { title: "Lock down your account", why: "A unique password and two-step sign-in limit what a breach exposes.", verb: "Open setting", check: "security_measures" },
   government: { title: "Government requests", why: "Whether they tell you when your data is requested is in the policy.", verb: "Read it", check: "notifies_users_of_requests" },
+  terms: { title: "Opt out of arbitration", why: "Some terms let you keep your right to go to court if you opt out soon after signing up.", verb: "Read it", check: "forced_arbitration" },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -94,6 +95,16 @@ function documentNames(documents) {
   if (!names.length) return "";
   const joined = names.join(" and ");
   return joined.charAt(0).toUpperCase() + joined.slice(1);
+}
+
+// "Policy checked Nov 2, 2026", saying so when one of the two documents
+// wasn't found, since the rating then rests on the other alone.
+function checkedLine(site) {
+  const date = formatDate(site.analyzedAt);
+  const docs = site.documents || [];
+  if (docs.length === 1 && docs[0] === "privacy") return `Privacy policy checked ${date}. Terms not found`;
+  if (docs.length === 1 && docs[0] === "terms") return `Terms checked ${date}. Privacy policy not found`;
+  return `Policy checked ${date}`;
 }
 
 // Popup links don't open on their own, so open them in a new tab.
@@ -172,7 +183,7 @@ const RECENT_DAYS = 30;
 function renderOverview(site) {
   const sorted = sortedCategories(site);
   $("domain").textContent = site.domain;
-  $("checked").textContent = `Policy checked ${formatDate(site.analyzedAt)}`;
+  $("checked").textContent = checkedLine(site);
 
   // A recent change to the policy, with the history page behind it.
   const changed = site.changedAt ? new Date(site.changedAt) : null;

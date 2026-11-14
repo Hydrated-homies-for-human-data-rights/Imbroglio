@@ -14,9 +14,11 @@ from imbroglio.scorer import ScoredFinding as F
 
 V1 = load("v1.0")
 V02 = load("v0.2")
-# Enough answered high-concern questions to pass the coverage gate, none a concern.
+# Enough answered high-concern questions to pass the coverage gate, and an
+# answer from the terms, none a concern.
 CLEAN = [F("sells_personal_data", "no", True), F("retention_period", "specific", True),
-         F("deletion_on_request", "all_users", True), F("access_and_export", "all_users", True)]
+         F("deletion_on_request", "all_users", True), F("access_and_export", "all_users", True),
+         F("forced_arbitration", "no", True)]
 
 
 def rate(*extra):
@@ -24,9 +26,9 @@ def rate(*extra):
 
 
 def test_v1_keeps_every_category_and_v02_question():
-    assert V1.categories == V02.categories
+    assert V1.categories == {**V02.categories, "terms": "Terms of service"}
     assert {c.id for c in V02.checks} <= {c.id for c in V1.checks}
-    assert len(V1.checks) == 23 and scorer.version_for(V1) == "s2"
+    assert len(V1.checks) == 25 and scorer.version_for(V1) == "s3"
     assert V1.high_concern_checks == {
         "sells_personal_data", "retention_period", "deletion_on_request", "access_and_export",
         "opt_out_of_tracking", "trains_ai_on_user_data", "shares_with_ai_providers", "childrens_data"}
@@ -41,8 +43,8 @@ def test_every_answer_has_a_plain_line_for_the_reader():
 
 @pytest.mark.parametrize("answer, expected", [
     ("private_content", "EXTENSIVE"),           # private messages or AI chats: high
-    ("private_content_opt_out", "LIMITED"),     # one medium alone doesn't raise the site
-    ("other_data", "LIMITED"),
+    ("private_content_opt_out", "MODERATE"),    # s3: any medium concern
+    ("other_data", "MODERATE"),
     ("other_data_opt_out", "LIMITED"),
     ("opt_in", "LIMITED"),
 ])
@@ -52,7 +54,7 @@ def test_ai_training_is_rated_by_what_is_trained_on(answer, expected):
 
 def test_trackers_and_state_law_sale_count_once_with_ad_sharing():
     two = rate(F("shares_for_advertising", "yes", True), F("third_party_trackers", "advertising", True))
-    assert two == "LIMITED"    # one practice, one medium concern
+    assert two == "MODERATE"   # one practice, one medium concern
     sc = scorer.score(V1, [*CLEAN, F("shares_for_advertising", "yes", True),
                            F("third_party_trackers", "advertising", True),
                            F("sells_personal_data", "state_law_sale", True)])
@@ -66,6 +68,58 @@ def test_new_concerns_add_up():
                 F("forced_arbitration", "yes", True)) == "MODERATE"                # two medium
 
 
+# Terms of service (Nov 14): the questions a test user's Steam question showed were missing.
+
+def test_terms_category_holds_the_terms_questions():
+    assert [c.id for c in V1.checks if c.category == "terms"] == [
+        "policy_change_notice", "forced_arbitration", "account_termination",
+        "purchases_on_termination", "content_license"]
+    concerns = {(c.id, n): s.concern for c in V1.checks if c.category == "terms" for n, s in c.statuses.items()}
+    assert concerns[("forced_arbitration", "yes")] == concerns[("forced_arbitration", "yes_with_opt_out")] == "medium"
+    assert all(v in (None, "info", "medium") for v in concerns.values())   # terms alone never make a site EXTENSIVE
+
+
+@pytest.mark.parametrize("finding", [
+    F("forced_arbitration", "yes", True), F("forced_arbitration", "yes_with_opt_out", True),
+    F("account_termination", "any_reason", True), F("purchases_on_termination", "lost_without_refund", True),
+    F("content_license", "broad_continues", True), F("policy_change_notice", "posted_only", True),
+])
+def test_each_terms_concern_alone_makes_a_site_moderate(finding):
+    assert rate(finding) == "MODERATE"
+    assert scorer.score(V1, [*CLEAN, finding]).value == 88
+
+
+def test_steam_like_terms_take_points_off_a_clean_privacy_policy():
+    # Steam's Subscriber Agreement (Sep 10, 2026): disputes go to court, 30 days' notice of changes,
+    # accounts closed only for breaking the rules, but purchases lost without a refund when they are,
+    # and a license to user content for the length of its copyright.
+    steam = [*CLEAN[:4], F("forced_arbitration", "no", True), F("policy_change_notice", "advance_notice", True),
+             F("account_termination", "for_cause", True),
+             F("purchases_on_termination", "lost_without_refund", True),
+             F("content_license", "broad_continues", True)]
+    assert scorer.rate(V1, steam)[1] == "MODERATE" and scorer.score(V1, steam).value == 76
+
+
+def test_no_terms_answer_means_no_limited_rating():
+    privacy_only = CLEAN[:4]     # a clean privacy policy, terms never found
+    assert scorer.rate(V1, privacy_only)[1] == "MODERATE"
+    sc = scorer.score(V1, privacy_only)
+    assert (sc.value, sc.adjusted) == (89, True)
+    assert scorer.rate(V1, CLEAN)[1] == "LIMITED" and scorer.score(V1, CLEAN).value == 100
+    assert scorer.rate(V1, [*CLEAN[:4], F("forced_arbitration", "not_disclosed", True)])[1] == "MODERATE"
+    assert any("only rated LIMITED if its documents answer" in r for r in scorer.rules_for(V1))
+    assert not any("only rated LIMITED if its documents answer" in r for r in scorer.rules_for(V02))
+
+
+def test_limited_requires_must_name_a_category(tmp_path, monkeypatch):
+    raw = yaml.safe_load((rubric_mod.RUBRIC_DIR / "v1.0.yaml").read_text(encoding="utf-8"))
+    raw["version"], raw["limited_requires"] = "vtest", ["tos"]
+    (tmp_path / "vtest.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.setattr(rubric_mod, "RUBRIC_DIR", tmp_path)
+    with pytest.raises(RubricError, match="limited_requires names unknown categories"):
+        rubric_mod.load.__wrapped__("vtest")
+
+
 def test_extraction_prompt_covers_every_question():
     prompt = system_prompt(V1)
     for c in V1.checks:
@@ -74,7 +128,7 @@ def test_extraction_prompt_covers_every_question():
     for c in V1.checks:      # the model answers against `meaning`, never the reader's line
         for s in c.statuses.values():
             assert s.plain not in prompt
-    assert len(output_schema(V1)["properties"]["findings"]["items"]["properties"]["check_id"]["enum"]) == 23
+    assert len(output_schema(V1)["properties"]["findings"]["items"]["properties"]["check_id"]["enum"]) == 25
 
 
 def test_advice_loads_for_v1_and_covers_the_new_ai_answers():

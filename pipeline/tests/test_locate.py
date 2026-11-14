@@ -243,6 +243,22 @@ def test_missing_document_found_through_the_other_documents_links(web):
     assert result["terms"].discovered_via == "sibling-link"
 
 
+@pytest.mark.parametrize("path, text", [
+    ("/subscriber_agreement/", "Steam Subscriber Agreement"),   # steam
+    ("/legal/eula", "End User License Agreement"),
+    ("/customer-agreement", "Customer Agreement"),
+])
+def test_terms_found_under_their_other_names(web, path, text):
+    # Steam calls its terms a "Subscriber Agreement": none of the usual names
+    # or guessed paths found it, so the site was rated on its privacy policy alone.
+    pages, _ = web
+    pages["https://st.test"] = page(f'<a href="/privacy">Privacy Policy</a> <a href="{path}">{text}</a>')
+    pages["https://st.test/privacy"] = page(LONG_POLICY)
+    pages["https://st.test" + path.rstrip("/")] = page(text + ". " + TERMS)
+    result = locate.locate_all("st.test", use_playwright=False)
+    assert result["terms"].ok and result["terms"].url.rstrip("/") == "https://st.test" + path.rstrip("/")
+
+
 def test_legal_hub_survives_soft_404(web):
     # spotify: /terms and /terms-of-service serve the same stub; /legal is the real terms
     pages, _ = web
@@ -269,6 +285,7 @@ def test_strip_tracking_keeps_real_parameters():
     ("privacy", "https://x.com/opt-out", "link-text", "Your Privacy Choices", 5),
     ("privacy", "https://x.com/blog/privacy", "link-text", "Privacy", 8),
     ("terms", "https://x.com/rewards-terms", "link-text", "Rewards Program Terms", 5),
+    ("terms", "https://x.com/subscriber_agreement/", "link-text", "Subscriber Agreement", 0),
     ("privacy", "https://other.com/privacy", "link-text-external", "Privacy Policy", 10),
 ])
 def test_rank(doc_type, url, via, text, expected):

@@ -37,13 +37,15 @@ TEXT_PATTERNS = {
         r"プライバシー|個人情報|隐私|개인정보", re.I),
     "terms": re.compile(
         r"terms\s*(of\s*(service|use))?|conditions\s*of\s*use|user\s*agreement|"
+        r"(subscriber|customer|membership)\s*agreement|(end[- ]?user\s*)?licen[cs]e\s*agreement|\beula\b|"
         r"\bagb\b|nutzungsbedingungen|conditions g[ée]n[ée]rales|mentions l[ée]gales|"
         r"t[ée]rminos|termini|algemene voorwaarden|termos de uso|"
         r"利用規約|服务条款|用户协议|이용약관", re.I),
 }
 HREF_PATTERNS = {
     "privacy": re.compile(r"privacy", re.I),
-    "terms": re.compile(r"terms|tos\b|conditions|user-?agreement|eula", re.I),
+    "terms": re.compile(r"terms|tos\b|conditions|(user|subscriber|customer|membership|licen[cs]e)[-_]?agreement|eula",
+                        re.I),
 }
 COMMON_PATHS = {
     # "/legal" last: a legal hub (spotify) lists both documents by name, and
@@ -63,6 +65,7 @@ STRONG_TEXT = {
         r"プライバシーポリシー|隐私政策|개인정보\s*처리방침", re.I),
     "terms": re.compile(
         r"terms\s*(of\s*(service|use)|(and|&)\s*conditions)|user\s*agreement|conditions\s*of\s*use|"
+        r"(subscriber|customer|membership)\s*agreement|end[- ]?user\s*licen[cs]e\s*agreement|"
         r"nutzungsbedingungen|\bagb\b|conditions g[ée]n[ée]rales|t[ée]rminos (y condiciones|de (uso|servicio))|"
         r"利用規約|服务条款|用户协议|이용약관", re.I),
 }
@@ -134,7 +137,7 @@ VALIDATION_SIGNALS = {
         r"dati personali|persoonsgegevens|dados pessoais",
     )],
     "terms": [re.compile(p, re.I) for p in (
-        r"terms (of (service|use)|and conditions)|user agreement",
+        r"terms (of (service|use)|and conditions)|(user|subscriber|customer|membership|licen[cs]e) agreement",
         r"\bagree(ment)?\b",
         r"liab(le|ility)",
         r"terminat(e|ion)",

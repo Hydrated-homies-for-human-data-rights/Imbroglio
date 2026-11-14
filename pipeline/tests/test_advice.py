@@ -51,3 +51,14 @@ def test_learn_endpoint():
     assert topic["category"] == "AI and model training"
     assert topic["applies_to"] == ["yes"] and topic["steps"]
     assert any(g["id"] == "vpn" for g in body["guides"])
+
+
+def test_advice_for_the_v1_terms_questions():
+    book = advice.load("v1.0")
+    for check_id, status in [("forced_arbitration", "yes"), ("forced_arbitration", "yes_with_opt_out"),
+                             ("account_termination", "any_reason"),
+                             ("purchases_on_termination", "lost_without_refund"),
+                             ("policy_change_notice", "posted_only"), ("content_license", "broad_continues")]:
+        assert book.for_finding(check_id, status) is not None, (check_id, status)
+    assert book.for_finding("forced_arbitration", "no") is None
+    assert "forced_arbitration" not in advice.load("v0.2").checks    # only rubrics that ask it

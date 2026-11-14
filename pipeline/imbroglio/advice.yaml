@@ -114,10 +114,44 @@ checks:
   content_license:
     title: When you give the site a broad license to your content
     why: The site, and companies it licenses to, may copy, modify and distribute what you post.
-    applies_to: [broad]
+    applies_to: [broad, broad_continues]
     steps:
       - text: Keep your own originals somewhere else, and think twice before posting work you want to control.
       - text: Many licenses end when you delete the content, but not all, and copies others have shared can remain. Check the terms.
+
+  policy_change_notice:
+    title: When the terms can change without telling you
+    why: The deal you agreed to can change at any time, and using the site afterward counts as accepting the new version.
+    applies_to: [posted_only]
+    steps:
+      - text: Turn on "Tell me when a policy changes" in the Imbroglio extension, so you hear about changes the site won't announce.
+      - text: Before a big purchase or sign-up, check the "last updated" date at the top of the terms.
+
+  forced_arbitration:
+    title: When the terms force arbitration
+    why: Disputes go to a private arbitrator instead of a court, usually one person at a time, so you can't join a class action. The company writes the rules and picks the arbitration service.
+    applies_to: ["yes", yes_with_opt_out]
+    steps:
+      - text: If the terms offer an opt-out, use it. It's usually an email or letter sent within 30 days of creating your account; search the terms for "opt out" near "arbitration".
+      - text: Many terms still let you use small claims court for smaller disputes. Check the dispute section.
+      - text: Keep receipts, emails and screenshots of anything you might need to dispute later.
+
+  account_termination:
+    title: When they can close your account for any reason
+    why: You could lose your account, and everything tied to it, with little or no warning.
+    applies_to: [any_reason]
+    steps:
+      - text: Download a copy of your data from time to time, using the site's "download your data" or export option.
+      - text: Don't make the account the only place you keep things you can't replace, like photos, messages or files.
+
+  purchases_on_termination:
+    title: When you can lose what you paid for
+    why: Games, media, subscriptions and store credit are often licenses tied to your account, so a ban or closure can take them away without a refund.
+    applies_to: [lost_without_refund]
+    steps:
+      - text: Keep receipts for what you buy, and don't leave large balances in store credit or wallets.
+      - text: Where you can, buy DRM-free copies you can download and keep, rather than access that lives only in your account.
+      - text: Read the site's conduct rules, since breaking them is the usual reason accounts lose purchases.
 
   discloses_to_government:
     title: When the site may share data with authorities
