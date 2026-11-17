@@ -50,6 +50,13 @@ def check_url(url: str) -> None:
     host = (parsed.hostname or "").rstrip(".").lower()
     if not host:
         raise BlockedURL("no host")
+    try:
+        host.encode("idna")
+    except UnicodeError:
+        # "www..usf.edu" or a 64+ character label: no such host can exist,
+        # and the resolver raises UnicodeError, which ended usf.edu's whole
+        # crawl (Nov 17) instead of skipping the one bad link.
+        raise BlockedURL(f"not a valid host name: {host}") from None
     if host == "localhost" or host.endswith((".localhost", ".internal", ".local")):
         raise BlockedURL(f"internal hostname: {host}")
     try:
