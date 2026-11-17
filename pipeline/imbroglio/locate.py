@@ -334,16 +334,37 @@ def _iframe_srcs(html: str, base_url: str, domain: str) -> tuple[list[str], bool
     return follow, captcha
 
 
-_NAME_GAPS = re.compile(r"[\s\-.]+")
+_WORD = re.compile(r"[a-z0-9]+")
+_MAX_NAME_WORDS = 4
 
 
 def names_site(domain: str, text: str) -> bool:
     """A policy hosted on another site counts only if it names this site.
     Google's policy names YouTube (legit: youtube.com uses it); Cloudflare's
-    and reCAPTCHA's links lead to policies that never name the site. Spaces
-    and hyphens are ignored, so "Power Apps" names powerapps.com."""
-    brand = brand_of(domain).lower()
-    return len(brand) >= 3 and brand in _NAME_GAPS.sub("", text.lower())
+    and reCAPTCHA's links lead to policies that never name the site.
+
+    The name has to be whole words: one word, or up to four in a row run
+    together, so "Power Apps" names powerapps.com and "League of Legends"
+    names leagueoflegends.com. Squashing the whole text together instead let
+    Microsoft's privacy statement name usf.edu ("contact us. For ..."), and
+    it was stored as USF's policy (Nov 17)."""
+    brand = "".join(_WORD.findall(brand_of(domain).lower()))
+    if len(brand) < 3:
+        return False
+    words = _WORD.findall(text.lower())
+    for i, word in enumerate(words):
+        if not brand.startswith(word):
+            continue
+        joined = word
+        for nxt in words[i + 1:i + _MAX_NAME_WORDS]:
+            if joined == brand:
+                break
+            joined += nxt
+            if not brand.startswith(joined):
+                break
+        if joined == brand:
+            return True
+    return False
 
 
 def _validate(doc_type: str, text: str) -> tuple[bool, str]:
