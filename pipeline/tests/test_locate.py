@@ -114,6 +114,18 @@ def test_a_spaced_out_name_still_names_the_site():
     assert not locate.names_site("keepassxc.org", "GitHub General Privacy Statement")
 
 
+def test_a_name_has_to_be_whole_words():
+    # usf.edu, Nov 17: Microsoft's privacy statement counted as naming USF
+    # because "contact us. For" run together reads "contactusfor".
+    assert not locate.names_site("usf.edu", "If you have questions, contact us. For more detail, see below.")
+    assert not locate.names_site("drf.com", "We may transfer data under a DRFT agreement")
+    assert not locate.names_site("rottentomatoes.com", "Rotten fruit and ripe tomatoes are not covered")
+    assert locate.names_site("usf.edu", "The University of South Florida (USF) website")
+    assert locate.names_site("usf.edu", "Questions? Write to privacy@usf.edu")
+    assert locate.names_site("hackingwithswift.com", "Hacking with Swift is run by one person")
+    assert locate.names_site("radio-canada.ca", "CBC/Radio-Canada terms of use")
+
+
 # --- picking the right page (regressions: 11 of 44 rated sites, Oct 2026) ---
 
 LONG_POLICY = POLICY * 3      # over SUBSTANTIAL_CHARS: a full document
