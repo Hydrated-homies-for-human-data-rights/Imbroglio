@@ -247,8 +247,12 @@ class ApiError(BaseModel):
 
 
 def _documents(conn, domain: str) -> list[Document]:
+    """Each of the site's documents at its rated version (db.RATED_FIRST):
+    the newest one rated under the serving rubric, else the newest stored."""
+    from .analysis import RUBRIC_VERSION
+
     rows = conn.execute(
-        """SELECT d.doc_type, d.url, d.discovered_via, v.fetch_method, v.id, v.content_hash,
+        f"""SELECT d.doc_type, d.url, d.discovered_via, v.fetch_method, v.id, v.content_hash,
                   length(v.normalized_text), v.fetched_at,
                   (SELECT count(*) FROM document_versions v2 WHERE v2.document_id = d.id),
                   (SELECT count(*) FROM change_events c WHERE c.document_id = d.id),
@@ -259,10 +263,10 @@ def _documents(conn, domain: str) -> list[Document]:
            JOIN documents d ON d.service_id = s.id
            JOIN LATERAL (SELECT * FROM document_versions v
                          WHERE v.document_id = d.id
-                         ORDER BY v.fetched_at DESC LIMIT 1) v ON true
-           WHERE s.domain = %s
+                         ORDER BY {db.RATED_FIRST}, v.fetched_at DESC LIMIT 1) v ON true
+           WHERE s.domain = %(domain)s
            ORDER BY d.doc_type""",
-        (domain,),
+        {"domain": domain, "rubric": RUBRIC_VERSION},
     ).fetchall()
     return [Document(type=r[0], url=r[1], discovered_via=r[2], fetch_method=r[3],
                      version_id=r[4], content_hash=r[5], chars=r[6], fetched_at=r[7],
