@@ -37,6 +37,14 @@ def test_hostname_resolving_to_loopback_is_blocked(monkeypatch):
     netguard._host_allowed.cache_clear()
 
 
+def test_a_malformed_host_is_refused_not_crashed_on():
+    # usf.edu, Nov 17: one such link raised UnicodeError and ended the site's crawl
+    for url in ("https://www..usf.edu/privacy", f"https://{'a' * 64}.usf.edu/"):
+        assert not is_allowed(url)
+        html, status = fetch.fetch_static(url)
+        assert html is None and status.startswith("blocked: not a valid host name")
+
+
 def test_public_host_allowed(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo",
                         lambda host, port: [(2, 1, 6, "", ("93.184.216.34", 0))])
