@@ -152,6 +152,25 @@ def _loop(worker_id: str) -> None:
             _stop.wait(POLL_SECONDS)
 
 
+RECHECK_TICK_SECONDS = 3600.0
+RECHECK_FIRST_DELAY = 300.0  # let a fresh deploy settle before the first pass
+
+
+def _recheck_loop() -> None:
+    """Once an hour, recheck the stored documents that are due (recheck.py).
+    Detect-only: no model calls. Only the worker service runs this, never the
+    web app's embedded workers, so there is one schedule."""
+    from . import recheck
+
+    _stop.wait(RECHECK_FIRST_DELAY)
+    while not _stop.is_set():
+        try:
+            recheck.scheduled_tick(_stop)
+        except Exception:
+            log.exception("recheck pass failed (database unreachable?)")
+        _stop.wait(RECHECK_TICK_SECONDS)
+
+
 def start_threads(n: int) -> list[threading.Thread]:
     """Start n worker threads (daemon). Used by the CLI and by the web app's
     embedded mode."""
@@ -182,7 +201,11 @@ def main() -> int:
     signal.signal(signal.SIGTERM, lambda *_: _stop.set())
     signal.signal(signal.SIGINT, lambda *_: _stop.set())
     threads = start_threads(args.concurrency)
-    log.info("worker started: %d threads", args.concurrency)
+    from .recheck import RECHECK_DAYS
+    if RECHECK_DAYS > 0:
+        threading.Thread(target=_recheck_loop, daemon=True, name="recheck").start()
+    log.info("worker started: %d threads; documents rechecked every %s", args.concurrency,
+             f"{RECHECK_DAYS} days" if RECHECK_DAYS > 0 else "never (RECHECK_DAYS=0)")
     while not _stop.is_set():
         _stop.wait(1.0)
     log.info("stopping: finishing in-flight jobs (up to %ss)", int(TIME_BUDGET))

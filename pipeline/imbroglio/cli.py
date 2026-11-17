@@ -9,6 +9,7 @@
     python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100 --dry-run
     python -m imbroglio.cli consistency --sample 50 --runs 3
     python -m imbroglio.cli offsite-documents     # --remove keepassxc.org ... deletes those
+    python -m imbroglio.cli recheck --dry-run     # fetch stored documents again, report changes
     python -m imbroglio.cli report                # latest batch
     python -m imbroglio.cli report 3 --out runs/batch-3.md
     python -m imbroglio.cli reports               # new problem reports from readers
@@ -386,6 +387,17 @@ def main() -> int:
                     help="delete these sites' listed documents with their findings and scores, "
                          "so a new crawl can look for the right ones")
 
+    rc = sub.add_parser("recheck",
+                        help="fetch stored documents again and record which changed (no model calls)")
+    rc.add_argument("--every-days", type=int, default=None,
+                    help="only documents not fetched or checked in this many days "
+                         "(default: RECHECK_DAYS, 7; 0 checks everything)")
+    rc.add_argument("--domain", action="append", default=[], help="only this site (repeatable)")
+    rc.add_argument("--limit", type=int, help="at most this many documents")
+    rc.add_argument("--workers", type=int, default=4)
+    rc.add_argument("--no-playwright", action="store_true")
+    rc.add_argument("--dry-run", action="store_true", help="fetch and compare, store nothing")
+
     sd = sub.add_parser("store-document",
                         help="store a policy you fetched by hand, for sites that block the crawler")
     sd.add_argument("domain")
@@ -443,6 +455,24 @@ def main() -> int:
                 conn.close()
         else:
             print(f"next: python -m imbroglio.cli extract {args.domain}")
+        return 0
+
+    if args.command == "recheck":
+        from . import db, recheck
+        logging.basicConfig(level=logging.WARNING)
+        conn = db.connect()
+        db.init_schema(conn)
+        days = recheck.RECHECK_DAYS if args.every_days is None else args.every_days
+        rows = recheck.due(conn, days, args.limit, args.domain or None)
+        conn.close()
+        print(f"{len(rows)} documents not fetched or checked in {days} days"
+              + (" (dry run: nothing stored)" if args.dry_run else ""))
+        checks = recheck.run(rows, workers=args.workers, use_playwright=not args.no_playwright,
+                             dry_run=args.dry_run)
+        for c in checks:
+            if c.outcome != "unchanged":
+                print(f"{c.outcome:<10} {c.domain:<28} {c.doc_type:<8} {c.note}")
+        print(recheck.summary(checks))
         return 0
 
     if args.command == "offsite-documents":
