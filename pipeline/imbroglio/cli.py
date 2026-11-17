@@ -337,9 +337,13 @@ def main() -> int:
     ra.add_argument("--model", help="override EXTRACTION_MODEL")
     ra.add_argument("--workers", type=int, default=3)
     ra.add_argument("--dry-run", action="store_true", help="count the documents and estimate the cost only")
-    ra.add_argument("--skip-done", action="store_true",
-                    help="leave out documents the model has already read under --rubric, so a run that "
-                         "stopped on the daily budget can finish without paying twice")
+    # Skipping is the default (Nov 17): without it, a second run paid about
+    # $13 to re-read 285 documents the first run had already done.
+    ra.add_argument("--skip-done", action="store_true", default=True,
+                    help="(the default) leave out documents the model has already read under --rubric, "
+                         "so a second run never pays twice")
+    ra.add_argument("--redo", dest="skip_done", action="store_false",
+                    help="read every matching document again, even ones already read under --rubric")
 
     cs = sub.add_parser("consistency", help="run-to-run consistency study (N2), read-only")
     cs.add_argument("--sample", type=int, default=50)
