@@ -3,11 +3,13 @@
 This is the published spec for how Imbroglio rates a site (requirement F5). The same content is
 served by `GET /v1/rubric` and shown on the website's "How we score" page.
 
-- **Live now:** rubric v0.2 with scorer s2, "red flags + coverage" (live since Oct 30, 2026; see
+- **Live now:** rubric v0.3 with scorer s3 (live since Nov 17, 2026), a calibration of v0.2 from the
+  first production reports; see the end of this page. On 567 sites: LIMITED 57, MODERATE 374,
+  EXTENSIVE 47, SEVERE 16, UNCLEAR 66, NOT DISCLOSED 7.
+- **Before that:** rubric v0.2 with scorer s2, "red flags + coverage" (Oct 30 to Nov 17, 2026; see
   "Next: scorer s2 and rubric v0.2" below)
-- **Built, switching on next:** rubric v0.3, a calibration of v0.2 from the first production reports
-  (see the end of this page). It goes live by setting `RUBRIC_VERSION=v0.3` once its findings are in.
-- **Drafted for later:** rubric v1.0, 23 questions ([rubric-v1.md](rubric-v1.md))
+- **Drafted for later:** rubric v1.0, 28 questions in eight categories, terms of service included
+  ([rubric-v1.md](rubric-v1.md))
 - **Source files:** `pipeline/imbroglio/rubric/v0.1.yaml`, `v0.2.yaml`, `v0.3.yaml` (the questions)
   and `pipeline/imbroglio/scorer.py` (the rules)
 
@@ -348,6 +350,6 @@ python -m imbroglio.cli rejected-quotes --rubric v0.3
 2. `reanalyze` asks the model again only for the documents whose v0.2 answer has to change, and
    keeps the new answers for those two questions only, so the other answers don't drift. Identical
    documents are read once. `--dry-run` gives the count and estimated cost first.
-3. The two reports show the effect next to v0.2's. v0.3 goes live with `RUBRIC_VERSION=v0.3` on
-   Railway (both services) when the team is happy with them; until then the site keeps showing v0.2.
+3. The two reports show the effect next to v0.2's. v0.3 went live on Nov 17 with
+   `RUBRIC_VERSION=v0.3` on Railway (both services).
 

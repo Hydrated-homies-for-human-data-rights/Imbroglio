@@ -205,14 +205,15 @@ def test_skip_done_leaves_out_documents_already_read(conn, monkeypatch, capsys):
 
     args = ["imbroglio.cli", "reanalyze", "--rubric", "v0.3", "--from", "v0.2",
             "--where", "trains_ai_on_user_data=yes,yes_with_opt_out", "--dry-run"]
-    monkeypatch.setattr("sys.argv", args)
+    monkeypatch.setattr("sys.argv", args + ["--redo"])
     assert main() == 0
     assert "2 distinct documents to read (3 stored copies)" in capsys.readouterr().out
-    monkeypatch.setattr("sys.argv", args + ["--skip-done"])
-    assert main() == 0
-    out = capsys.readouterr().out
-    assert "1 already read under v0.3, skipped" in out
-    assert "1 distinct documents to read (1 stored copies)" in out
+    for extra in ([], ["--skip-done"]):          # skipping is the default; the old flag still works
+        monkeypatch.setattr("sys.argv", args + extra)
+        assert main() == 0
+        out = capsys.readouterr().out
+        assert "1 already read under v0.3, skipped" in out
+        assert "1 distinct documents to read (1 stored copies)" in out
 
 
 def test_reanalyze_command_dry_run_and_bad_input(conn, monkeypatch, capsys):
