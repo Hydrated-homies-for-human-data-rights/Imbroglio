@@ -36,6 +36,7 @@ const NAV = [
   { href: "/how-we-score", label: "How we score" },
   { href: "/learn", label: "What you can do" },
   { href: "/sites", label: "Every site" },
+  { href: "/research", label: "The research" },
   { href: "/about", label: "About" },
 ]
 
@@ -73,6 +74,7 @@ export function BottomBar() {
             <Link href="/how-we-score">How we score</Link>
             <Link href="/learn">What you can do</Link>
             <Link href="/sites">Every site</Link>
+            <Link href="/research">The research</Link>
             <Link href="/about">About</Link>
             <Link href="/report">Report a problem</Link>
           </div>
