@@ -91,7 +91,7 @@ export const STATUS: { work: string; who: string; state: State; when: string }[]
   { work: "Gold-set protocol and labeling tool", who: "Gage", state: "done", when: "" },
   { work: "Gold-set decision rules, fixed thresholds and scoring tool", who: "Gage", state: "done", when: "" },
   { work: "Review of 34 near-duplicate pairs, then freeze the split", who: "Sam", state: "done", when: "Nov 12" },
-  { work: "Error analysis write-up for the classical models", who: "Sam", state: "now", when: "week 13" },
+  { work: "Error analysis write-up for the classical models", who: "Sam", state: "done", when: "Nov 19" },
   { work: "OPP-115 neural classifier and calibration", who: "Alex", state: "now", when: "week 14" },
   { work: "Gold-set pilot, 2 documents", who: "Gage and Sam", state: "done", when: "Nov 18" },
   { work: "Gold-set full labeling, 12 documents, and settling disagreements", who: "Gage and Sam", state: "done", when: "Nov 19" },
@@ -213,6 +213,27 @@ export const SVM: Model = {
   auroc: 0.955,
   ci: { r1: "0.644 to 0.718", r5: "0.907 to 0.942", mrr: "0.814 to 0.857", auroc: "0.944 to 0.967" },
 }
+
+// logistic regression's errors (ml.errorkinds, data/imbroglio/runs/errorkinds.md): kinds counted by
+// fixed rules on the development split; the last two rows use the gold set and logreg-features.json
+export const ERROR_KINDS: { label: string; value: string }[] = [
+  {
+    label: "Most common kinds of false positive",
+    value: "a full sentence on a neighboring topic 53%, a heading 30%, a negated statement 17% (30 in all)",
+  },
+  {
+    label: "Most common kinds of miss",
+    value: "a different passage ranked first 53%, the line next to the quote 27%, a heading or lead-in 18% (238 in all)",
+  },
+  {
+    label: "How many top-ranked “errors” actually answer the question",
+    value: "11 of 18 on the gold set, 61% (38 to 82%); 74 of 312 in the top five, 24%",
+  },
+  {
+    label: "Most informative features per question",
+    value: "the question’s own topic words count for it; terms-of-service wording counts against it in 12 of 14 questions",
+  },
+]
 export const ROBERTA: Model = {
   name: "RoBERTa, fine-tuned",
   note: "mean ± sd over 3 seeds",

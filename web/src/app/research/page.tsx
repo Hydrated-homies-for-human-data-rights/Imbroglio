@@ -11,6 +11,7 @@ import {
   CHECKS,
   CONSISTENCY,
   CURVE,
+  ERROR_KINDS,
   EVIDENCE,
   GOLD_AGREEMENT,
   GOLD_MODELS,
@@ -754,20 +755,40 @@ export default function ResearchPage() {
             <ModelRow m={SVM} />
           </Table>
           <h4>Where they go wrong</h4>
-          <p>Sam’s error analysis of the classical models, question by question, is being written up.</p>
+          <p>
+            Errors are sorted by fixed rules rather than picked by hand, so anyone can rerun the counts. A false alarm is
+            the top line of a document that doesn’t address the question, when it clears the model’s cut-off; a miss is
+            a document where Claude’s quote didn’t rank first. The figures are for logistic regression; the SVM’s are
+            within a few points.
+          </p>
           <Table head={["Error analysis", "Result"]}>
-            {[
-              "Most common kinds of false positive",
-              "Most common kinds of miss",
-              "How many top-ranked “errors” actually answer the question",
-              "Most informative features per question",
-            ].map((l) => (
-              <tr key={l}>
-                <th scope="row">{l}</th>
-                <Num v={null} />
+            {ERROR_KINDS.map((e) => (
+              <tr key={e.label}>
+                <th scope="row">{e.label}</th>
+                <td>{e.value}</td>
               </tr>
             ))}
           </Table>
+          <p>
+            False alarms are rare: 30 of 1,116 chances. Most are sentences that share the question’s vocabulary without
+            answering it, or headings like “Your rights” that name the topic and say nothing. Negation is the third kind:
+            to a bag of words, “we do not sell your data” looks almost the same as “we sell your data”. For selling data
+            that rarely hurts, because the rubric counts a denial as an answer, and “no” is the second strongest word
+            for that question.
+          </p>
+          <p>
+            Misses are a different story. In over a quarter of them the model put a line within three lines of Claude’s
+            quote first, so it found the right passage and picked a neighbor. The gold set shows how often that is not a
+            mistake at all: of the 18 times the model ranked a line Claude hadn’t quoted first, people judged 11 of them
+            relevant. Claude quotes at most three lines per answer, so the development figures undercount the
+            classical models.
+          </p>
+          <p>
+            The weights show what the model leans on. Each question’s strongest words are its own topic (“breach”,
+            “portability”, “biometric”, “royalty free”), and in 12 of 14 questions terms-of-service wording like “terms”
+            and “agreement” is among the 15 strongest words against: the model learned which kind of document answers
+            privacy questions as well as which sentence does.
+          </p>
         </Q>
       </section>
 
