@@ -99,7 +99,7 @@ export const STATUS: { work: string; who: string; state: State; when: string }[]
   { work: "Gold-set answers-only labeling, 14 documents", who: "Alex and Jaiden", state: "now", when: "week 14" },
   { work: "Claude against people (12 of 26 documents so far)", who: "Sam", state: "now", when: "week 14" },
   { work: "Models scored on the gold set", who: "Gage and Sam", state: "later", when: "week 14" },
-  { work: "Held-out test split, scored once", who: "Gage and Sam", state: "later", when: "week 14" },
+  { work: "Held-out test split, scored once", who: "Gage and Sam", state: "done", when: "Nov 19" },
   { work: "Final presentation", who: "Everyone", state: "later", when: "week 15" },
 ]
 
@@ -323,9 +323,18 @@ export const OPP115_SETUP: string | null = null // Alex's architecture and train
 
 // ---- question 10: the held-out test split (scored once) ----
 
+// scored once on 2026-11-19 (ml.seeds --split test, data/imbroglio/runs/test-once.md), with the
+// models fixed on 2026-11-11 in ml/gold/thresholds.json. RoBERTa is the mean over its 3 seeds, as on dev.
 export const TEST: { name: string; r1: Fig; r5: Fig; mrr: Fig; auroc: Fig }[] = [
-  { name: "BM25, both queries", r1: null, r5: null, mrr: null, auroc: null },
-  { name: "Logistic regression", r1: null, r5: null, mrr: null, auroc: null },
-  { name: "Linear SVM", r1: null, r5: null, mrr: null, auroc: null },
-  { name: "RoBERTa, fine-tuned, 512 tokens", r1: null, r5: null, mrr: null, auroc: null },
+  { name: "BM25, both queries", r1: 0.463, r5: 0.802, mrr: 0.649, auroc: 0.862 },
+  { name: "Logistic regression", r1: 0.601, r5: 0.911, mrr: 0.779, auroc: 0.954 },
+  { name: "Linear SVM", r1: 0.6, r5: 0.905, mrr: 0.776, auroc: 0.952 },
+  { name: "RoBERTa, fine-tuned, 512 tokens", r1: 0.623, r5: 0.889, mrr: 0.792, auroc: 0.96 },
 ]
+// RoBERTa (seeds averaged) minus logistic regression on test, paired bootstrap
+export const TEST_ROBERTA_VS_LOGREG = {
+  r1: { d: 0.037, p: "0.09" },
+  r5: { d: -0.015, p: "0.30" },
+  mrr: { d: 0.026, p: "0.14" },
+  auroc: { d: 0.008, p: "0.30" },
+}

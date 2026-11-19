@@ -29,6 +29,7 @@ import {
   SVM,
   SWEEP,
   TEST,
+  TEST_ROBERTA_VS_LOGREG,
   TRUNCATION,
   WEEK,
   fixed,
@@ -1175,7 +1176,12 @@ export default function ResearchPage() {
           eyebrow="Held-out test"
           ask="Does it hold on documents we never looked at?"
           who="Gage Gunn and Sam Holton"
-          answer={<Answer figure="Scored once, at the end." soft />}
+          answer={
+            <Answer figure="Mostly." soft>
+              Every model scores lower on the 142 test documents than on development, but the three trained models stay
+              level with each other and well ahead of BM25.
+            </Answer>
+          }
           aside={
             <Note k="Why once">
               Looking at test results and then adjusting would turn the test split into a second development split, and
@@ -1185,8 +1191,8 @@ export default function ResearchPage() {
         >
           <p>
             Every choice on this page (unlabeled weight, backbone, length, C, the BM25 settings, the best epoch) was made
-            on the development split. The 142 test documents have been held back from all of it. Each final model is
-            scored on them exactly once, after every choice is fixed.
+            on the development split. The 142 test documents were held back from all of it. The four final models were
+            fixed on November 11 and scored on them once, on November 19.
           </p>
           <Table head={["Model", ...FOUR]}>
             {TEST.map((t) => (
@@ -1199,7 +1205,17 @@ export default function ResearchPage() {
               </tr>
             ))}
           </Table>
-          <Wait>week 14, after the split is frozen</Wait>
+          <p>
+            Mean reciprocal rank falls by about 0.06 for logistic regression, the SVM and BM25, and by 0.024 for RoBERTa
+            ({ROBERTA.mrr.toFixed(3)} to {TEST[3].mrr!.toFixed(3)}). On development logistic regression ranked a little
+            ahead of RoBERTa; on test RoBERTa is a little ahead. Neither gap is significant. The table gives RoBERTa’s
+            mean over its three seeds; for the significance tests the three are averaged into one model, which scores a
+            little higher. That model leads logistic regression by {TEST_ROBERTA_VS_LOGREG.r1.d.toFixed(3)} at right
+            first (p = {TEST_ROBERTA_VS_LOGREG.r1.p}) and {TEST_ROBERTA_VS_LOGREG.mrr.d.toFixed(3)} in mean reciprocal
+            rank (p = {TEST_ROBERTA_VS_LOGREG.mrr.p}). Its lead in detection, clear on development (p{" "}
+            {ROBERTA_VS_LOGREG.auroc.p}), shrinks to {TEST_ROBERTA_VS_LOGREG.auroc.d.toFixed(3)} (p ={" "}
+            {TEST_ROBERTA_VS_LOGREG.auroc.p}). All three trained models beat BM25 on every measure (p &lt; 0.001).
+          </p>
         </Q>
       </section>
 
