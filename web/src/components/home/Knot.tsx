@@ -49,8 +49,10 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 const smooth = (v: number) => v * v * (3 - 2 * v)
 
 // `still`: the knot drifts but is never pulled out by scrolling (the about
-// page, where the thread leaves it on its own).
-export default function Knot({ still = false }: { still?: boolean }) {
+// page, where the thread leaves it on its own). `fragments={false}` leaves out
+// the policy lines that fade over it (the research page, which shows no
+// policy text).
+export default function Knot({ still = false, fragments = true }: { still?: boolean; fragments?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -168,14 +170,16 @@ export default function Knot({ still = false }: { still?: boolean }) {
   return (
     <div ref={ref} className="knot" data-thread="knot" aria-hidden="true">
       <canvas />
-      <div className="knot-fragments">
-        {FRAGMENTS.map((f, i) => (
-          <span key={f.line} className="knot-fragment serif" style={PLACES[i]}>
-            {f.text}
-            <small className="mono">line {f.line}</small>
-          </span>
-        ))}
-      </div>
+      {fragments && (
+        <div className="knot-fragments">
+          {FRAGMENTS.map((f, i) => (
+            <span key={f.line} className="knot-fragment serif" style={PLACES[i]}>
+              {f.text}
+              <small className="mono">line {f.line}</small>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
