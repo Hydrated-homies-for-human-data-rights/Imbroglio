@@ -779,10 +779,9 @@ export default function ResearchPage() {
           </p>
           <p>
             Misses are a different story. In over a quarter of them the model put a line within three lines of Claude’s
-            quote first, so it found the right passage and picked a neighbor. The gold set shows how often that is not a
-            mistake at all: of the 18 times the model ranked a line Claude hadn’t quoted first, people judged 11 of them
-            relevant. Claude quotes at most three lines per answer, so the development figures undercount the
-            classical models.
+            quote first, so it found the right passage and picked a neighbor. That may not be a mistake at all: Claude
+            quotes at most three lines per answer, so a neighboring line can answer the question too, and the
+            development figures may undercount the classical models. The gold set will show how often.
           </p>
           <p>
             The weights show what the model leans on. Each question’s strongest words are its own topic (“breach”,
@@ -1057,12 +1056,8 @@ export default function ResearchPage() {
           n={9}
           eyebrow="The gold set"
           ask="Does Claude agree with people?"
-          who="Labeled by all four of us; analysis by Sam Holton and Gage Gunn"
-          answer={
-            <Answer figure="88.9%">
-              of Claude’s answers match people’s on the 12 documents labeled in full so far (kappa 0.857).
-            </Answer>
-          }
+          who="Sam Holton and Gage Gunn"
+          answer={<Answer figure="In progress." soft />}
           aside={
             <>
               <Note k="Effort">
@@ -1124,22 +1119,13 @@ export default function ResearchPage() {
             </li>
           </ol>
           <p>
-            A two-document pilot from the development split came first, labeled by Sam and Gage, to tighten the
-            guideline. Disagreements are settled together, and both raw labels are kept. What counts as a gold label,
-            how each model is scored, and every model’s cut-offs were fixed and saved before any label is read, so no
-            result can steer them.
+            A two-document pilot from the development split comes first, to tighten the guideline. Disagreements are
+            settled together, and both raw labels are kept. What counts as a gold label, how each model is scored, and
+            every model’s cut-offs were fixed and saved before any label is read, so no result can steer them.
           </p>
           <p>
-            Sam and Gage gave the same answer on 109 of 112 questions and the same passage judgment on 98.7% of lines;
-            the 22 places they differed were settled together. Claude is weakest where the rubric asks for a judgment
-            of degree: opting out of tracking (60% the same, people said yes where Claude said limited), sensitive data
-            and disclosure to government (70% each). It matches people on every answer about retention, selling data,
-            AI training and notifying users.
-          </p>
-          <p>
-            The evidence-word check, which throws out a Claude quote that lacks any of the question’s evidence words,
-            almost never keeps a wrong one (precision 0.963). But 20 of the 22 quotes it threw out were relevant,
-            including all 8 it threw out for collecting data from third parties. The check is too strict, not too loose.
+            The same labels also test the evidence-word check, which throws out a Claude quote that lacks any of the
+            question’s evidence words: how often it keeps a wrong quote, and how often it throws out a right one.
           </p>
           <h4>Results</h4>
           <Table head={["Measure", "Who", "Result"]}>
@@ -1167,19 +1153,7 @@ export default function ResearchPage() {
               </tr>
             ))}
           </Table>
-          <p>
-            These are the 12 documents with passage judgments. When a model flags a line, it is usually right: precision
-            is above 0.8 for all three trained models. But each flags only about a quarter of the relevant lines,
-            likely because the cut-offs were tuned against Claude’s quotes, and Claude quotes at most 3 lines per
-            answer, so tuning against them rewards being strict. Claude’s own quotes find more (recall 0.453) and are almost never wrong (0.971). The
-            pool is estimated to miss about 9% of relevant lines, so every recall here is an upper bound by about that
-            much.
-          </p>
-          <p>
-            RoBERTa can’t be told apart from logistic regression or the SVM on F1, average precision or mean reciprocal
-            rank (p above 0.18 for each), and it falls short of Claude’s quotes on F1 by 0.189 (p = 0.018). It beats
-            BM25 on all three (p 0.002 or below).
-          </p>
+          <Wait>in progress</Wait>
         </Q>
 
         <Q

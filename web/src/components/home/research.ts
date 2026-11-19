@@ -93,12 +93,7 @@ export const STATUS: { work: string; who: string; state: State; when: string }[]
   { work: "Review of 34 near-duplicate pairs, then freeze the split", who: "Sam", state: "done", when: "Nov 12" },
   { work: "Error analysis write-up for the classical models", who: "Sam", state: "done", when: "Nov 19" },
   { work: "OPP-115 neural classifier and calibration", who: "Alex", state: "now", when: "week 14" },
-  { work: "Gold-set pilot, 2 documents", who: "Gage and Sam", state: "done", when: "Nov 18" },
-  { work: "Gold-set full labeling, 12 documents, and settling disagreements", who: "Gage and Sam", state: "done", when: "Nov 19" },
-  { work: "Agreement between people and the evidence-word check", who: "Sam", state: "done", when: "Nov 19" },
-  { work: "Gold-set answers-only labeling, 14 documents", who: "Alex and Jaiden", state: "now", when: "week 14" },
-  { work: "Claude against people (12 of 26 documents so far)", who: "Sam", state: "now", when: "week 14" },
-  { work: "Models scored on the gold set", who: "Gage and Sam", state: "done", when: "Nov 19" },
+  { work: "Gold set: labels, agreement between people, Claude and the models against people", who: "Everyone", state: "now", when: "week 15" },
   { work: "Held-out test split, scored once", who: "Gage and Sam", state: "done", when: "Nov 19" },
   { work: "Final presentation", who: "Everyone", state: "later", when: "week 15" },
 ]
@@ -215,7 +210,8 @@ export const SVM: Model = {
 }
 
 // logistic regression's errors (ml.errorkinds, data/imbroglio/runs/errorkinds.md): kinds counted by
-// fixed rules on the development split; the last two rows use the gold set and logreg-features.json
+// fixed rules on the development split; the last row uses logreg-features.json. How many of the
+// "errors" people judge relevant waits for the gold set.
 export const ERROR_KINDS: { label: string; value: string }[] = [
   {
     label: "Most common kinds of false positive",
@@ -224,10 +220,6 @@ export const ERROR_KINDS: { label: string; value: string }[] = [
   {
     label: "Most common kinds of miss",
     value: "a different passage ranked first 53%, the line next to the quote 27%, a heading or lead-in 18% (238 in all)",
-  },
-  {
-    label: "How many top-ranked “errors” actually answer the question",
-    value: "11 of 18 on the gold set, 61% (38 to 82%); 74 of 312 in the top five, 24%",
   },
   {
     label: "Most informative features per question",
@@ -293,23 +285,23 @@ export const TRUNCATION = [
 // ---- question 8: the gold set (ml/GOLD.md; reports in data/imbroglio/runs/gold-*.md) ----
 
 export const GOLD_AGREEMENT: { label: string; who: string; value: string | null }[] = [
-  { label: "Agreement between people on answers (Cohen’s kappa, 8 documents)", who: "Sam", value: "0.966 (0.933 to 0.989)" },
-  { label: "Agreement between people on passages (1,314 judgments)", who: "Sam", value: "0.952 (0.931 to 0.976)" },
-  { label: "Claude’s answers against people’s (Cohen’s kappa, 280 answers on 12 documents)", who: "Sam", value: "0.857 (0.782 to 0.916)" },
-  { label: "Evidence-word check: precision", who: "Sam", value: "0.963 (0.932 to 0.990)" },
-  { label: "Evidence-word check: recall", who: "Sam", value: "0.837 (0.743 to 0.911)" },
-  { label: "Share of relevant paragraphs the pool misses", who: "Sam and Gage", value: "8.9% (2.6 to 13.4%)" },
+  { label: "Agreement between people on answers (Cohen’s kappa)", who: "Sam", value: null },
+  { label: "Agreement between people on passages", who: "Sam", value: null },
+  { label: "Claude’s answers against people’s (Cohen’s kappa)", who: "Sam", value: null },
+  { label: "Evidence-word check: precision", who: "Sam", value: null },
+  { label: "Evidence-word check: recall", who: "Sam", value: null },
+  { label: "Share of relevant paragraphs the pool misses", who: "Sam and Gage", value: null },
 ]
 
-// ml.goldeval score (data/imbroglio/runs/gold-models.md): the 12 documents with passage judgments,
-// cut-offs fixed on 2026-11-11 in ml/gold/thresholds.json, means over questions. Top five is ranking.
+// ml.goldeval score: cut-offs fixed on 2026-11-11 in ml/gold/thresholds.json, means over questions.
+// Top five is ranking.
 export type PRF = { name: string; precision: Fig; recall: Fig; f1: Fig; top5: Fig | "n/a" }
 export const GOLD_MODELS: PRF[] = [
-  { name: "BM25, both queries", precision: 0.627, recall: 0.156, f1: 0.236, top5: 0.886 },
-  { name: "Logistic regression", precision: 0.854, recall: 0.277, f1: 0.394, top5: 0.941 },
-  { name: "Linear SVM", precision: 0.83, recall: 0.274, f1: 0.404, top5: 0.934 },
-  { name: "RoBERTa, fine-tuned", precision: 0.811, recall: 0.277, f1: 0.396, top5: 0.851 },
-  { name: "Claude’s own quotes", precision: 0.971, recall: 0.453, f1: 0.584, top5: "n/a" },
+  { name: "BM25, both queries", precision: null, recall: null, f1: null, top5: null },
+  { name: "Logistic regression", precision: null, recall: null, f1: null, top5: null },
+  { name: "Linear SVM", precision: null, recall: null, f1: null, top5: null },
+  { name: "RoBERTa, fine-tuned", precision: null, recall: null, f1: null, top5: null },
+  { name: "Claude’s own quotes", precision: null, recall: null, f1: null, top5: "n/a" },
 ]
 
 // ---- question 9: OPP-115 (Alex) ----
