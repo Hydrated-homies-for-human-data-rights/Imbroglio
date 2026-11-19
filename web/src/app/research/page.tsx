@@ -1167,7 +1167,19 @@ export default function ResearchPage() {
               </tr>
             ))}
           </Table>
-          <Wait>Alex and Jaiden’s answers and the models’ scores, week 14</Wait>
+          <p>
+            These are the 12 documents with passage judgments. When a model flags a line, it is usually right: precision
+            is above 0.8 for all three trained models. But each flags only about a quarter of the relevant lines,
+            likely because the cut-offs were tuned against Claude’s quotes, and Claude quotes at most 3 lines per
+            answer, so tuning against them rewards being strict. Claude’s own quotes find more (recall 0.453) and are almost never wrong (0.971). The
+            pool is estimated to miss about 9% of relevant lines, so every recall here is an upper bound by about that
+            much.
+          </p>
+          <p>
+            RoBERTa can’t be told apart from logistic regression or the SVM on F1, average precision or mean reciprocal
+            rank (p above 0.18 for each), and it falls short of Claude’s quotes on F1 by 0.189 (p = 0.018). It beats
+            BM25 on all three (p 0.002 or below).
+          </p>
         </Q>
 
         <Q

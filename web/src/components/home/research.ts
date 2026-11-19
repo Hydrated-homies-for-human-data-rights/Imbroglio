@@ -98,7 +98,7 @@ export const STATUS: { work: string; who: string; state: State; when: string }[]
   { work: "Agreement between people and the evidence-word check", who: "Sam", state: "done", when: "Nov 19" },
   { work: "Gold-set answers-only labeling, 14 documents", who: "Alex and Jaiden", state: "now", when: "week 14" },
   { work: "Claude against people (12 of 26 documents so far)", who: "Sam", state: "now", when: "week 14" },
-  { work: "Models scored on the gold set", who: "Gage and Sam", state: "later", when: "week 14" },
+  { work: "Models scored on the gold set", who: "Gage and Sam", state: "done", when: "Nov 19" },
   { work: "Held-out test split, scored once", who: "Gage and Sam", state: "done", when: "Nov 19" },
   { work: "Final presentation", who: "Everyone", state: "later", when: "week 15" },
 ]
@@ -298,16 +298,18 @@ export const GOLD_AGREEMENT: { label: string; who: string; value: string | null 
   { label: "Claude’s answers against people’s (Cohen’s kappa, 280 answers on 12 documents)", who: "Sam", value: "0.857 (0.782 to 0.916)" },
   { label: "Evidence-word check: precision", who: "Sam", value: "0.963 (0.932 to 0.990)" },
   { label: "Evidence-word check: recall", who: "Sam", value: "0.837 (0.743 to 0.911)" },
-  { label: "Share of relevant paragraphs the pool misses", who: "Sam and Gage", value: null },
+  { label: "Share of relevant paragraphs the pool misses", who: "Sam and Gage", value: "8.9% (2.6 to 13.4%)" },
 ]
 
+// ml.goldeval score (data/imbroglio/runs/gold-models.md): the 12 documents with passage judgments,
+// cut-offs fixed on 2026-11-11 in ml/gold/thresholds.json, means over questions. Top five is ranking.
 export type PRF = { name: string; precision: Fig; recall: Fig; f1: Fig; top5: Fig | "n/a" }
 export const GOLD_MODELS: PRF[] = [
-  { name: "BM25, both queries", precision: null, recall: null, f1: null, top5: null },
-  { name: "Logistic regression", precision: null, recall: null, f1: null, top5: null },
-  { name: "Linear SVM", precision: null, recall: null, f1: null, top5: null },
-  { name: "RoBERTa, fine-tuned", precision: null, recall: null, f1: null, top5: null },
-  { name: "Claude’s own quotes", precision: null, recall: null, f1: null, top5: "n/a" },
+  { name: "BM25, both queries", precision: 0.627, recall: 0.156, f1: 0.236, top5: 0.886 },
+  { name: "Logistic regression", precision: 0.854, recall: 0.277, f1: 0.394, top5: 0.941 },
+  { name: "Linear SVM", precision: 0.83, recall: 0.274, f1: 0.404, top5: 0.934 },
+  { name: "RoBERTa, fine-tuned", precision: 0.811, recall: 0.277, f1: 0.396, top5: 0.851 },
+  { name: "Claude’s own quotes", precision: 0.971, recall: 0.453, f1: 0.584, top5: "n/a" },
 ]
 
 // ---- question 9: OPP-115 (Alex) ----
