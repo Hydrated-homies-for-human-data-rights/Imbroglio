@@ -9,8 +9,8 @@
 
 export type Fig = number | null
 
-export const AS_OF = "November 11, 2026"
-export const WEEK = "week 13 of 15"
+export const AS_OF = "November 19, 2026"
+export const WEEK = "week 14 of 15"
 
 export const fixed = (v: Fig, digits = 3) => (v === null ? null : v.toFixed(digits))
 export const pct = (v: Fig, digits = 1) => (v === null ? null : `${v.toFixed(digits)}%`)
@@ -93,9 +93,11 @@ export const STATUS: { work: string; who: string; state: State; when: string }[]
   { work: "Review of 34 near-duplicate pairs, then freeze the split", who: "Sam", state: "done", when: "Nov 12" },
   { work: "Error analysis write-up for the classical models", who: "Sam", state: "now", when: "week 13" },
   { work: "OPP-115 neural classifier and calibration", who: "Alex", state: "now", when: "week 14" },
-  { work: "Gold-set pilot, 2 documents", who: "Everyone", state: "later", when: "week 13" },
-  { work: "Gold-set labeling, 30 documents", who: "Everyone", state: "later", when: "week 14" },
-  { work: "Agreement between people, Claude against people, evidence-word check", who: "Sam", state: "later", when: "week 14" },
+  { work: "Gold-set pilot, 2 documents", who: "Gage and Sam", state: "done", when: "Nov 18" },
+  { work: "Gold-set full labeling, 12 documents, and settling disagreements", who: "Gage and Sam", state: "done", when: "Nov 19" },
+  { work: "Agreement between people and the evidence-word check", who: "Sam", state: "done", when: "Nov 19" },
+  { work: "Gold-set answers-only labeling, 14 documents", who: "Alex and Jaiden", state: "now", when: "week 14" },
+  { work: "Claude against people (12 of 26 documents so far)", who: "Sam", state: "now", when: "week 14" },
   { work: "Models scored on the gold set", who: "Gage and Sam", state: "later", when: "week 14" },
   { work: "Held-out test split, scored once", who: "Gage and Sam", state: "later", when: "week 14" },
   { work: "Final presentation", who: "Everyone", state: "later", when: "week 15" },
@@ -267,13 +269,14 @@ export const TRUNCATION = [
   { label: "Logistic regression", all: "0.839", cut: "0.860", rest: "0.818" },
 ]
 
-// ---- question 8: the gold set (all pending until labeled) ----
+// ---- question 8: the gold set (ml/GOLD.md; reports in data/imbroglio/runs/gold-*.md) ----
 
 export const GOLD_AGREEMENT: { label: string; who: string; value: string | null }[] = [
-  { label: "Agreement between people on answers, per question (Cohen’s kappa)", who: "Sam", value: null },
-  { label: "Agreement between people on passages", who: "Sam", value: null },
-  { label: "Claude’s answers against people’s, per question", who: "Sam", value: null },
-  { label: "Evidence-word check: precision and recall", who: "Sam", value: null },
+  { label: "Agreement between people on answers (Cohen’s kappa, 8 documents)", who: "Sam", value: "0.966 (0.933 to 0.989)" },
+  { label: "Agreement between people on passages (1,314 judgments)", who: "Sam", value: "0.952 (0.931 to 0.976)" },
+  { label: "Claude’s answers against people’s (Cohen’s kappa, 280 answers on 12 documents)", who: "Sam", value: "0.857 (0.782 to 0.916)" },
+  { label: "Evidence-word check: precision", who: "Sam", value: "0.963 (0.932 to 0.990)" },
+  { label: "Evidence-word check: recall", who: "Sam", value: "0.837 (0.743 to 0.911)" },
   { label: "Share of relevant paragraphs the pool misses", who: "Sam and Gage", value: null },
 ]
 

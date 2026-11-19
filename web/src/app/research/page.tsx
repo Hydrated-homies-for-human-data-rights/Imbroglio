@@ -1037,36 +1037,38 @@ export default function ResearchPage() {
           ask="Does Claude agree with people?"
           who="Labeled by all four of us; analysis by Sam Holton and Gage Gunn"
           answer={
-            <Answer figure="Not measured yet." soft>
-              This is the part that tests Claude itself rather than how well a model copies it.
+            <Answer figure="88.9%">
+              of Claude’s answers match people’s on the 12 documents labeled in full so far (kappa 0.857).
             </Answer>
           }
           aside={
             <>
               <Note k="Effort">
-                Measured on a dry run of the real candidate lists: about 8.5 to 9 hours each for Sam and Gage, who label
-                12 documents in full, and about 3 hours each for Alex and Jaiden, who answer 9.
+                The first plan put Sam and Gage at about 9 hours each. Showing each paragraph once, with a box per
+                question, and dropping candidates only the evidence-word lists proposed cut that to about an hour of
+                passages each, plus reading each document.
               </Note>
               <Note k="Why two depths">
                 Answers are quick, and they are all that Claude against people needs, so every document gets them.
-                Passage judgments take most of the time and are what scoring the models needs, so 16 documents get them.
+                Passage judgments take most of the time and are what scoring the models needs, so 12 documents get them.
               </Note>
             </>
           }
         >
           <p>
-            We draw 30 documents at random from the held-out test split and label them by hand, without seeing
-            Claude’s answers. All 30 get people’s answers to the 14 questions, and 12 are answered by two of us
-            independently, so we can also measure how often people agree. 16 of the 30 also get passage judgments, from
-            Sam and Gage, 8 of them by both.
+            We drew 30 documents at random from the held-out test split to label by hand, without seeing Claude’s
+            answers. Before any real label, 4 of the full documents were dropped to keep the work bounded, which leaves
+            26. All 26 get people’s answers to the 14 questions, and 12 are answered by two of us independently, so we
+            can also measure how often people agree. 12 of the 26 also get passage judgments, from Sam and Gage, 8 of
+            them by both.
           </p>
           <div
             className="r-docs"
             role="img"
-            aria-label="30 documents: 8 labeled in full by two people, 8 in full by one, and 14 answers only."
+            aria-label="26 documents: 8 labeled in full by two people, 4 in full by one, and 14 answers only."
           >
-            {Array.from({ length: 30 }, (_, i) => (
-              <i key={i} className={i < 8 ? "d" : i < 16 ? "f" : "a"} />
+            {Array.from({ length: 26 }, (_, i) => (
+              <i key={i} className={i < 8 ? "d" : i < 12 ? "f" : "a"} />
             ))}
           </div>
           <div className="r-key">
@@ -1086,24 +1088,36 @@ export default function ResearchPage() {
           <h4>What each of us does per document</h4>
           <ol className="r-steps">
             <li>
-              <b>Answer</b> (all 30). Read the whole document and answer all 14 questions with the rubric, marking the
+              <b>Answer</b> (all 26). Read the whole document and answer all 14 questions with the rubric, marking the
               lines each answer rests on.
             </li>
             <li>
-              <b>Judge passages</b> (16). For each question, judge candidate paragraphs yes or no. Candidates are pooled
-              from Claude’s quotes, evidence-word matches, our own marks and each tested model’s top five, with their
+              <b>Judge passages</b> (12). Judge candidate paragraphs yes or no for each question they were proposed for.
+              Candidates are pooled from Claude’s quotes, our own marks and each tested model’s top five, with their
               source hidden.
             </li>
             <li>
-              <b>Check the pool</b> (16). Mark 10 random paragraphs that no source proposed, to estimate how many
+              <b>Check the pool</b> (12). Mark 10 random paragraphs that no source proposed, to estimate how many
               relevant paragraphs the pool misses.
             </li>
           </ol>
           <p>
-            A two-document pilot from the development split comes first, labeled by everyone, to tighten the
+            A two-document pilot from the development split came first, labeled by Sam and Gage, to tighten the
             guideline. Disagreements are settled together, and both raw labels are kept. What counts as a gold label,
             how each model is scored, and every model’s cut-offs were fixed and saved before any label is read, so no
             result can steer them.
+          </p>
+          <p>
+            Sam and Gage gave the same answer on 109 of 112 questions and the same passage judgment on 98.7% of lines;
+            the 22 places they differed were settled together. Claude is weakest where the rubric asks for a judgment
+            of degree: opting out of tracking (60% the same, people said yes where Claude said limited), sensitive data
+            and disclosure to government (70% each). It matches people on every answer about retention, selling data,
+            AI training and notifying users.
+          </p>
+          <p>
+            The evidence-word check, which throws out a Claude quote that lacks any of the question’s evidence words,
+            almost never keeps a wrong one (precision 0.963). But 20 of the 22 quotes it threw out were relevant,
+            including all 8 it threw out for collecting data from third parties. The check is too strict, not too loose.
           </p>
           <h4>Results</h4>
           <Table head={["Measure", "Who", "Result"]}>
@@ -1131,7 +1145,7 @@ export default function ResearchPage() {
               </tr>
             ))}
           </Table>
-          <Wait>pilot week 13 · labeling and results week 14</Wait>
+          <Wait>Alex and Jaiden’s answers and the models’ scores, week 14</Wait>
         </Q>
 
         <Q
