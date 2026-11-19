@@ -9,6 +9,7 @@
     python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100 --dry-run
     python -m imbroglio.cli consistency --sample 50 --runs 3
     python -m imbroglio.cli offsite-documents     # --remove keepassxc.org ... deletes those
+    python -m imbroglio.cli recheck --dry-run     # fetch stored documents again, report changes
     python -m imbroglio.cli report                # latest batch
     python -m imbroglio.cli report 3 --out runs/batch-3.md
     python -m imbroglio.cli reports               # new problem reports from readers
@@ -93,7 +94,7 @@ def _reanalyze_cmd(args) -> int:
 
     from . import db
     from .analysis import (average_cost, extraction_enabled, reanalysis_targets, reanalyze_checks,
-                           spent_last_24h)
+                           reread_versions, spent_last_24h)
     from .rubric import load
 
     where: dict[str, list[str]] = {}
@@ -115,7 +116,15 @@ def _reanalyze_cmd(args) -> int:
 
     logging.basicConfig(level=logging.WARNING)
     conn = db.connect()
-    groups = reanalysis_targets(conn, args.from_version, where)[: args.limit]
+    groups = reanalysis_targets(conn, args.from_version, where)
+    if args.skip_done:
+        # Already read under the new rubric: a run that stopped on the budget
+        # picks up where it left off instead of paying for every document again.
+        done = reread_versions(conn, args.rubric)
+        before = len(groups)
+        groups = [g for g in groups if done.isdisjoint(g)]
+        print(f"{before - len(groups)} already read under {args.rubric}, skipped")
+    groups = groups[: args.limit]
     docs = sum(len(g) for g in groups)
     print(f"{len(groups)} distinct documents to read ({docs} stored copies), for "
           + "; ".join(f"{c} in {s}" for c, s in where.items()))
@@ -283,7 +292,9 @@ def main() -> int:
     s.add_argument("--max-pages", type=int, help="stop after N pages of 500 (for quick tests)")
 
     b = sub.add_parser("batch", help="run discovery + extraction over a file of domains")
-    b.add_argument("file", type=Path, help=".txt (one domain per line) or .csv (domain column)")
+    b.add_argument("file", type=Path, nargs="?", help=".txt (one domain per line) or .csv (domain column)")
+    b.add_argument("--missing", choices=["privacy", "terms"],
+                   help="instead of a file: every stored site without this document, to look for it again")
     b.add_argument("--limit", type=int, help="only the first N domains")
     b.add_argument("--sample", type=int, help="random sample of N domains (reproducible with --seed)")
     b.add_argument("--seed", type=int, default=42)
@@ -327,6 +338,13 @@ def main() -> int:
     ra.add_argument("--model", help="override EXTRACTION_MODEL")
     ra.add_argument("--workers", type=int, default=3)
     ra.add_argument("--dry-run", action="store_true", help="count the documents and estimate the cost only")
+    # Skipping is the default (Nov 17): without it, a second run paid about
+    # $13 to re-read 285 documents the first run had already done.
+    ra.add_argument("--skip-done", action="store_true", default=True,
+                    help="(the default) leave out documents the model has already read under --rubric, "
+                         "so a second run never pays twice")
+    ra.add_argument("--redo", dest="skip_done", action="store_false",
+                    help="read every matching document again, even ones already read under --rubric")
 
     cs = sub.add_parser("consistency", help="run-to-run consistency study (N2), read-only")
     cs.add_argument("--sample", type=int, default=50)
@@ -368,6 +386,17 @@ def main() -> int:
     od.add_argument("--remove", nargs="+", metavar="DOMAIN", default=[],
                     help="delete these sites' listed documents with their findings and scores, "
                          "so a new crawl can look for the right ones")
+
+    rc = sub.add_parser("recheck",
+                        help="fetch stored documents again and record which changed (no model calls)")
+    rc.add_argument("--every-days", type=int, default=None,
+                    help="only documents not fetched or checked in this many days "
+                         "(default: RECHECK_DAYS, 7; 0 checks everything)")
+    rc.add_argument("--domain", action="append", default=[], help="only this site (repeatable)")
+    rc.add_argument("--limit", type=int, help="at most this many documents")
+    rc.add_argument("--workers", type=int, default=4)
+    rc.add_argument("--no-playwright", action="store_true")
+    rc.add_argument("--dry-run", action="store_true", help="fetch and compare, store nothing")
 
     sd = sub.add_parser("store-document",
                         help="store a policy you fetched by hand, for sites that block the crawler")
@@ -426,6 +455,24 @@ def main() -> int:
                 conn.close()
         else:
             print(f"next: python -m imbroglio.cli extract {args.domain}")
+        return 0
+
+    if args.command == "recheck":
+        from . import db, recheck
+        logging.basicConfig(level=logging.WARNING)
+        conn = db.connect()
+        db.init_schema(conn)
+        days = recheck.RECHECK_DAYS if args.every_days is None else args.every_days
+        rows = recheck.due(conn, days, args.limit, args.domain or None)
+        conn.close()
+        print(f"{len(rows)} documents not fetched or checked in {days} days"
+              + (" (dry run: nothing stored)" if args.dry_run else ""))
+        checks = recheck.run(rows, workers=args.workers, use_playwright=not args.no_playwright,
+                             dry_run=args.dry_run)
+        for c in checks:
+            if c.outcome != "unchanged":
+                print(f"{c.outcome:<10} {c.domain:<28} {c.doc_type:<8} {c.note}")
+        print(recheck.summary(checks))
         return 0
 
     if args.command == "offsite-documents":
@@ -551,8 +598,21 @@ def main() -> int:
 
     if args.command == "batch":
         from .batch import load_domains, run_batch
-        domains = load_domains(args.file)
-        source = args.file.name
+        if (args.file is None) == (args.missing is None):
+            print("give a file of domains, or --missing privacy|terms")
+            return 2
+        if args.missing:
+            from . import db
+            conn = db.connect()
+            try:
+                domains = db.domains_missing(conn, args.missing)
+            finally:
+                conn.close()
+            source = f"missing {args.missing}"
+            print(f"{len(domains)} stored sites have no {args.missing} document")
+        else:
+            domains = load_domains(args.file)
+            source = args.file.name
         if args.sample:
             import random
             domains = random.Random(args.seed).sample(domains, min(args.sample, len(domains)))

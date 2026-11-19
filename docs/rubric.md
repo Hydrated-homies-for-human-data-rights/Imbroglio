@@ -3,11 +3,13 @@
 This is the published spec for how Imbroglio rates a site (requirement F5). The same content is
 served by `GET /v1/rubric` and shown on the website's "How we score" page.
 
-- **Live now:** rubric v0.2 with scorer s2, "red flags + coverage" (live since Oct 30, 2026; see
+- **Live now:** rubric v0.3 with scorer s3 (live since Nov 17, 2026), a calibration of v0.2 from the
+  first production reports; see the end of this page. On 567 sites: LIMITED 57, MODERATE 374,
+  EXTENSIVE 47, SEVERE 16, UNCLEAR 66, NOT DISCLOSED 7.
+- **Before that:** rubric v0.2 with scorer s2, "red flags + coverage" (Oct 30 to Nov 17, 2026; see
   "Next: scorer s2 and rubric v0.2" below)
-- **Built, switching on next:** rubric v0.3, a calibration of v0.2 from the first production reports
-  (see the end of this page). It goes live by setting `RUBRIC_VERSION=v0.3` once its findings are in.
-- **Drafted for later:** rubric v1.0, 23 questions ([rubric-v1.md](rubric-v1.md))
+- **Drafted for later:** rubric v1.0, 28 questions in eight categories, terms of service included
+  ([rubric-v1.md](rubric-v1.md))
 - **Source files:** `pipeline/imbroglio/rubric/v0.1.yaml`, `v0.2.yaml`, `v0.3.yaml` (the questions)
   and `pipeline/imbroglio/scorer.py` (the rules)
 
@@ -61,6 +63,9 @@ number, so the two always agree, and it is made by the same code (`scorer.score(
 | EXTENSIVE | 40 to 59 |
 | SEVERE | 0 to 39 |
 | UNCLEAR, NOT DISCLOSED | no score |
+
+Under scorer s3 (rubric v0.3) LIMITED is 90 to 100 and MODERATE 60 to 89, because any medium concern
+makes a site MODERATE. A LIMITED site then always scores 100: nothing took points off.
 
 The points are set so that under s2 the subtraction alone nearly always lands in the right range: one
 high concern gives 58 (EXTENSIVE), two medium ones give 76 (MODERATE), one severe concern gives 35 and
@@ -315,6 +320,15 @@ Same 14 questions. The changes come from the first two production reports, on 56
 | AI training "yes" cost 72 sites 42 points, most of the EXTENSIVE ones, whatever was trained on | Split by what is trained on: private content or AI chats is high (medium with an opt-out); public content or usage data is medium (informational with an opt-out) |
 | Opt-out "limited" on 158 sites, often for not honoring Do Not Track | Guidance: ignoring Do Not Track alone is neither `no` nor `limited` |
 | The report shows the rubric's wording | Every answer has a plain line in the reader's words |
+| With vague retention informational, 224 of 565 sites came out LIMITED, most of them for sharing with advertisers alone | Scorer s3: any medium concern makes a site MODERATE (s2 needed two), and LIMITED scores 90 to 100, MODERATE 60 to 89 |
+
+Scorer s3 is v0.3's own: v0.3.yaml names it (`scorer: s3`), so v0.2 keeps s2 and the live ratings
+don't move until the switch. On the production findings, simulated before building it, s3 gives
+LIMITED 57, MODERATE 343, EXTENSIVE 46, SEVERE 16, UNCLEAR 96 (v0.3 under s2: 224, 176, 46, 16, 96;
+v0.2: 90, 251, 75, 14, 124). LIMITED then means what a reader expects it to: nothing in the
+documents took points off. The typical site that shares data with advertisers is MODERATE, "about as
+much as most sites do". The most common score is 88 (one medium concern), on 36% of scored sites,
+down from two piles under v0.2 (76 at 31%, 40 at 12%), and 50 scores are kept in range (v0.2: 104).
 
 The evidence lists leave out generic words the report suggested ("collect", "account", "address"):
 they would let in quotes that aren't about the question. A quote is judged to be in another language
@@ -336,6 +350,6 @@ python -m imbroglio.cli rejected-quotes --rubric v0.3
 2. `reanalyze` asks the model again only for the documents whose v0.2 answer has to change, and
    keeps the new answers for those two questions only, so the other answers don't drift. Identical
    documents are read once. `--dry-run` gives the count and estimated cost first.
-3. The two reports show the effect next to v0.2's. v0.3 goes live with `RUBRIC_VERSION=v0.3` on
-   Railway (both services) when the team is happy with them; until then the site keeps showing v0.2.
+3. The two reports show the effect next to v0.2's. v0.3 went live on Nov 17 with
+   `RUBRIC_VERSION=v0.3` on Railway (both services).
 

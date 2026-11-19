@@ -14,7 +14,8 @@ from pathlib import Path
 
 import yaml
 
-from .rubric import Rubric
+from .rubric import RUBRIC_DIR, Rubric
+from .rubric import load as load_rubric
 
 ADVICE_FILE = Path(__file__).parent / "advice.yaml"
 
@@ -63,13 +64,21 @@ def _link(where: str, link) -> str | None:
     return link
 
 
+def _all_rubrics() -> list[Rubric]:
+    return [load_rubric(p.stem) for p in sorted(RUBRIC_DIR.glob("v*.yaml"))]
+
+
 def parse(raw: dict, rubric: Rubric) -> AdviceBook:
     checks = {}
     for check_id, a in (raw.get("checks") or {}).items():
         try:
             check = rubric.check(check_id)
         except KeyError:
-            raise AdviceError(f"{check_id}: not a check in rubric {rubric.version}") from None
+            # Advice for a question a later (or earlier) rubric asks, such as
+            # v1.0's terms questions: kept for that version, skipped here.
+            if any(check_id in {c.id for c in other.checks} for other in _all_rubrics()):
+                continue
+            raise AdviceError(f"{check_id}: not a check in any rubric version") from None
         listed = tuple(str(s) for s in a.get("applies_to") or [])
         if not listed:
             raise AdviceError(f"{check_id}: applies_to is empty")

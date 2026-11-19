@@ -247,8 +247,12 @@ class ApiError(BaseModel):
 
 
 def _documents(conn, domain: str) -> list[Document]:
+    """Each of the site's documents at its rated version (db.RATED_FIRST):
+    the newest one rated under the serving rubric, else the newest stored."""
+    from .analysis import RUBRIC_VERSION
+
     rows = conn.execute(
-        """SELECT d.doc_type, d.url, d.discovered_via, v.fetch_method, v.id, v.content_hash,
+        f"""SELECT d.doc_type, d.url, d.discovered_via, v.fetch_method, v.id, v.content_hash,
                   length(v.normalized_text), v.fetched_at,
                   (SELECT count(*) FROM document_versions v2 WHERE v2.document_id = d.id),
                   (SELECT count(*) FROM change_events c WHERE c.document_id = d.id),
@@ -259,10 +263,10 @@ def _documents(conn, domain: str) -> list[Document]:
            JOIN documents d ON d.service_id = s.id
            JOIN LATERAL (SELECT * FROM document_versions v
                          WHERE v.document_id = d.id
-                         ORDER BY v.fetched_at DESC LIMIT 1) v ON true
-           WHERE s.domain = %s
+                         ORDER BY {db.RATED_FIRST}, v.fetched_at DESC LIMIT 1) v ON true
+           WHERE s.domain = %(domain)s
            ORDER BY d.doc_type""",
-        (domain,),
+        {"domain": domain, "rubric": RUBRIC_VERSION},
     ).fetchall()
     return [Document(type=r[0], url=r[1], discovered_via=r[2], fetch_method=r[3],
                      version_id=r[4], content_hash=r[5], chars=r[6], fetched_at=r[7],
@@ -911,12 +915,8 @@ class RecentResponse(BaseModel):
     sites: list[SearchResult] = Field(description="Most recently analyzed first")
 
 
-@router.get("/recent", response_model=RecentResponse,
-            responses={503: {"model": ApiError}},
-            summary="The sites analyzed most recently")
-def recent_sites(response: Response, limit: int = 10):
-    """The most recently analyzed sites with their ratings and scores, for
-    the website's "Most recently rated" list. Same data as search."""
+def _rated_sites() -> list | JSONResponse:
+    """Every analyzed site, most recently analyzed first, or a 503 response."""
     from . import search
     from .analysis import RUBRIC_VERSION
 
@@ -928,7 +928,37 @@ def recent_sites(response: Response, limit: int = 10):
         entries = search.catalogue(conn, RUBRIC_VERSION)
     finally:
         conn.close()
-    rated = sorted((e for e in entries if e.headline is not None and e.analyzed_at is not None),
-                   key=lambda e: (e.analyzed_at, e.domain), reverse=True)
+    return sorted((e for e in entries if e.headline is not None and e.analyzed_at is not None),
+                  key=lambda e: (e.analyzed_at, e.domain), reverse=True)
+
+
+@router.get("/recent", response_model=RecentResponse,
+            responses={503: {"model": ApiError}},
+            summary="The sites analyzed most recently")
+def recent_sites(response: Response, limit: int = 10):
+    """The most recently analyzed sites with their ratings and scores, for
+    the website's "Most recently rated" list. Same data as search."""
+    rated = _rated_sites()
+    if isinstance(rated, JSONResponse):
+        return rated
     response.headers["Cache-Control"] = "private, max-age=60"
     return RecentResponse(sites=[_search_result(e) for e in rated[: max(1, min(limit, 25))]])
+
+
+class SiteList(BaseModel):
+    count: int = Field(description="How many sites are listed")
+    sites: list[SearchResult] = Field(description="Every analyzed site, most recently analyzed first")
+
+
+@router.get("/sites", response_model=SiteList,
+            responses={503: {"model": ApiError}},
+            summary="Every site we have rated")
+def list_sites(response: Response):
+    """Every analyzed site with its rating, score and biggest reason, for the
+    website's index of rated sites. Same data as search and recent; sorting
+    and filtering are left to the reader, since the whole list is small."""
+    rated = _rated_sites()
+    if isinstance(rated, JSONResponse):
+        return rated
+    response.headers["Cache-Control"] = "private, max-age=60"
+    return SiteList(count=len(rated), sites=[_search_result(e) for e in rated])

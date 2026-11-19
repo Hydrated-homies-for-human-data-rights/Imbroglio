@@ -114,6 +114,18 @@ def test_a_spaced_out_name_still_names_the_site():
     assert not locate.names_site("keepassxc.org", "GitHub General Privacy Statement")
 
 
+def test_a_name_has_to_be_whole_words():
+    # usf.edu, Nov 17: Microsoft's privacy statement counted as naming USF
+    # because "contact us. For" run together reads "contactusfor".
+    assert not locate.names_site("usf.edu", "If you have questions, contact us. For more detail, see below.")
+    assert not locate.names_site("drf.com", "We may transfer data under a DRFT agreement")
+    assert not locate.names_site("rottentomatoes.com", "Rotten fruit and ripe tomatoes are not covered")
+    assert locate.names_site("usf.edu", "The University of South Florida (USF) website")
+    assert locate.names_site("usf.edu", "Questions? Write to privacy@usf.edu")
+    assert locate.names_site("hackingwithswift.com", "Hacking with Swift is run by one person")
+    assert locate.names_site("radio-canada.ca", "CBC/Radio-Canada terms of use")
+
+
 # --- picking the right page (regressions: 11 of 44 rated sites, Oct 2026) ---
 
 LONG_POLICY = POLICY * 3      # over SUBSTANTIAL_CHARS: a full document
@@ -243,6 +255,22 @@ def test_missing_document_found_through_the_other_documents_links(web):
     assert result["terms"].discovered_via == "sibling-link"
 
 
+@pytest.mark.parametrize("path, text", [
+    ("/subscriber_agreement/", "Steam Subscriber Agreement"),   # steam
+    ("/legal/eula", "End User License Agreement"),
+    ("/customer-agreement", "Customer Agreement"),
+])
+def test_terms_found_under_their_other_names(web, path, text):
+    # Steam calls its terms a "Subscriber Agreement": none of the usual names
+    # or guessed paths found it, so the site was rated on its privacy policy alone.
+    pages, _ = web
+    pages["https://st.test"] = page(f'<a href="/privacy">Privacy Policy</a> <a href="{path}">{text}</a>')
+    pages["https://st.test/privacy"] = page(LONG_POLICY)
+    pages["https://st.test" + path.rstrip("/")] = page(text + ". " + TERMS)
+    result = locate.locate_all("st.test", use_playwright=False)
+    assert result["terms"].ok and result["terms"].url.rstrip("/") == "https://st.test" + path.rstrip("/")
+
+
 def test_legal_hub_survives_soft_404(web):
     # spotify: /terms and /terms-of-service serve the same stub; /legal is the real terms
     pages, _ = web
@@ -269,6 +297,7 @@ def test_strip_tracking_keeps_real_parameters():
     ("privacy", "https://x.com/opt-out", "link-text", "Your Privacy Choices", 5),
     ("privacy", "https://x.com/blog/privacy", "link-text", "Privacy", 8),
     ("terms", "https://x.com/rewards-terms", "link-text", "Rewards Program Terms", 5),
+    ("terms", "https://x.com/subscriber_agreement/", "link-text", "Subscriber Agreement", 0),
     ("privacy", "https://other.com/privacy", "link-text-external", "Privacy Policy", 10),
 ])
 def test_rank(doc_type, url, via, text, expected):

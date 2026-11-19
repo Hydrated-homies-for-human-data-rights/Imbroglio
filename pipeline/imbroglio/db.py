@@ -196,6 +196,19 @@ def insert_attempt(conn: psycopg.Connection, batch_id: int | None, domain: str,
     )
 
 
+def domains_missing(conn: psycopg.Connection, doc_type: str) -> list[str]:
+    """Domains with a stored document of some kind but none of `doc_type`,
+    such as sites rated on their privacy policy alone."""
+    rows = conn.execute(
+        """SELECT s.domain FROM services s
+           JOIN documents d ON d.service_id = s.id
+           JOIN document_versions v ON v.document_id = d.id
+           GROUP BY s.domain
+           HAVING NOT bool_or(d.doc_type = %s)
+           ORDER BY s.domain""", (doc_type,)).fetchall()
+    return [r[0] for r in rows]
+
+
 def domains_with_privacy(conn: psycopg.Connection) -> set[str]:
     """Domains that already have a stored privacy policy version."""
     rows = conn.execute(
@@ -308,10 +321,20 @@ def audit_counts(conn: psycopg.Connection) -> dict:
     return {"totals": totals, "verdicts": counts}
 
 
+# ORDER BY term that puts a document's versions rated under %(rubric)s ahead
+# of unrated ones (alias the versions `v`). A recheck stores a changed
+# document's new text before anyone rates it; ordering by date alone would
+# take the site's rating down until then, and a rating from the last text we
+# read is better than none. Once the new version is rated it comes first.
+RATED_FIRST = ("EXISTS (SELECT 1 FROM findings rf WHERE rf.version_id = v.id"
+               " AND rf.rubric_version = %(rubric)s) DESC")
+
+
 def site_findings(conn: psycopg.Connection, rubric_version: str,
                   hash_like: str | None = None) -> dict[str, list[tuple]]:
     """domain -> (domain_hash, check_id, status, verified, created_at) for
-    every finding on the latest version of each of the site's documents. Only
+    every finding on the rated version of each of the site's documents: the
+    newest version with findings under this rubric (RATED_FIRST). Only
     analyzed sites appear. `hash_like` narrows it to a domain_hash pattern."""
     rows = conn.execute(
         f"""WITH latest AS (
@@ -319,7 +342,7 @@ def site_findings(conn: psycopg.Connection, rubric_version: str,
                 FROM documents d JOIN services s ON s.id = d.service_id
                 JOIN document_versions v ON v.document_id = d.id
                 {"WHERE s.domain_hash LIKE %(hash)s" if hash_like else ""}
-                ORDER BY d.id, v.fetched_at DESC)
+                ORDER BY d.id, {RATED_FIRST}, v.fetched_at DESC)
             SELECT l.domain, l.domain_hash, f.check_id, f.status, f.verified, f.created_at
             FROM latest l JOIN findings f ON f.version_id = l.version_id
             WHERE f.rubric_version = %(rubric)s""",

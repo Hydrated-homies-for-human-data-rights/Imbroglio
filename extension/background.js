@@ -15,7 +15,8 @@
 
 const DEFAULT_API_BASE = "https://imbroglio.io/api";
 const PREFIX_LENGTH = 5; // the website's lookup route only accepts 5 (the API itself takes 4 to 8)
-const CACHE_MS = 10 * 60 * 1000; // a site's result is reused this long before being looked up again
+const CACHE_MS = 10 * 60 * 1000; // a rated site's result is reused this long before being looked up again
+const MISS_MS = 60 * 1000; // an unrated or unknown site is looked up again sooner, since it may be rated any minute
 
 async function settings() {
     const s = await chrome.storage.local.get(["apiBase", "apiUser", "apiPassword"]);
@@ -79,12 +80,17 @@ function toSiteData(domain, entry) {
     };
 }
 
-// Results by hostname, so switching tabs doesn't repeat the lookup.
+// Results by hostname, so switching tabs doesn't repeat the lookup. `fresh`
+// (the popup opening) looks again unless the site is already rated, so
+// someone who just requested a site sees its rating once it's ready.
 const recent = new Map();
 
-async function getData(hostname) {
+async function getData(hostname, fresh = false) {
     const hit = recent.get(hostname);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
+    if (hit) {
+        const ready = hit.data.status === "ready";
+        if (Date.now() - hit.at < (ready ? CACHE_MS : MISS_MS) && (ready || !fresh)) return hit.data;
+    }
     const api = await settings();
     let data = { status: "unknown" };
     for (const domain of candidates(hostname)) {
@@ -102,7 +108,7 @@ async function getData(hostname) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "getData") {
-        getData(request.domain)
+        getData(request.domain, request.fresh === true)
             .then((data) => sendResponse({ data }))
             .catch((err) => {
                 console.error("imbroglio BG: lookup failed", err);
@@ -115,9 +121,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // --- the toolbar badge ------------------------------------------------------------
 //
 // The icon is drawn here rather than shipped as files: the logo, and in the
-// corner the site's worst level in the scorecard's own shape (the Figma's
-// "toolbar badge = the site's worst level"). A site we haven't rated gets the
-// icon dimmed with no badge. At 16 px the curvy i becomes a slanted bar with
+// corner the site's worst level in the scorecard's own shape and color (the
+// Figma's "toolbar badge = the site's worst level"), straight on the pink.
+// The score stays in the hover text, not on the icon. A site we haven't rated
+// gets the icon dimmed with no badge. At 16 px the curvy i becomes a slanted bar with
 // a bigger dot, so it still reads at toolbar size.
 
 const LOGO_PATH = "M450 398C478 382 530 378 560 402C588 425 585 465 565 505L492 632C478 658 485 690 510 705C527 715 545 715 560 710L583 795C555 815 525 823 497 822C450 821 410 800 393 760C378 723 385 670 405 630L478 492C492 465 485 448 470 440C460 434 446 432 436 433Z";
@@ -130,7 +137,7 @@ const BADGE = {
     UNCLEAR: { shape: "dot", color: "#99a4b2" },
 };
 
-function drawIcon(size, headline, corner = true) {
+function drawIcon(size, headline) {
     const canvas = new OffscreenCanvas(size, size);
     const ctx = canvas.getContext("2d");
     const badge = headline ? BADGE[headline] : null;
@@ -167,16 +174,11 @@ function drawIcon(size, headline, corner = true) {
         ctx.stroke();
     }
 
-    // the badge in the corner, on a white plate so it reads on the pink.
-    // Left off when the toolbar shows the score there instead (see setBadge).
-    if (badge && corner) {
+    // the badge in the corner: the level's shape in its color, no plate
+    if (badge) {
         ctx.globalAlpha = 1;
-        const c = size * 0.78;
-        const w = size * 0.42;
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(c, c, w * 0.62, 0, Math.PI * 2);
-        ctx.fill();
+        const c = size * 0.76;
+        const w = size * 0.54;
         ctx.fillStyle = badge.color;
         ctx.strokeStyle = badge.color;
         ctx.beginPath();
@@ -203,17 +205,11 @@ function drawIcon(size, headline, corner = true) {
 
 const icons = new Map();
 
-function iconFor(headline, corner = true) {
-    const key = `${headline || "none"}${corner ? "" : "-plain"}`;
-    if (!icons.has(key)) icons.set(key, { 16: drawIcon(16, headline, corner), 32: drawIcon(32, headline, corner) });
+function iconFor(headline) {
+    const key = headline || "none";
+    if (!icons.has(key)) icons.set(key, { 16: drawIcon(16, headline), 32: drawIcon(32, headline) });
     return icons.get(key);
 }
-
-// The score on the toolbar: Chrome draws badge text in the corner where the
-// rating's shape sits, so a site with a score shows the number on the
-// rating's color instead, and the hover text names the rating. Sites without
-// a score (UNCLEAR, NOT_DISCLOSED) keep the shape.
-const BADGE_COLORS = { SEVERE: "#b73329", EXTENSIVE: "#c76017", MODERATE: "#546579", LIMITED: "#39704e" };
 
 // --- the two notifications --------------------------------------------------------
 //
@@ -312,15 +308,9 @@ async function setBadge(tabId, url, loaded = false) {
     } catch (err) {
         console.warn("imbroglio BG: badge lookup failed", err);
     }
-    const showScore = score != null && BADGE_COLORS[headline];
     try {
-        await chrome.action.setIcon({ tabId, imageData: iconFor(headline, !showScore) });
+        await chrome.action.setIcon({ tabId, imageData: iconFor(headline) });
         await chrome.action.setTitle({ tabId, title });
-        await chrome.action.setBadgeText({ tabId, text: showScore ? String(score) : "" });
-        if (showScore) {
-            await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLORS[headline] });
-            if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ tabId, color: "#ffffff" });
-        }
     } catch {
         // the tab may have closed meanwhile
     }

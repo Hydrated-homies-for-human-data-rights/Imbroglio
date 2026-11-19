@@ -37,13 +37,15 @@ TEXT_PATTERNS = {
         r"プライバシー|個人情報|隐私|개인정보", re.I),
     "terms": re.compile(
         r"terms\s*(of\s*(service|use))?|conditions\s*of\s*use|user\s*agreement|"
+        r"(subscriber|customer|membership)\s*agreement|(end[- ]?user\s*)?licen[cs]e\s*agreement|\beula\b|"
         r"\bagb\b|nutzungsbedingungen|conditions g[ée]n[ée]rales|mentions l[ée]gales|"
         r"t[ée]rminos|termini|algemene voorwaarden|termos de uso|"
         r"利用規約|服务条款|用户协议|이용약관", re.I),
 }
 HREF_PATTERNS = {
     "privacy": re.compile(r"privacy", re.I),
-    "terms": re.compile(r"terms|tos\b|conditions|user-?agreement|eula", re.I),
+    "terms": re.compile(r"terms|tos\b|conditions|(user|subscriber|customer|membership|licen[cs]e)[-_]?agreement|eula",
+                        re.I),
 }
 COMMON_PATHS = {
     # "/legal" last: a legal hub (spotify) lists both documents by name, and
@@ -63,6 +65,7 @@ STRONG_TEXT = {
         r"プライバシーポリシー|隐私政策|개인정보\s*처리방침", re.I),
     "terms": re.compile(
         r"terms\s*(of\s*(service|use)|(and|&)\s*conditions)|user\s*agreement|conditions\s*of\s*use|"
+        r"(subscriber|customer|membership)\s*agreement|end[- ]?user\s*licen[cs]e\s*agreement|"
         r"nutzungsbedingungen|\bagb\b|conditions g[ée]n[ée]rales|t[ée]rminos (y condiciones|de (uso|servicio))|"
         r"利用規約|服务条款|用户协议|이용약관", re.I),
 }
@@ -134,7 +137,7 @@ VALIDATION_SIGNALS = {
         r"dati personali|persoonsgegevens|dados pessoais",
     )],
     "terms": [re.compile(p, re.I) for p in (
-        r"terms (of (service|use)|and conditions)|user agreement",
+        r"terms (of (service|use)|and conditions)|(user|subscriber|customer|membership|licen[cs]e) agreement",
         r"\bagree(ment)?\b",
         r"liab(le|ility)",
         r"terminat(e|ion)",
@@ -253,7 +256,8 @@ def rank(doc_type: str, url: str, via: str, text: str = "") -> int:
     return r
 
 
-_TRACKING_PARAM = re.compile(r"^(utm_\w+|__hs\w+|_ga|_gl|ref_?|fbclid|gclid|mc_[ce]id)$", re.I)
+# snr: Steam's link-source tag (?snr=1_4_4__global-responsive-menu)
+_TRACKING_PARAM = re.compile(r"^(utm_\w+|__hs\w+|_ga|_gl|ref_?|fbclid|gclid|mc_[ce]id|snr)$", re.I)
 
 
 def _strip_tracking(url: str) -> str:
@@ -330,16 +334,37 @@ def _iframe_srcs(html: str, base_url: str, domain: str) -> tuple[list[str], bool
     return follow, captcha
 
 
-_NAME_GAPS = re.compile(r"[\s\-.]+")
+_WORD = re.compile(r"[a-z0-9]+")
+_MAX_NAME_WORDS = 4
 
 
 def names_site(domain: str, text: str) -> bool:
     """A policy hosted on another site counts only if it names this site.
     Google's policy names YouTube (legit: youtube.com uses it); Cloudflare's
-    and reCAPTCHA's links lead to policies that never name the site. Spaces
-    and hyphens are ignored, so "Power Apps" names powerapps.com."""
-    brand = brand_of(domain).lower()
-    return len(brand) >= 3 and brand in _NAME_GAPS.sub("", text.lower())
+    and reCAPTCHA's links lead to policies that never name the site.
+
+    The name has to be whole words: one word, or up to four in a row run
+    together, so "Power Apps" names powerapps.com and "League of Legends"
+    names leagueoflegends.com. Squashing the whole text together instead let
+    Microsoft's privacy statement name usf.edu ("contact us. For ..."), and
+    it was stored as USF's policy (Nov 17)."""
+    brand = "".join(_WORD.findall(brand_of(domain).lower()))
+    if len(brand) < 3:
+        return False
+    words = _WORD.findall(text.lower())
+    for i, word in enumerate(words):
+        if not brand.startswith(word):
+            continue
+        joined = word
+        for nxt in words[i + 1:i + _MAX_NAME_WORDS]:
+            if joined == brand:
+                break
+            joined += nxt
+            if not brand.startswith(joined):
+                break
+        if joined == brand:
+            return True
+    return False
 
 
 def _validate(doc_type: str, text: str) -> tuple[bool, str]:

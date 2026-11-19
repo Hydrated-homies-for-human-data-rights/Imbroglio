@@ -192,6 +192,13 @@ export default function Report({ site }: { site: Site }) {
           </span>
         ))}
       </div>
+      {site.missing.length > 0 && site.documents.length > 0 && (
+        <p className="mt-2 text-sm text-[#607186]">
+          {site.missing.includes("terms")
+            ? "We couldn’t find their terms of service, so this is based on the privacy policy alone."
+            : "We couldn’t find their privacy policy, so this is based on the terms of service alone."}
+        </p>
+      )}
 
       <section className="mt-10">
         <div className="mb-3 flex items-end justify-between gap-4">

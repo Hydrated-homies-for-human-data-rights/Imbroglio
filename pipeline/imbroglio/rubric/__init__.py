@@ -112,11 +112,22 @@ class Check:
         return bool(self._evidence_re.search(quote))
 
 
+SCORERS = ("s1", "s2", "s3")
+
+
 @dataclass(frozen=True)
 class Rubric:
     version: str
     categories: dict[str, str]     # key -> display name
     checks: list[Check]
+    # The scoring rules this rubric is rated by (scorer.py). Left out, it
+    # follows the rubric: s2 when answers carry concern levels, else s1.
+    # v0.3 names s3.
+    scorer: str | None = None
+    # Categories a site needs at least one counted answer from to be rated
+    # LIMITED (scorer.rate). v1.0 names its terms of service category, so a
+    # site whose terms we never read can't come out clean.
+    limited_requires: tuple[str, ...] = ()
 
     def check(self, check_id: str) -> Check:
         for c in self.checks:
@@ -149,6 +160,9 @@ def load(version: str = "v0") -> Rubric:
     if matching not in EVIDENCE_MATCHING:
         raise RubricError(f"evidence_matching must be one of {EVIDENCE_MATCHING}, got {matching!r}")
     lenient = matching == "lenient"
+    scorer_name = raw.get("scorer")
+    if scorer_name is not None and scorer_name not in SCORERS:
+        raise RubricError(f"scorer must be one of {SCORERS}, got {scorer_name!r}")
     categories = raw["categories"]
     checks, seen = [], set()
     for c in raw["checks"]:
@@ -186,7 +200,13 @@ def load(version: str = "v0") -> Rubric:
     missing = set(categories) - {c.category for c in checks}
     if missing:
         raise RubricError(f"categories with no checks: {sorted(missing)}")
-    rubric = Rubric(version, dict(categories), checks)
+    limited_requires = tuple(raw.get("limited_requires") or ())
+    unknown = [c for c in limited_requires if c not in categories]
+    if unknown:
+        raise RubricError(f"limited_requires names unknown categories: {unknown}")
+    rubric = Rubric(version, dict(categories), checks, scorer_name, limited_requires)
+    if scorer_name in ("s2", "s3") and not rubric.uses_concerns:
+        raise RubricError(f"scorer {scorer_name} needs answers with concern levels")
     for c in checks:
         for s in c.statuses.values():
             if s.same_concern_as is not None and (s.same_concern_as not in seen or s.same_concern_as == c.id):

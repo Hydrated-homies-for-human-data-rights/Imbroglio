@@ -145,10 +145,11 @@ def test_published_rules_and_tiers_follow_the_version():
 
 def test_every_advice_answer_exists_in_some_rubric():
     raw = yaml.safe_load(advice.ADVICE_FILE.read_text(encoding="utf-8"))
-    versions = [load("v0.1"), V02, load("v1.0")]
+    versions = [load("v0.1"), V02, load("v0.3"), load("v1.0")]
     for check_id, a in raw["checks"].items():
         for status in a["applies_to"]:
-            assert any(status in r.check(check_id).statuses for r in versions), (check_id, status)
+            assert any(c.id == check_id and status in c.statuses for r in versions for c in r.checks), \
+                (check_id, status)
     book = advice.load("v0.2")
     assert book.for_finding("sells_personal_data", "state_law_sale").title
     assert book.for_finding("sells_personal_data", "yes") is None
@@ -271,3 +272,16 @@ def test_scorecard_and_lookup_carry_the_same_score(conn, monkeypatch):
     full = hashlib.sha256(b"onehigh.example").hexdigest()
     entry = next(s for s in client.get(f"/v1/lookup/{full[:5]}").json()["sites"] if s["hash"] == full)
     assert entry["scores"]["score"] == 46
+
+
+@pytest.mark.parametrize("scorer_name, rubric_file, message", [
+    ("s4", "v0.2.yaml", "scorer must be one of"),
+    ("s3", "v0.1.yaml", "scorer s3 needs answers with concern levels"),
+])
+def test_a_named_scorer_must_exist_and_fit_the_rubric(tmp_path, monkeypatch, scorer_name, rubric_file, message):
+    raw = yaml.safe_load((rubric_mod.RUBRIC_DIR / rubric_file).read_text(encoding="utf-8"))
+    raw["version"], raw["scorer"] = "vtest", scorer_name
+    (tmp_path / "vtest.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.setattr(rubric_mod, "RUBRIC_DIR", tmp_path)
+    with pytest.raises(RubricError, match=message):
+        rubric_mod.load.__wrapped__("vtest")

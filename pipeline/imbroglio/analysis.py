@@ -289,6 +289,16 @@ def reanalysis_targets(conn: psycopg.Connection, from_version: str,
     return list(groups.values())
 
 
+def reread_versions(conn: psycopg.Connection, rubric_version: str) -> set[int]:
+    """Document versions the model has already read successfully under
+    `rubric_version`. A rebase never writes an extraction run, so any version
+    here was read for real (by a reanalysis or a full extraction), and a
+    group of identical copies containing one needs no second read."""
+    return {r[0] for r in conn.execute(
+        "SELECT DISTINCT version_id FROM extraction_runs WHERE rubric_version = %s AND status = 'ok'",
+        (rubric_version,))}
+
+
 def average_cost(conn: psycopg.Connection) -> float:
     """Average cost of a successful extraction so far (USD), for estimates."""
     row = conn.execute("SELECT avg(cost_usd) FROM extraction_runs WHERE status = 'ok' AND cost_usd > 0").fetchone()
