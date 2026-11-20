@@ -6,8 +6,8 @@ comparison forgives only differences that don't change meaning:
   * whitespace and line breaks
   * typographic vs straight quotes, dashes, ellipsis characters
   * letter case
-  * an ellipsis inside the quote ("We collect ... your email") — each piece
-    must appear, in order
+  * an ellipsis inside the quote ("We collect ... your email address") —
+    each piece must appear, in order, close to the one before (_spans)
 
 Anything else — a paraphrase, a changed word, a merged sentence — fails, and a
 finding with no verified quote is stored but never shown or scored. A strict
@@ -98,21 +98,57 @@ def _negations(text: str) -> int:
     return len(_NEGATION.findall(text))
 
 
+# An ellipsis skips words inside one passage; it must not stitch a claim
+# together from words scattered across the document ("We ... sell ... your
+# data"). So the pieces must sit close together, none may be a lone word,
+# and one of them must be a real clause. A four-word floor for every piece
+# was tried and would reject quotes like "We collect your email address ...
+# approximate location", where a list ends in a short noun phrase.
+MAX_PIECE_GAP = 300        # canonical characters skipped between two pieces
+MIN_PIECE_WORDS = 2
+MIN_ANCHOR_WORDS = 4       # the longest piece of an ellipsis quote
+MAX_ANCHOR_TRIES = 50      # places tried for the first piece of an ellipsis quote
+
+
+def _chain(pieces: list[str], doc: str, start: int) -> list[tuple[int, int]] | None:
+    """Spans of `pieces` in order with the first at or after `start`, each
+    taken at its earliest place after the one before, or None."""
+    spans: list[tuple[int, int]] = []
+    pos = start
+    for piece in pieces:
+        span = _find_piece(piece, doc, pos)
+        if span is None or (spans and span[0] - spans[-1][1] > MAX_PIECE_GAP):
+            return None
+        spans.append(span)
+        pos = span[1]
+    return spans
+
+
 def _spans(quote: str, doc: str) -> list[tuple[int, int]] | None:
     """Canonical-text spans of each piece of `quote`, in order, or None."""
     q = canon(quote).strip(" \"'")
     if len(q) < MIN_QUOTE_CHARS:
         return None
-    spans, pos = [], 0
-    for piece in (p.strip(" \"'") for p in _ELLIPSIS.split(q)):
-        if not piece:
-            continue
-        span = _find_piece(piece, doc, pos)
-        if span is None:
+    pieces = [p for p in (p.strip(" \"'") for p in _ELLIPSIS.split(q)) if p]
+    if not pieces:
+        return None
+    if len(pieces) == 1:
+        return _chain(pieces, doc, 0)
+    words = [len(p.split()) for p in pieces]
+    if min(words) < MIN_PIECE_WORDS or max(words) < MIN_ANCHOR_WORDS:
+        return None
+    # The first piece's earliest place can be too far from the second while a
+    # later one is close (boilerplate repeats), so try its other exact places.
+    start = 0
+    for _ in range(MAX_ANCHOR_TRIES):
+        spans = _chain(pieces, doc, start)
+        if spans is not None:
+            return spans
+        nxt = doc.find(pieces[0], start)
+        if nxt < 0:
             return None
-        spans.append(span)
-        pos = span[1]
-    return spans or None
+        start = nxt + 1
+    return None
 
 
 def verify_quote(quote: str, document: str, *, _doc_canon: str | None = None) -> bool:
