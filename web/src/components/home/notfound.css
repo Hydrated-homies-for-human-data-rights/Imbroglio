@@ -1,0 +1,47 @@
+/* The 404 page (app/not-found.tsx): the About page's opening with a search
+   line and a loose thread in place of the knot. */
+
+.notfound .hero {
+  align-items: center;
+  padding-bottom: 96px;
+}
+.notfound .search {
+  margin-top: 30px;
+}
+.notfound .nf-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 16px;
+}
+.notfound .nf-links a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 4px;
+}
+.notfound .nf-links a:hover {
+  color: var(--pink-deep);
+  text-decoration-color: currentColor;
+}
+.notfound .loose {
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+  justify-self: center;
+}
+.notfound .loose text {
+  font-style: italic;
+  font-size: 15px;
+  fill: var(--faint);
+}
+
+@media (max-width: 760px) {
+  .notfound .loose {
+    max-width: 260px;
+    justify-self: start;
+  }
+}
