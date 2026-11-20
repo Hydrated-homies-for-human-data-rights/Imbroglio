@@ -95,7 +95,7 @@ def process_one(worker_id: str) -> bool:
     if job is None:
         return False
 
-    request_id, domain, use_playwright = job
+    request_id, domain, use_playwright, policy_url = job
     log.info("job %s: %s (browser %s)", request_id, domain, "on" if use_playwright else "off")
     pipeline_log = logging.getLogger("imbroglio")
     pipeline_log.setLevel(logging.INFO)
@@ -103,7 +103,8 @@ def process_one(worker_id: str) -> bool:
     pipeline_log.addHandler(handler)
     t0 = time.time()
     try:
-        outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET)
+        outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET,
+                           policy_url=policy_url)
         seconds = time.time() - t0
         conn = db.connect()
         try:

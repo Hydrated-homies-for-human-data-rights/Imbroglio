@@ -19,8 +19,8 @@ const CAP = 12
 const MEANING: Partial<Record<Tier, string>> = {
   SEVERE: "Two or more red flags, or one of the two worst alone: selling your data, or no way to delete it.",
   EXTENSIVE: "One red flag: a practice at its broadest, like training AI on what you post.",
-  MODERATE: "Two or more medium concerns, such as sharing for advertising or keeping data open-endedly.",
-  LIMITED: "Nothing of concern found, with enough of the key questions answered to say so.",
+  MODERATE: "At least one medium concern and no red flag, such as sharing your data for advertising.",
+  LIMITED: "Nothing took points off, with enough of the key questions answered to say so.",
   UNCLEAR: "Nothing of concern found, but too little answered to call it limited. Silence isn’t read as good.",
   NOT_DISCLOSED: "The documents don’t address the practices we ask about.",
 }

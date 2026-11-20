@@ -16,8 +16,10 @@ browser, there is no account, and the site's name never leaves the browser:
 `background.js` hashes the domain with sha256 and sends only the first three
 characters of the hash to `imbroglio.io/api/v1/lookup/<prefix>`, then picks
 the site out of the matches by its full hash. Three hex characters make 4,096
-buckets, each shared by hundreds of popular sites, so the prefix doesn't say
-which one you're on (five, before 1.0, nearly did). Lookups only read cached
+buckets, so many sites share each one and a single prefix doesn't say which
+one you're on (five, before 1.0, nearly did). A subdomain can take up to three
+lookups in a row (the name, then its parents), which narrows it down much
+more; 1.1 will look up only the registrable domain. Lookups only read cached
 results. A site we haven't analyzed gets a link to request it on the website,
 where the request limits apply.
 
