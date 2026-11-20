@@ -56,3 +56,25 @@ def test_visitor_header_without_the_right_key_is_ignored(monkeypatch):
 def test_visitor_header_is_ignored_when_no_key_is_set():
     r = _request({"X-Imbroglio-Web-Key": "", "X-Imbroglio-Visitor-IP": "5.6.7.8"})
     assert api.client_address(r) == "10.0.0.5"
+
+
+@pytest.mark.parametrize("given, counted", [
+    ("2001:db8:1:2:aaaa::1", "2001:db8:1:2::/64"),
+    ("2001:db8:1:2:ffff:ffff:ffff:ffff", "2001:db8:1:2::/64"),  # same /64, same limit
+    ("::ffff:8.8.8.8", "8.8.8.8"),
+    ("8.8.8.8", "8.8.8.8"),
+])
+def test_an_ipv6_visitor_counts_as_its_slash_64(monkeypatch, given, counted):
+    # One home or phone gets a whole /64; counting single addresses would let
+    # anyone rotate past the limits.
+    monkeypatch.setattr(api, "CLIENT_IP_HEADER", "x-real-ip")
+    assert api.client_address(_request({"X-Real-IP": given})) == counted
+    monkeypatch.setattr(api, "WEB_CLIENT_KEY", "k" * 32)
+    via_site = _request({"X-Imbroglio-Web-Key": "k" * 32, "X-Imbroglio-Visitor-IP": given})
+    assert api.client_address(via_site) == "visitor " + counted
+
+
+def test_the_daily_limit_holds_past_the_hourly_window():
+    day = api._RateLimiter(2, window=86400)
+    assert day.allow("a") and day.allow("a") and not day.allow("a")
+    assert day.allow("b")
