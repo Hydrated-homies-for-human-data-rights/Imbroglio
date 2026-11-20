@@ -110,13 +110,15 @@ def catalogue(conn, rubric_version: str) -> list[Entry]:
     # Only sites with at least one stored document. A services row is made
     # before discovery runs, so typos, dead domains and internal host names
     # someone asked about would otherwise be searchable (and look known).
+    # Held documents don't count, so a site whose only one is held drops out.
     rows = conn.execute(
         """SELECT s.domain, s.name,
                   coalesce(array_agg(DISTINCT d.doc_type ORDER BY d.doc_type)
                            FILTER (WHERE d.doc_type IS NOT NULL), '{}'),
                   (SELECT max(c.detected_at) FROM change_events c
-                   JOIN documents d2 ON d2.id = c.document_id WHERE d2.service_id = s.id)
-           FROM services s LEFT JOIN documents d ON d.service_id = s.id
+                   JOIN documents d2 ON d2.id = c.document_id
+                   WHERE d2.service_id = s.id AND d2.held_reason IS NULL)
+           FROM services s LEFT JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
            GROUP BY s.id, s.domain, s.name
            HAVING count(d.id) > 0""").fetchall()
     entries = [Entry(domain, name, tuple(docs), heads.get(domain),
