@@ -69,13 +69,17 @@ def upsert_service(conn: psycopg.Connection, domain: str) -> int:
 def upsert_document(conn: psycopg.Connection, service_id: int, doc_type: str,
                     url: str, discovered_via: str | None) -> int:
     """Also lifts any hold: analyze.store_text only gets here with a page the
-    hold wasn't about (a different URL, or one a person stored by hand)."""
+    hold wasn't about (a different URL, or one a person stored by hand).
+    Lifting it sets valid_from, so the held page's versions (and any rating
+    they had) never count again."""
     row = conn.execute(
         """INSERT INTO documents (service_id, doc_type, url, discovered_via)
            VALUES (%s, %s, %s, %s)
            ON CONFLICT (service_id, doc_type)
            DO UPDATE SET url = EXCLUDED.url, discovered_via = EXCLUDED.discovered_via,
-                         held_reason = NULL
+                         held_reason = NULL,
+                         valid_from = CASE WHEN documents.held_reason IS NOT NULL
+                                           THEN now() ELSE documents.valid_from END
            RETURNING id""",
         (service_id, doc_type, url, discovered_via),
     ).fetchone()
@@ -392,8 +396,11 @@ def audit_counts(conn: psycopg.Connection) -> dict:
 # document's new text before anyone rates it; ordering by date alone would
 # take the site's rating down until then, and a rating from the last text we
 # read is better than none. Once the new version is rated it comes first.
-RATED_FIRST = ("EXISTS (SELECT 1 FROM findings rf WHERE rf.version_id = v.id"
-               " AND rf.rubric_version = %(rubric)s) DESC")
+# Versions from before a lifted hold (documents.valid_from) were the wrong
+# page: their findings never make a version "rated".
+RATED_FIRST = ("(EXISTS (SELECT 1 FROM findings rf WHERE rf.version_id = v.id"
+               " AND rf.rubric_version = %(rubric)s)"
+               " AND v.fetched_at >= coalesce(d.valid_from, '-infinity'::timestamptz)) DESC")
 
 
 def site_findings(conn: psycopg.Connection, rubric_version: str,

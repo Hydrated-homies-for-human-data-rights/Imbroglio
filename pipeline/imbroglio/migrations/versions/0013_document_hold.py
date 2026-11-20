@@ -7,6 +7,10 @@ stays, but a held document is left out of every public answer, is never
 rated, and isn't rechecked. NULL is a normal document; text is why a person
 held it (cli hold / unhold / held).
 
+valid_from is set when a hold is lifted by storing a different page: versions
+fetched before it are the wrong page, so they never count again, even the
+ones that were rated.
+
 Revision ID: 0013
 """
 
@@ -19,10 +23,12 @@ depends_on = None
 
 UP = r"""
 ALTER TABLE documents ADD COLUMN held_reason TEXT;
+ALTER TABLE documents ADD COLUMN valid_from TIMESTAMPTZ;
 """
 
 DOWN = """
 ALTER TABLE documents DROP COLUMN IF EXISTS held_reason;
+ALTER TABLE documents DROP COLUMN IF EXISTS valid_from;
 """
 
 

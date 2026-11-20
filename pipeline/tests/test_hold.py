@@ -132,7 +132,7 @@ def test_rediscovering_the_held_page_stores_nothing(conn):
     o = store_text(conn, sid, "terms", "https://coinbase.com/legal/promo/#x", "link-text", "static",
                    PROMO + " a newer promo")
     assert o.status == "held" and o.version_id is None and not o.found
-    assert o.notes == "held: promo help article"
+    assert o.notes == "held: marked as the wrong page"   # the reason stays internal
     assert conn.execute("SELECT count(*) FROM document_versions").fetchone()[0] == 1
     assert db.held_documents(conn) == [("coinbase.com", "terms", "promo help article",
                                         "https://www.coinbase.com/legal/promo")]
@@ -148,6 +148,22 @@ def test_discovering_a_different_page_stores_it_and_lifts_the_hold(conn):
     assert db.held_documents(conn) == []
     assert [d["url"] for d in client.get("/v1/sites/coinbase.com").json()["documents"]] == \
         ["https://www.coinbase.com/legal/user_agreement"]
+
+
+def test_a_lifted_hold_never_brings_back_the_wrong_pages_rating(conn):
+    # The wrong page was rated before it was held (the backlog did this to
+    # coinbase.com's promo page). Once a different page is found, the old
+    # rating must not stand in for the new page while that one waits.
+    wrong = _store(conn, "coinbase.com", "terms", PROMO, url="https://www.coinbase.com/legal/promo")
+    _rate(conn, wrong)
+    db.hold_document(conn, "coinbase.com", "terms", "promo help article")
+    sid = db.upsert_service(conn, "coinbase.com")
+    o = store_text(conn, sid, "terms", "https://www.coinbase.com/legal/user_agreement", "link-text",
+                   "static", TERMS)
+    conn.commit()
+    site = client.get("/v1/sites/coinbase.com").json()
+    assert site["scorecard"] is None                      # nothing rated now: the new page waits
+    assert analysis.pending_versions(conn) == [o.version_id]   # and the backlog will rate it
 
 
 def test_storing_by_hand_lifts_the_hold_even_at_the_same_address(conn):

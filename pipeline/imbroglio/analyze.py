@@ -131,7 +131,7 @@ def store_text(conn, service_id: int, doc_type: str, url: str, discovered_via: s
         log.info("[%s] this page was marked as the wrong one, not stored", doc_type)
         log.info("[%s] held: %s", doc_type, hold[1], extra=SERVER_ONLY)
         conn.commit()
-        return DocOutcome(doc_type, "held", url, None, len(text), f"held: {hold[1]}", digest,
+        return DocOutcome(doc_type, "held", url, None, len(text), "held: marked as the wrong page", digest,
                           discovered_via, fetch_method)
     document_id = db.upsert_document(conn, service_id, doc_type, url, discovered_via)
     previous = db.latest_version(conn, document_id)
@@ -150,7 +150,7 @@ def store_text(conn, service_id: int, doc_type: str, url: str, discovered_via: s
                  doc_type, previous[0])
 
     conn.commit()
-    note = f"hold lifted (was held: {hold[1]})" if hold is not None else ""
+    note = "hold lifted: a different page was found" if hold is not None else ""
     return DocOutcome(doc_type, status, url, version_id, len(text), note, digest,
                       discovered_via, fetch_method)
 

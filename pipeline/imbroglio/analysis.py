@@ -194,7 +194,8 @@ def pending_versions(conn: psycopg.Connection, domain: str | None = None,
     Held documents are never pending. `domain` narrows it to one site."""
     rows = conn.execute(
         """WITH latest AS (
-               SELECT DISTINCT ON (d.id) v.id AS version_id, d.id AS document_id, v.fetched_at
+               SELECT DISTINCT ON (d.id) v.id AS version_id, d.id AS document_id, v.fetched_at,
+                      d.valid_from
                FROM documents d JOIN services s ON s.id = d.service_id
                JOIN document_versions v ON v.document_id = d.id
                WHERE d.held_reason IS NULL
@@ -203,7 +204,8 @@ def pending_versions(conn: psycopg.Connection, domain: str | None = None,
            SELECT l.version_id FROM latest l
            WHERE NOT EXISTS (SELECT 1 FROM findings f
                              JOIN document_versions v2 ON v2.id = f.version_id
-                             WHERE v2.document_id = l.document_id AND f.rubric_version = %(rubric)s)
+                             WHERE v2.document_id = l.document_id AND f.rubric_version = %(rubric)s
+                               AND v2.fetched_at >= coalesce(l.valid_from, '-infinity'::timestamptz))
              AND (SELECT count(*) FROM extraction_runs r
                   WHERE r.version_id = l.version_id AND r.rubric_version = %(rubric)s) < %(tries)s
            ORDER BY l.fetched_at, l.version_id
