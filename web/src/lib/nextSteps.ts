@@ -138,7 +138,9 @@ function topFinding(category: CategoryScore): Evidence | null {
 
 const linkFor = (site: Site, key: string): SiteLink | undefined => (site.links ?? []).find((l) => l.category === key)
 
-const onSite = (l: SiteLink): NextStepAction => ({ kind: "link", href: l.url, text: l.text, onSite: true })
+// Harvested link text sometimes keeps the quote marks around it on the page.
+const unquote = (s: string) => s.trim().replace(/^['"‘“]+|['"’”]+$/g, "").trim() || s
+const onSite = (l: SiteLink): NextStepAction => ({ kind: "link", href: l.url, text: unquote(l.text), onSite: true })
 
 export function buildNextSteps(site: Site): NextSteps | null {
   const card = site.scorecard
