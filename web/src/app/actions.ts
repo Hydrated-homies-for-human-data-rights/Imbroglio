@@ -5,7 +5,7 @@ import { ApiError, REPORT_KINDS, requestAnalysis, submitReport as postReport, ty
 
 export type RequestState =
   | { kind: "idle" }
-  | { kind: "accepted"; domain: string; status: string; requestId: number | null }
+  | { kind: "accepted"; domain: string; status: string; requestId: string | null }
   | { kind: "error"; message: string }
 
 export async function submitRequest(_prev: RequestState, form: FormData): Promise<RequestState> {
