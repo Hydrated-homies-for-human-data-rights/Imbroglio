@@ -58,7 +58,11 @@ checks:
   - id: sells_personal_data
     category: selling_sharing
     question: Does the company sell users' personal information?
-    evidence: ["sell", "sale", "sold", "rent", "trade", "share", "sharing", "third part", "outside part", "cross context", "targeted advertising", "custom audience"]
+    # Nov 19, 2026: "monetary", "valuable consideration" and "exchange for"
+    # added. A sale is often written the way California's law defines it,
+    # "disclosed ... for monetary or other valuable consideration", and that
+    # quote was turned away for having none of the words above.
+    evidence: ["sell", "sale", "sold", "rent", "trade", "share", "sharing", "third part", "outside part", "cross context", "targeted advertising", "custom audience", "monetary", "valuable consideration", "exchange for"]
     guidance: >
       `sold_for_money` only if the document says personal information is sold
       or rented for money, for example to data brokers. US state privacy laws
