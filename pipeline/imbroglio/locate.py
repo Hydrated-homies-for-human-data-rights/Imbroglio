@@ -111,6 +111,11 @@ NON_DOC_PATH = re.compile(r"/(blog|news|newsroom|press|stories|careers|jobs)(/|$
 # page reads like a policy, so the floor only has to catch stubs. Same floor
 # as a hand-submitted document (analyze.MIN_MANUAL_CHARS).
 MIN_CHARS = 1000
+# Longer than this is not one policy: a page script can build any amount of
+# text, and every stored version is kept. The longest real document seen is
+# Microsoft's Services Agreement at about 114,000 characters; this is over
+# four times that. db.insert_version refuses anything longer as a backstop.
+MAX_TEXT_CHARS = 500_000
 # A valid page shorter than this is often a hub that links to the real policy
 # (apple.com/privacy, reddit.com/privacy, paypal's privacy center). It is kept
 # as a fallback while discovery follows its links; small sites with genuinely
@@ -373,6 +378,8 @@ def _validate(doc_type: str, text: str) -> tuple[bool, str]:
     both together as 'thin'."""
     if len(text) < MIN_CHARS:
         return False, f"too short ({len(text)} chars)"
+    if len(text) > MAX_TEXT_CHARS:
+        return False, f"too long ({len(text):,} chars)"
     hits = sum(1 for sig in VALIDATION_SIGNALS[doc_type] if sig.search(text))
     if hits < MIN_KEYWORD_HITS:
         return False, f"no {doc_type} signals ({len(text)} chars, {hits} hit)"

@@ -43,12 +43,7 @@ def test_a_huge_page_is_refused_not_read_into_memory(monkeypatch):
     assert body.closed
 
 
-def test_a_page_that_drips_bytes_is_cut_off(monkeypatch):
-    clock = iter(range(0, 1000, 10))           # every chunk arrives 10 s after the last
-    monkeypatch.setattr(fetch.time, "monotonic", lambda: next(clock))
-    _serve(monkeypatch, _Body([b"x"] * 50))
-    html, status = fetch.fetch_static("https://site.example/")
-    assert html is None and status.startswith("too large")
+# A page that drips bytes is covered against a real socket in test_fetch_deadline.
 
 
 def test_a_non_html_answer_is_closed_without_reading(monkeypatch):

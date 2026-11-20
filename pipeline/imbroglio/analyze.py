@@ -24,7 +24,7 @@ from . import db
 
 log = logging.getLogger("imbroglio")
 from .extract import extract_text
-from .locate import Located, locate_all
+from .locate import MAX_TEXT_CHARS, Located, locate_all
 from .normalize import content_hash, normalize
 
 
@@ -145,6 +145,10 @@ def store_manual(domain: str, doc_type: str, url: str, raw: str,
         return DocOutcome(doc_type, "failed", url, None, len(text),
                           f"only {len(text)} characters after normalization; a policy has at "
                           f"least {MIN_MANUAL_CHARS}. Is this the block page?")
+    if len(text) > MAX_TEXT_CHARS:
+        return DocOutcome(doc_type, "failed", url, None, len(text),
+                          f"{len(text):,} characters after normalization; more than any one "
+                          f"policy ({MAX_TEXT_CHARS:,} at most). Is this the whole site?")
     conn = db.connect(dsn)
     try:
         db.init_schema(conn)

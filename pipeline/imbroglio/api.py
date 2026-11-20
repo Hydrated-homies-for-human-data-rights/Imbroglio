@@ -36,6 +36,7 @@ from . import db, jobs, scorer
 from .advice import Advice, load as load_advice
 from .rubric import NOT_DISCLOSED, load as load_rubric
 from .batch import clean_domain
+from .locate import site_of
 
 # Abuse limits for the only write path. Every accepted request can cost a
 # crawl (and, once extraction exists, LLM tokens), so both a per-client rate
@@ -45,6 +46,11 @@ DAILY_REQUEST_CAP = int(os.environ.get("DAILY_REQUEST_CAP", "300"))
 # One visitor's share of the day, so a single person can't use up DAILY_REQUEST_CAP
 # (and with it the day's analysis budget) for everyone else.
 REQUESTS_PER_DAY = int(os.environ.get("REQUESTS_PER_DAY", "60"))
+# New requests per registrable domain per 24 hours, all clients. Subdomains
+# are separate sites to us (a1.evil.com, a2.evil.com, ...), so without this
+# one domain owner could mint paid analyses without end. Real sites have a
+# handful of subdomains worth asking about.
+SITE_REQUESTS_PER_DAY = int(os.environ.get("SITE_REQUESTS_PER_DAY", "10"))
 PUBLIC_SOURCES = ("web", "api", "extension")
 # Lookups only read, but each one is a database query, so a client sweeping
 # hash prefixes gets cut off too. An extension user opens the popup a few
@@ -291,6 +297,26 @@ def _pending(conn, domain: str) -> PendingRequest | None:
         return None
     return PendingRequest(id=str(row[0]), status=row[1], stage=row[2], requested_at=row[3],
                           queue_ahead=row[4] if row[1] == "queued" else 0)
+
+
+def _awaiting_analysis(conn, domain: str) -> bool:
+    """A stored document of the site still has no rating and hasn't used up
+    its tries (analysis.pending_versions). The web service has no API key, so
+    only the on/off switch is checked here; the worker checks the rest."""
+    from .analysis import pending_versions
+
+    if os.environ.get("EXTRACTION_ENABLED", "1") != "1":
+        return False
+    return bool(pending_versions(conn, domain=domain, limit=1))
+
+
+def _site_requests_today(conn, site: str) -> int:
+    """New public requests in the last 24 hours for `site` or any of its subdomains."""
+    return conn.execute(
+        """SELECT count(*) FROM analysis_requests
+           WHERE requested_at > now() - interval '24 hours' AND source = ANY(%s)
+             AND (domain = %s OR right(domain, %s) = %s)""",
+        (list(PUBLIC_SOURCES), site, len(site) + 1, "." + site)).fetchone()[0]
 
 
 def _last_attempt(conn, domain: str) -> datetime | None:
@@ -541,11 +567,14 @@ def create_request(body: NewRequest, request: Request):
     try:
         db.init_schema(conn)
         if not body.refresh:
-            if _documents(conn, domain):
+            docs = _documents(conn, domain)
+            # A site stored but never rated (the day's analysis budget ran
+            # out) is queued again rather than called available.
+            if docs and not _awaiting_analysis(conn, domain):
                 return JSONResponse(RequestAccepted(request_id=None, domain=domain,
                                                     status="already_available", created=False,
                                                     status_url=None).model_dump(), status_code=200)
-            last = _last_attempt(conn, domain)
+            last = None if docs else _last_attempt(conn, domain)
             if last and datetime.now(timezone.utc) - last < timedelta(days=NEGATIVE_TTL_DAYS):
                 return JSONResponse(RequestAccepted(
                     request_id=None, domain=domain, status="no_policy_found", created=False,
@@ -556,6 +585,11 @@ def create_request(body: NewRequest, request: Request):
                                 status_code=429, headers={"Retry-After": "600"})
         if not _daily_limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_DAY} requests a day."},
+                                status_code=429, headers={"Retry-After": "3600"})
+        site = site_of(domain)
+        if _pending(conn, domain) is None and _site_requests_today(conn, site) >= SITE_REQUESTS_PER_DAY:
+            return JSONResponse({"error": f"Too many new requests for {site} and its subdomains "
+                                          "today. Try again tomorrow."},
                                 status_code=429, headers={"Retry-After": "3600"})
         today = conn.execute(
             """SELECT count(*) FROM analysis_requests

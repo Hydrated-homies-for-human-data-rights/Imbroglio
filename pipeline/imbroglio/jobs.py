@@ -4,6 +4,7 @@
     enqueue_batch() — queue a list of new domains behind every visitor request
     claim()    — a worker takes the highest-priority job, safely
     progress() — worker heartbeat + one line of live log
+    heartbeat() — worker heartbeat alone
     finish()   — mark done / failed with a result summary
     get()      — one request by its internal id (the worker, tests)
     find()     — one request by its public id (what clients poll)
@@ -96,12 +97,13 @@ def claim(conn: psycopg.Connection, worker_id: str) -> tuple[int, str, bool] | N
             WHERE r.id = (
                 SELECT id FROM analysis_requests
                 WHERE status = 'queued'
-                   OR (status = 'running' AND heartbeat_at < now() - interval '{STALE_AFTER}')
+                   OR (status = 'running' AND heartbeat_at < now() - interval '{STALE_AFTER}'
+                       AND attempts < %s)
                 ORDER BY request_count DESC, requested_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1)
             RETURNING r.id, r.domain, r.use_playwright""",
-        (worker_id,),
+        (worker_id, MAX_ATTEMPTS),
     ).fetchone()
     conn.commit()
     return row
@@ -117,6 +119,13 @@ def progress(conn: psycopg.Connection, request_id: int, line: str) -> None:
            WHERE id = %s AND status = 'running'""",
         (line, PROGRESS_KEEP, line, request_id),
     )
+    conn.commit()
+
+
+def heartbeat(conn: psycopg.Connection, request_id: int) -> None:
+    """Heartbeat alone, for a long step that logs nothing (a model call)."""
+    conn.execute("UPDATE analysis_requests SET heartbeat_at = now() WHERE id = %s AND status = 'running'",
+                 (request_id,))
     conn.commit()
 
 
