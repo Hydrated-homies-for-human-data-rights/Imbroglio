@@ -44,8 +44,10 @@ class DocOutcome:
 def analyze(domain: str, use_playwright: bool = True,
             dsn: str | None = None, store: bool = True,
             init_schema: bool = True,
-            time_budget: float | None = None) -> list[DocOutcome]:
-    located = locate_all(domain, use_playwright=use_playwright, time_budget=time_budget)
+            time_budget: float | None = None,
+            policy_url: str | None = None) -> list[DocOutcome]:
+    located = locate_all(domain, use_playwright=use_playwright, time_budget=time_budget,
+                         policy_url=policy_url)
     outcomes: list[DocOutcome] = []
 
     conn = db.connect(dsn) if store else None

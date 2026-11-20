@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og"
 import { getSite, type Site } from "@/lib/api"
+import { cleanDomain } from "@/lib/format"
 import { FAINT, INK, MUTED, OG_SIZE, OgFrame, TIER_COLOR, TIER_WORD, TierShape, ogFonts } from "@/lib/og"
 
 // The link preview for a report: what a chat app shows when someone shares
@@ -11,7 +12,13 @@ export const size = OG_SIZE
 export const contentType = "image/png"
 
 export default async function Image({ params }: { params: Promise<{ domain: string }> }) {
-  const domain = decodeURIComponent((await params).domain)
+  // Only ever a cleaned domain on the image: arbitrary text from the link
+  // would otherwise be drawn as if we said it.
+  let domain: string | null = null
+  try {
+    domain = cleanDomain(decodeURIComponent((await params).domain))
+  } catch {}
+  if (!domain) return new Response(null, { status: 404 })
   const site: Site | null = await getSite(domain).catch(() => null)
   const card = site?.scorecard ?? null
 

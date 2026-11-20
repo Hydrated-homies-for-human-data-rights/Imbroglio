@@ -10,6 +10,7 @@ import { Chevron, DetailCard, RatingMark, ratingOf, ratingStyles } from "./desig
 import ShareButton from "./ShareButton"
 
 // Privacy report page from the UX team's design, fed with /v1/sites/{domain}.
+const DOC_WORDS = { privacy: "privacy policy", terms: "terms of service" } as const
 const TAGS: Record<Evidence["provenance"], string> = {
   machine: "AI-generated",
   human: "Human-reviewed",
@@ -33,6 +34,12 @@ export default function Report({ site }: { site: Site }) {
       return next
     })
   const [showScoring, setShowScoring] = useState(false)
+  // A rating that rests on one of the two documents says which, and why the
+  // other isn't in it: not found, or found but not rated.
+  const onlyOne =
+    card.documents.length === 1
+      ? { rated: card.documents[0], other: card.documents[0] === "privacy" ? ("terms" as const) : ("privacy" as const) }
+      : null
   const router = useRouter()
   const severe = card.headline === "SEVERE"
   const score = card.score ?? null
@@ -192,11 +199,12 @@ export default function Report({ site }: { site: Site }) {
           </span>
         ))}
       </div>
-      {site.missing.length > 0 && site.documents.length > 0 && (
+      {onlyOne && (
         <p className="mt-2 text-sm text-[#607186]">
-          {site.missing.includes("terms")
-            ? "We couldn’t find their terms of service, so this is based on the privacy policy alone."
-            : "We couldn’t find their privacy policy, so this is based on the terms of service alone."}
+          This rating is based on their {DOC_WORDS[onlyOne.rated]} alone.{" "}
+          {site.missing.includes(onlyOne.other)
+            ? `We couldn’t find their ${DOC_WORDS[onlyOne.other]}.`
+            : `We found their ${DOC_WORDS[onlyOne.other]} but couldn’t read it well enough to rate it.`}
         </p>
       )}
 
