@@ -1,24 +1,58 @@
 "use server"
 
 import { headers } from "next/headers"
-import { ApiError, REPORT_KINDS, requestAnalysis, submitReport as postReport, type ReportKind } from "@/lib/api"
+import {
+  ApiError,
+  POLICY_LINK_ERROR,
+  REPORT_KINDS,
+  requestAnalysis,
+  submitReport as postReport,
+  type Failure,
+  type ReportKind,
+} from "@/lib/api"
 
 export type RequestState =
   | { kind: "idle" }
-  | { kind: "accepted"; domain: string; status: string; requestId: string | null }
+  | { kind: "accepted"; domain: string; status: string; requestId: string | null; failure: Failure | null }
   | { kind: "error"; message: string }
 
+// "example.com/privacy" or "https://example.com/privacy?x=1" as a link to a
+// page, or null when it is just a site ("example.com", "https://example.com/").
+function pageLink(raw: string): string | null {
+  let url: URL
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`)
+  } catch {
+    return null
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null
+  if (url.pathname.replace(/\/+$/, "") === "" && !url.search) return null
+  url.hash = ""
+  return url.href
+}
+
+// The form takes a domain or a link to a policy. On a site's own page it
+// also carries that site (`site`), and the box only takes a link on it.
 export async function submitRequest(_prev: RequestState, form: FormData): Promise<RequestState> {
   const raw = String(form.get("domain") ?? "").trim()
-  if (!raw) return { kind: "error", message: "Enter a domain or policy URL." }
+  const site = String(form.get("site") ?? "").trim()
+  if (!raw) return { kind: "error", message: site ? "Paste a link to the policy." : "Enter a domain or policy URL." }
+  const link = pageLink(raw)
+  if (site && !link) return { kind: "error", message: `Paste the full link to the policy on ${site}.` }
   const h = await headers()
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip")
   try {
-    const r = await requestAnalysis(raw, ip ?? null)
-    return { kind: "accepted", domain: r.domain, status: r.status, requestId: r.request_id }
+    const r = await requestAnalysis(site || raw, ip ?? null, link)
+    return { kind: "accepted", domain: r.domain, status: r.status, requestId: r.request_id, failure: r.failure ?? null }
   } catch (e) {
     if (e instanceof ApiError && e.status === 429) {
       return { kind: "error", message: "Too many requests right now. Try again later." }
+    }
+    if (e instanceof ApiError && e.status === 400 && e.message === POLICY_LINK_ERROR) {
+      return {
+        kind: "error",
+        message: `We can only use a link on ${site || "the site"} itself. Paste a link to the policy on that site.`,
+      }
     }
     if (e instanceof ApiError && e.status === 400) {
       return { kind: "error", message: "That doesn't look like a website address." }

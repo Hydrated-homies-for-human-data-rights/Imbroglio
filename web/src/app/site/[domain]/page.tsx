@@ -1,11 +1,13 @@
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 import { Suspense, cache } from "react"
 import Header from "@/components/Header"
 import Report from "@/components/Report"
 import RequestForm from "@/components/RequestForm"
 import RequestProgress from "@/components/RequestProgress"
 import { ApiError, getSite, type Site } from "@/lib/api"
-import { shortDate } from "@/lib/format"
+import { FALLBACK_MESSAGE, linkCanHelp, nextStep } from "@/lib/failure"
+import { cleanDomain, shortDate } from "@/lib/format"
 
 // One fetch per request, shared by the page and its metadata.
 const loadSite = cache(getSite)
@@ -39,8 +41,21 @@ function describe(site: Site | null, domain: string): { title: string; descripti
   }
 }
 
+// The address in the URL, cleaned the way the API cleans it, so the title,
+// preview and page never echo arbitrary text from a link. Anything that
+// isn't a domain is a 404.
+async function domainOf(params: PageProps<"/site/[domain]">["params"]): Promise<string> {
+  let raw: string
+  try {
+    raw = decodeURIComponent((await params).domain)
+  } catch {
+    notFound()
+  }
+  return cleanDomain(raw) ?? notFound()
+}
+
 export async function generateMetadata({ params }: PageProps<"/site/[domain]">): Promise<Metadata> {
-  const domain = decodeURIComponent((await params).domain)
+  const domain = await domainOf(params)
   const { title, description } = describe(await loadSite(domain).catch(() => null), domain)
   const url = `/site/${encodeURIComponent(domain)}`
   return { title, description, alternates: { canonical: url }, openGraph: { title, description, url } }
@@ -53,7 +68,7 @@ function Plain({ children }: { children: React.ReactNode }) {
 }
 
 async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["params"] }) {
-  const domain = decodeURIComponent((await params).domain)
+  const domain = await domainOf(params)
   let site
   try {
     site = await loadSite(domain)
@@ -78,14 +93,36 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
     )
   }
   if (site.state === "no_policy_found") {
+    // Nothing re-queues a site by itself: after recheck_after, a new request
+    // crawls it again instead of answering from the last try.
+    const failure = site.failure
     return (
       <Plain>
         <p>
-          We couldn’t find a privacy policy or terms of service for {site.domain}.
-          {site.recheck_after ? ` We’ll look again after ${shortDate(site.recheck_after)}.` : ""}
+          {site.domain}: {failure?.message ?? FALLBACK_MESSAGE}
         </p>
-        <p className="mt-2">If you know where its policy is, paste the link:</p>
-        <RequestForm />
+        <p className="mt-2">
+          {nextStep(failure?.reason)}
+          {site.recheck_after ? ` You can ask us to look again after ${shortDate(site.recheck_after)}.` : ""}
+        </p>
+        {failure && failure.tried.length > 0 && (
+          <>
+            <p className="mt-4">What we tried:</p>
+            <ul className="mt-1 list-disc pl-5 text-[#5a6b7e]">
+              {failure.tried.map((line) => (
+                <li key={line} className="break-all">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {linkCanHelp(failure?.reason) && (
+          <>
+            <p className="mt-4">If you know where its policy is, paste the link:</p>
+            <RequestForm site={site.domain} />
+          </>
+        )}
       </Plain>
     )
   }

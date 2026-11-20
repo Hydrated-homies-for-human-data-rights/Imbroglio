@@ -14,4 +14,18 @@ export function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
 }
 
-export const docName = (t: "privacy" | "terms") => (t === "privacy" ? "Privacy Policy" : "Terms of Service")
+// "https://www.Notion.so/x" -> "notion.so"; null if it isn't a domain. The
+// same rules as the API's clean_domain (pipeline/imbroglio/batch.py).
+const DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
+export function cleanDomain(raw: string): string | null {
+  const d = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .split(/[/?#]/)[0]
+    .replace(/^www\./, "")
+  if (d.length > 253 || d.endsWith(".onion") || /^[0-9.]+$/.test(d)) return null
+  return DOMAIN.test(d) ? d : null
+}
+
+export const docName =(t: "privacy" | "terms") => (t === "privacy" ? "Privacy Policy" : "Terms of Service")
