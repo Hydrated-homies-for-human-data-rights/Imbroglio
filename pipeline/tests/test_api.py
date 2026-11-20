@@ -239,6 +239,9 @@ def test_recent_no_policy_answered_from_cache(conn):
 
 def test_old_no_policy_result_is_rechecked(conn):
     _failed_attempt(conn, "stale.example", days_ago=30)
+    # the site page doesn't offer a "look again after" date that has passed
+    site = client.get("/v1/sites/stale.example").json()
+    assert site["state"] == "no_policy_found" and site["recheck_after"] is None
     assert client.post("/v1/requests", json={"domain": "stale.example"}).status_code == 202
 
 
