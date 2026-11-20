@@ -85,6 +85,14 @@ def test_v03_lets_in_on_topic_quotes_v02_turned_away(check_id, quote):
     assert V03.check(check_id).relevant(quote)
 
 
+@pytest.mark.parametrize("version", ["v0.3", "v1.0"])
+def test_a_sale_in_the_california_wording_counts_as_evidence(version):
+    # The CCPA's definition of a sale, as policies often repeat it; none of the
+    # older words ("sell", "share", "third part") is in it.
+    quote = "We may disclose Personal Information to Partners in exchange for monetary or other valuable consideration."
+    assert load(version).check("sells_personal_data").relevant(quote)
+
+
 @pytest.mark.parametrize("quote", [
     "Vous pouvez aussi vous opposer au suivi de votre navigation sur ce site web en cliquant ici.",
     "Sämtliche Daten werden nach gesetzlichen Speicherfristen längstens 6 Monate archiviert oder gelöscht",
