@@ -39,7 +39,7 @@ def test_finished_domain_can_be_requested_again(conn):
     rid, *_ = jobs.enqueue(conn, "x.com")
     jobs.claim(conn, "w")
     jobs.finish(conn, rid, True, {"documents": []})
-    rid2, _, created = jobs.enqueue(conn, "x.com")
+    rid2, _, created, _ = jobs.enqueue(conn, "x.com")
     assert created and rid2 != rid
 
 
