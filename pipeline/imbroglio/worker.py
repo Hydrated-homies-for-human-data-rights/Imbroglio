@@ -112,10 +112,10 @@ def process_one(worker_id: str) -> bool:
     if job is None:
         return False
 
-    request_id, domain, use_playwright = job
+    request_id, domain, use_playwright, policy_url = job
     log.info("job %s: %s (browser %s)", request_id, domain, "on" if use_playwright else "off")
     outcome: dict = {}
-    t = threading.Thread(target=_run_job, args=(request_id, domain, use_playwright, outcome),
+    t = threading.Thread(target=_run_job, args=(request_id, domain, use_playwright, policy_url, outcome),
                          daemon=True, name=f"job-{request_id}")
     t0 = time.monotonic()
     t.start()
@@ -148,7 +148,8 @@ def process_one(worker_id: str) -> bool:
     return True
 
 
-def _run_job(request_id: int, domain: str, use_playwright: bool, outcome: dict) -> None:
+def _run_job(request_id: int, domain: str, use_playwright: bool, policy_url: str | None,
+             outcome: dict) -> None:
     """Crawl and analyze one site; the result goes into `outcome` for
     process_one to record."""
     pipeline_log = logging.getLogger("imbroglio")
@@ -157,7 +158,8 @@ def _run_job(request_id: int, domain: str, use_playwright: bool, outcome: dict) 
     pipeline_log.addHandler(handler)
     t0 = time.time()
     try:
-        outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET)
+        outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET,
+                           policy_url=policy_url)
         seconds = time.time() - t0
         conn = db.connect()
         try:

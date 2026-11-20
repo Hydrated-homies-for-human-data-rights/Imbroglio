@@ -105,9 +105,10 @@ RULES_S2 = [
     _NO_MODEL,
 ]
 # s3 (rubric v0.3): as s2, but any medium concern makes a site MODERATE, so
-# LIMITED means nothing took points off; LIMITED scores 90-100.
+# LIMITED means nothing took points off; LIMITED scores 90-100. The s2 overall
+# rating rule (RULES_S2[-4]) is replaced, not kept beside the s3 one.
 RULES_S3 = [
-    *RULES_S2[:-3],
+    *RULES_S2[:-4],
     "The overall rating counts concerns across the whole site: SEVERE for any severe concern "
     "(selling data for money, or no way to delete it) or two or more high ones, EXTENSIVE for "
     "one high concern, MODERATE for any medium one, and LIMITED only when nothing takes points "
@@ -253,8 +254,8 @@ def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str],
         flags = "MODERATE"
     else:
         flags = "LIMITED"
-    # Never below a serious category (design goal 5). One medium concern alone
-    # leaves its category MODERATE but the site can still be LIMITED overall.
+    # Never below a serious category (design goal 5). Under s2, one medium concern
+    # alone leaves its category MODERATE but the site can still be LIMITED overall.
     head = max(flags, worst if worst in SERIOUS else "LIMITED", key=lambda t: _RANK[t])
     if head == "LIMITED" and len(rubric.high_concern_checks & answers.keys()) < MIN_HIGH_ANSWERED:
         head = UNCLEAR_TIER

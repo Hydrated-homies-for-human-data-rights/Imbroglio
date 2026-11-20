@@ -22,7 +22,7 @@ def fake(monkeypatch):
     calls = {"finish": [], "heartbeat": 0, "progress": []}
     monkeypatch.setattr(worker.db, "connect", lambda *a, **k: _Conn())
     monkeypatch.setattr(worker.db, "insert_attempt", lambda *a, **k: None)
-    monkeypatch.setattr(worker.jobs, "claim", lambda conn, wid: (7, "slow.example", False))
+    monkeypatch.setattr(worker.jobs, "claim", lambda conn, wid: (7, "slow.example", False, None))
     monkeypatch.setattr(worker.jobs, "finish",
                         lambda conn, rid, ok, result=None, error=None: calls["finish"].append((ok, result, error)))
     monkeypatch.setattr(worker.jobs, "progress", lambda conn, rid, line: calls["progress"].append(line))
@@ -70,4 +70,18 @@ def test_server_only_lines_stay_out_of_the_public_progress(fake, monkeypatch):
     monkeypatch.setattr(worker, "analyze", chatty)
     worker.process_one("w")
     assert fake["progress"] == ["analysis paused: daily limit reached, it will finish later"]
+    assert fake["finish"][0][0] is True
+
+
+def test_a_pasted_policy_link_reaches_the_crawl(fake, monkeypatch):
+    monkeypatch.setattr(worker.jobs, "claim",
+                        lambda conn, wid: (7, "slow.example", False, "https://slow.example/privacy"))
+    seen = {}
+
+    def crawl(domain, **k):
+        seen.update(k)
+        return []
+    monkeypatch.setattr(worker, "analyze", crawl)
+    worker.process_one("w")
+    assert seen["policy_url"] == "https://slow.example/privacy"
     assert fake["finish"][0][0] is True

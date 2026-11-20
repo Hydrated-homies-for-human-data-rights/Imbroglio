@@ -51,8 +51,8 @@ const NOT_YET = ["Agreement with ToS;DR’s human reviewers on individual findin
 const TIERS: { tier: Tier; meaning: string }[] = [
   { tier: "SEVERE", meaning: "Two or more red flags, or one of the two worst on its own: selling your data for money, or no way to delete it." },
   { tier: "EXTENSIVE", meaning: "One red flag: a practice present and broad, with some limit or choice disclosed." },
-  { tier: "MODERATE", meaning: "Two or more medium concerns: practices present with clear limits, or a choice you can exercise." },
-  { tier: "LIMITED", meaning: "Nothing of concern was found, and enough of the key questions were answered to say so." },
+  { tier: "MODERATE", meaning: "At least one medium concern and no red flag: a practice present with clear limits, or a choice you can exercise." },
+  { tier: "LIMITED", meaning: "Nothing took points off, and enough of the key questions were answered to say so." },
   { tier: "UNCLEAR", meaning: "Nothing of concern was found, but too few of the key questions were answered to call the site limited. Silence is never read as good." },
   { tier: "NOT_DISCLOSED", meaning: "The documents say nothing about the practice." },
   { tier: "INFO", meaning: "The practice is reported but not rated, such as what categories of data are collected." },
@@ -110,8 +110,8 @@ async function Rubric() {
         </ol>
         <p>
           In short: a red flag is a practice at its broadest. Two of them, or either of the two worst alone, make
-          a site Severe. One makes it Extensive. Two medium concerns make it Moderate. A site is Limited only when
-          nothing of concern was found and at least four of the six red-flag questions were actually answered;
+          a site Severe. One makes it Extensive. Any medium concern makes it Moderate. A site is Limited only when
+          nothing took points off and at least four of the six red-flag questions were actually answered;
           otherwise it is Unclear, so a document that says little is never mistaken for a good one.
         </p>
       </Chapter>
