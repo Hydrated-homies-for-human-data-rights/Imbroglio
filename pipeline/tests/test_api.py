@@ -137,9 +137,11 @@ def test_lookup_by_hash_prefix_never_returns_domain(conn):
 
 
 def test_lookup_validates_prefix(conn):
-    for bad in ("abc", "ZZZZ", "abcd1234ef", "not-hex!"):
+    for bad in ("ab", "ZZZZ", "abcd1234ef", "not-hex!"):
         assert client.get(f"/v1/lookup/{bad}").status_code == 400
     assert client.get("/v1/lookup/0000").json()["sites"] == []
+    # the extension sends 3 characters since 1.0
+    assert client.get("/v1/lookup/abc").json()["sites"] == []
 
 
 def test_lookup_rate_limit_is_per_visitor(conn, monkeypatch):
