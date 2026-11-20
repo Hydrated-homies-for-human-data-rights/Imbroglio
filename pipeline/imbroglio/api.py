@@ -267,7 +267,8 @@ class Site(BaseModel):
     failure: Failure | None = Field(None, description="For no_policy_found: why nothing was found")
     pending_request: PendingRequest | None
     recheck_after: datetime | None = Field(
-        None, description="For no_policy_found: when a new request will crawl the site again")
+        None, description="For no_policy_found: when a new request will crawl the site again; "
+                          "null once that time has passed (a request now crawls again)")
     scorecard: Scorecard | None = Field(
         None, description="Ratings and evidence; null until the documents have been analyzed")
     links: list[SiteLink] = Field(
@@ -421,6 +422,8 @@ def build_site(conn, domain: str) -> Site:
     have = {d.type for d in docs}
     recheck = (checked_at + timedelta(days=NEGATIVE_TTL_DAYS)
                if state == "no_policy_found" and checked_at else None)
+    if recheck and recheck <= datetime.now(timezone.utc):
+        recheck = None  # past: a new request crawls again now
     card = _scorecard(conn, docs) if docs else None
     # What the rating actually rests on: a stored document the scorecard
     # doesn't cover is not part of it, even though we have it.
