@@ -16,10 +16,13 @@ export const metadata: Metadata = {
 // Imbroglio's own privacy policy, also the policy the Chrome Web Store
 // listing links to. Every statement here is checked against the code:
 //  * extension: extension/background.js (3-character sha256 prefix lookups,
-//    10-minute cache, alert records under an HMAC with a per-install secret)
-//    and extension/manifest.json
+//    up to MAX_CANDIDATES = 3 per name: the name, then its parent domains;
+//    candidates() skips IP addresses and names without a dot; 10-minute
+//    cache; alert records under an HMAC with a per-install secret) and
+//    extension/manifest.json
 //  * lookups: web/src/app/api/v1/lookup, pipeline/imbroglio/api.py
-//    (_RateLimiter counts in memory, nothing written)
+//    (_RateLimiter counts in memory, nothing written; requests also have a
+//    daily limit)
 //  * requests: analysis_requests (migration 0002) has no column for who asked
 //  * reports: reports.client (migration 0008), kept for abuse review
 // If any of those change, this page changes with them.
@@ -32,12 +35,12 @@ const ROUTE: Stop[] = [
   { id: "close-r", side: "center" },
 ]
 
-const UPDATED = "November 19, 2026"
+const UPDATED = "November 20, 2026"
 
 const SHORT: [string, string][] = [
   ["No accounts.", "Nothing here asks who you are."],
   ["No cookies, no analytics, no ads.", "There are no trackers on this site or in the extension."],
-  ["The extension never sends the name of the site you’re on.", "Only the first three characters of a scrambled version of it."],
+  ["The extension never sends the name of the site you’re on.", "It sends the first three characters of a scrambled version of it, which many sites share."],
   ["We don’t sell or share anything about you,", "and we don’t train AI models on anything you send us."],
 ]
 
@@ -94,16 +97,25 @@ export default function PrivacyPage() {
                   To show a rating, the extension needs to know which site the current tab is on. It turns the site’s
                   name (say, example.com) into a SHA-256 hash, a long string of letters and numbers that can’t be
                   turned back into the name, and sends only the first three characters to imbroglio.io. There are
-                  only 4,096 possible beginnings, so each one is shared by hundreds of the web’s popular sites. Our
-                  server answers with every rated site that starts the same way, and the extension picks out the
-                  right one on your own computer. We can’t tell which of those sites you were on.
+                  only 4,096 possible beginnings, so many sites share each one. Our server answers with every site
+                  we have stored that starts the same way, and the extension picks out the right one on your own
+                  computer. From a single lookup, we can’t tell which of those sites you were on.
+                </p>
+                <p>
+                  A subdomain can take more than one lookup. We store most sites under their main domain, so for a
+                  name like wiki.corp.example.com the extension looks up wiki.corp.example.com, then
+                  corp.example.com, then example.com, and stops at the first one we have. That is at most three
+                  lookups in a row. Each one is still only three characters, but a series of them for one name and
+                  its parents narrows down the possibilities much more than a single lookup does. In a coming update,
+                  the extension will look up only the main domain.
                 </p>
                 <p>
                   It does this for each site you visit so the toolbar icon can show a rating, and remembers each
                   answer for up to ten minutes so it doesn’t ask again. Like any request, each lookup reaches our
                   hosts’ logs with your IP address (see below). Nothing else about the page is read: not its content,
-                  not what you type. Addresses that aren’t public websites, such as 192.168.1.1 or an office intranet
-                  name, are never looked up.
+                  not what you type. IP addresses such as 192.168.1.1, and names without a dot such as localhost or a
+                  one-word intranet name, are never looked up. An internal name with dots in it, such as
+                  wiki.corp.example.com, is looked up like any other site.
                 </p>
                 <p>
                   What the extension keeps stays in your browser: your two settings (warn me about Extensive sites,
@@ -113,9 +125,9 @@ export default function PrivacyPage() {
                   Removing the extension deletes all of it.
                 </p>
                 <p>
-                  If you click a link in the extension, such as “Read the quotes on the full report” or “Request it on
-                  imbroglio.io”, that opens imbroglio.io with the site’s name in the address, the same as visiting the
-                  website yourself.
+                  If you click a link in the extension or one of its alerts, such as “Read the quotes on the full
+                  report” or “Request it on imbroglio.io”, that opens imbroglio.io with the site’s name in the
+                  address, the same as visiting the website yourself.
                 </p>
               </div>
             </Reach>
@@ -134,8 +146,8 @@ export default function PrivacyPage() {
                 </p>
                 <p>
                   To keep any one visitor from overwhelming the service, we count how many lookups, analysis requests
-                  and reports each IP address makes in an hour. That count lives only in the server’s memory and is
-                  never saved.
+                  and reports each IP address makes in an hour, and analysis requests in a day as well. Those counts
+                  live only in the server’s memory and are never saved.
                 </p>
                 <p>
                   <b>Requesting an analysis.</b> When you ask us to analyze a site, we store the site’s name and the

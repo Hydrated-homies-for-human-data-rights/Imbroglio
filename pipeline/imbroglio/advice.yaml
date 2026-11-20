@@ -1,4 +1,4 @@
-# What you can do — DRAFT, for Sam and Alex to edit.
+# What you can do: the advice shown with each finding.
 #
 # Shown next to a finding on the scorecard ("What you can do") and on the
 # website's learn pages; the extension's "What can you do?" link goes to
@@ -19,7 +19,7 @@ checks:
     why: Once sold, your data can be resold and combined with other sources. You can't take it back, but you can stop future sales, including the "sales" that state privacy laws count when advertising partners collect your data.
     applies_to: ["yes", sold_for_money, state_law_sale]
     steps:
-      - text: Turn on Global Privacy Control (GPC). Firefox, Brave and DuckDuckGo have it built in. In California, Colorado, Connecticut and several other states, businesses must treat it as a request not to sell or share your data.
+      - text: Turn on Global Privacy Control (GPC). Brave and the DuckDuckGo browser send it by default. Firefox sends it in private windows; for normal windows, turn it on in Settings, under Privacy & Security. Chrome, Safari and Edge don't send it on their own, so add an extension that does, such as Privacy Badger. In California, Colorado, Connecticut and several other states, businesses must treat it as a request not to sell or share your data.
         link: https://globalprivacycontrol.org
       - text: Use the site's "Do Not Sell or Share My Personal Information" link, usually in the page footer.
       - text: If you no longer use the service, ask it to delete your data, then close the account.
@@ -30,8 +30,8 @@ checks:
     applies_to: ["yes"]
     steps:
       - text: In the site's account settings, look for "ad preferences" or "ad personalization" and turn it off.
-      - text: Use a browser that blocks third-party trackers (Firefox, Safari, Brave) or add a content blocker such as uBlock Origin.
-        link: https://ublockorigin.com
+      - text: Use a browser that blocks third-party trackers (Firefox, Safari, Brave), or add a content blocker. uBlock Origin works best in Firefox. Chrome stopped running it in 2025, so on Chrome use uBlock Origin Lite instead.
+        link: https://github.com/gorhill/uBlock
       - text: On your phone, tap "Ask App Not to Track" on iPhone, or delete your advertising ID on Android (Settings > Privacy > Ads).
 
   collects_sensitive_data:
@@ -48,8 +48,8 @@ checks:
     applies_to: ["yes"]
     steps:
       - text: Remove "Log in with Google/Facebook/Apple" connections you no longer use, in each of those accounts' security settings.
-      - text: California residents can ask every registered data broker to delete their data in one request through the state's DROP platform.
-        link: https://cppa.ca.gov
+      - text: California residents can ask every registered data broker to delete their data in one request through the state's free DROP platform.
+        link: https://privacy.ca.gov/drop/
       - text: Opt out of the largest people-search sites one by one, or use your state's data broker registry to find them.
 
   retention_period:
@@ -66,7 +66,7 @@ checks:
     applies_to: [some_jurisdictions, "no"]
     steps:
       - text: Ask anyway. Many companies honor deletion requests from everyone, even where the law doesn't require it.
-      - text: The EU and UK (GDPR), California and a growing number of US states (including Colorado, Virginia and Texas) give residents a legal right to deletion.
+      - text: The EU and UK (GDPR) and about 20 US states, including California, Colorado, Virginia and Texas, give residents a legal right to deletion.
 
   access_and_export:
     title: When access to your data is limited
@@ -81,7 +81,7 @@ checks:
     why: Without a working opt-out, tracking for ads and profiling is the default.
     applies_to: [limited, "no"]
     steps:
-      - text: Choose "Reject all" on cookie banners, and turn on Global Privacy Control in your browser.
+      - text: Choose "Reject all" on cookie banners, and turn on Global Privacy Control. Brave and DuckDuckGo send it by default; in Firefox, turn it on in Settings; in Chrome, Safari or Edge, add an extension that sends it, such as Privacy Badger.
         link: https://globalprivacycontrol.org
       - text: Block trackers at the browser level, so you don't depend on each site's settings.
 
@@ -209,13 +209,14 @@ general:
     body: >
       Most cross-site tracking runs through third-party cookies and scripts.
       Firefox, Safari and Brave block many of them by default; a content
-      blocker such as uBlock Origin blocks more. Turning on Global Privacy
-      Control also sends a legal opt-out signal in several US states.
+      blocker blocks more (uBlock Origin in Firefox, uBlock Origin Lite in
+      Chrome). Turning on Global Privacy Control also sends a legal opt-out
+      signal in several US states.
   - id: rights
     title: Your privacy rights
     body: >
       Depending on where you live, you can ask a company what it holds about
       you, ask it to correct or delete that data, and opt out of its sale.
-      The EU and UK (GDPR), California and a growing number of US states give
-      these rights by law. A short email to the address in the privacy
+      The EU and UK (GDPR) and about 20 US states give these rights by law,
+      and Canada gives some of them. A short email to the address in the privacy
       policy, naming the right you are using, is enough to start.

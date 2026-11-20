@@ -60,9 +60,19 @@ async function Topics() {
           {learn.guides
             .filter((g) => g.id !== "vpn")
             .map((g) => (
-              <li key={g.id} id={g.id}>
+              // "guide-" keeps these ids apart from the chapters' (the rights
+              // guide and the rights chapter were both #rights)
+              <li key={g.id} id={`guide-${g.id}`}>
                 <h3>{g.title}</h3>
-                <p>{g.body}</p>
+                <p>
+                  {g.body}
+                  {g.id === "rights" && (
+                    <>
+                      {" "}
+                      <a href="#rights">See which laws apply where.</a>
+                    </>
+                  )}
+                </p>
               </li>
             ))}
         </ol>
@@ -147,14 +157,86 @@ export default function LearnPage() {
       <Chapter id="rights" eyebrow="The law" title="Rights you may already have">
         <p>
           Depending on where you live, you can ask a company what it holds about you, have it corrected or
-          deleted, and opt out of its sale. The EU and UK give these rights under GDPR; California, Colorado,
-          Virginia, Texas and a growing number of US states give them by statute. A short email to the address in
-          the privacy policy, naming the right you are using, is enough to start. Many companies honor deletion
-          requests from everyone, even where no law requires it, so ask anyway.
+          deleted, and opt out of its sale. A short email to the address in the privacy policy, naming the right
+          you are using, is enough to start. Many companies honor deletion requests from everyone, even where no
+          law requires it, so ask anyway.
         </p>
         <p>
           Where a report says a right is offered only in some places, that is what the document says, not what
           the company will do. <Link href="/how-we-score">How we score</Link> explains the difference.
+        </p>
+
+        <h3>In the United States</h3>
+        <p>
+          Your rights depend on your state. As of November 2026, 19 states have a comprehensive consumer privacy
+          law in effect: California, Colorado, Connecticut, Delaware, Indiana, Iowa, Kentucky, Maryland,
+          Minnesota, Montana, Nebraska, New Hampshire, New Jersey, Oregon, Rhode Island, Tennessee, Texas, Utah and
+          Virginia. Florida has a narrower law that covers only very large companies. Louisiana’s and
+          Oklahoma’s laws start on January 1, 2027, Alabama’s on May 1, 2027, and Vermont’s on January 1, 2028.
+          The IAPP keeps the current list in its{" "}
+          <a href="https://iapp.org/resources/article/us-state-privacy-legislation-tracker/" target="_blank" rel="noopener noreferrer">
+            state privacy law tracker
+          </a>
+          .
+        </p>
+        <p>Most of these laws give you the same core rights:</p>
+        <ul>
+          <li>Access: find out what a company holds about you, and get a copy.</li>
+          <li>Deletion: have the company delete it.</li>
+          <li>Correction: have mistakes fixed.</li>
+          <li>Opting out of the sale of your data and of targeted advertising.</li>
+          <li>Appeal: ask the company to reconsider if it turns your request down.</li>
+        </ul>
+        <p>
+          The details vary. A few states leave out a right, and most of these laws only cover companies above a
+          certain size. If a company ignores your request or refuses it without a good reason, you can complain to
+          your state attorney general. In California you can also{" "}
+          <a href="https://privacy.ca.gov/tips/submit-complaint/" target="_blank" rel="noopener noreferrer">
+            complain to the California Privacy Protection Agency
+          </a>
+          .
+        </p>
+
+        <h3>In the EU and the UK</h3>
+        <p>
+          The GDPR, and the UK GDPR, give you these rights and more, including the right to object to how your
+          data is used. A company generally has one month to answer. If it doesn’t help, complain to your
+          country’s{" "}
+          <a href="https://www.edpb.europa.eu/about-edpb/about-edpb/members_en" target="_blank" rel="noopener noreferrer">
+            data protection authority
+          </a>
+          , or in the UK to the{" "}
+          <a href="https://ico.org.uk/make-a-complaint/" target="_blank" rel="noopener noreferrer">
+            Information Commissioner’s Office (ICO)
+          </a>
+          .
+        </p>
+
+        <h3>In Canada</h3>
+        <p>
+          PIPEDA, the federal law for private businesses, lets you see the personal information a business holds
+          about you and have mistakes corrected. Raise a problem with the business first. If that doesn’t work,
+          you can complain to the{" "}
+          <a href="https://www.priv.gc.ca/en/report-a-concern/" target="_blank" rel="noopener noreferrer">
+            Office of the Privacy Commissioner of Canada
+          </a>
+          . Quebec’s Law 25 gives Quebec residents more rights, enforced by Quebec’s Commission d’accès à
+          l’information. Alberta and British Columbia have their own laws for businesses too.
+        </p>
+
+        <h3>When a policy says nothing</h3>
+        <p>
+          A report marks a practice Not disclosed when the documents don’t mention it. That doesn’t mean the
+          company doesn’t do it, only that it hasn’t said. You can ask. Write to the privacy contact in the policy,
+          name the practice, and ask a direct question. For example:
+        </p>
+        <p className="quote">
+          Hello. Your privacy policy doesn’t say whether you use my personal data to train AI models. Do you? If
+          you do, how can I opt out? Please answer in writing. Thank you.
+        </p>
+        <p>
+          Keep a copy of what you send and any reply. If you live somewhere with a right of access, you can also
+          ask for a copy of the data the company holds about you, which often answers the question.
         </p>
       </Chapter>
     </Page>

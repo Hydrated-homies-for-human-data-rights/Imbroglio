@@ -72,6 +72,15 @@ def test_s3_only_applies_to_rubrics_that_name_it():
     assert "LIMITED 80 to 100" in " ".join(scorer.rules_for(V02))
 
 
+@pytest.mark.parametrize("version", ["v0.3", "v1.0"])
+def test_s3_rules_state_one_overall_rating_rule_and_it_is_the_s3_one(version):
+    # "How we score" once showed the s2 rule ("two or more medium ones") beside the s3 one.
+    overall = [r for r in scorer.rules_for(load(version)) if r.startswith("The overall rating")]
+    assert len(overall) == 1
+    assert "MODERATE for any medium one" in overall[0] and "two or more medium" not in overall[0]
+    assert scorer.RULES_S3[-4:] == [overall[0], scorer.RULES_S2[-3], scorer.SCORE_RULE_S3, scorer._NO_MODEL]
+
+
 @pytest.mark.parametrize("check_id, quote", [
     ("collects_from_third_parties", "we can link the generated data with the third-party platforms of Meta"),
     ("opt_out_of_tracking", "AudiobookSTORE does not currently follow or respond to browser do-not-track signals."),
