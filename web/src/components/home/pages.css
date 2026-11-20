@@ -94,121 +94,6 @@
   font-size: 14px;
 }
 
-/* numbered steps, like the front page's stations */
-.page .steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 32px 40px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-}
-.page .steps > li {
-  position: relative;
-  padding-top: 20px;
-  border-top: 2px solid var(--pink);
-}
-.page .steps > li::before {
-  counter-increment: step;
-  content: counter(step);
-  display: block;
-  font-weight: 600;
-  font-size: 32px;
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-.page .steps h3 {
-  margin: 10px 0 0;
-  font-weight: 600;
-  font-size: 18px;
-  line-height: 1.3;
-}
-.page .steps p {
-  margin: 8px 0 0;
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-
-/* a definition list with a verdict on the left */
-.page .tiers {
-  margin: 0;
-  display: grid;
-  gap: 14px;
-}
-.page .tiers > div {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  gap: 20px;
-  align-items: baseline;
-}
-.page .tiers dd {
-  margin: 0;
-}
-
-/* every question: a category heading, then rows of answer and rating */
-.page .checks {
-  display: grid;
-  gap: 36px;
-}
-.page .check {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 12px 40px;
-}
-.page .check .q {
-  font-size: 17px;
-  line-height: 1.5;
-}
-.page .check .id {
-  display: block;
-  margin-bottom: 6px;
-}
-.page .check .answers {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--muted);
-}
-.page .check .answers li {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  gap: 12px;
-  align-items: baseline;
-}
-.page .check .answers .verdict {
-  font-size: 13px;
-}
-
-/* figures as a column of large numbers */
-.page .figures-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 22px;
-}
-.page .figures-list li {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 24px;
-  align-items: baseline;
-}
-.page .figures-list .big {
-  font-weight: 600;
-  font-size: 34px;
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-.page .figures-list .big.miss {
-  color: var(--sev-extensive);
-}
-
 /* what you can do: a finding and the steps for it */
 .page .topic {
   padding: 28px 0;
@@ -409,13 +294,7 @@
     gap: 18px;
     padding: 32px 0;
   }
-  .page .check,
   .page .topic {
     grid-template-columns: 1fr;
-  }
-  .page .tiers > div,
-  .page .figures-list li {
-    grid-template-columns: 1fr;
-    gap: 6px;
   }
 }

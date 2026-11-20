@@ -224,9 +224,12 @@ export default function Thread({
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(update)
     }
+    // its own frame, so a scroll right after the page grows (a streamed
+    // section arriving, a jump to an #anchor) can't cancel the re-measure
+    let rafBuild = 0
     const onResize = () => {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(build)
+      cancelAnimationFrame(rafBuild)
+      rafBuild = requestAnimationFrame(build)
     }
 
     build()
@@ -240,6 +243,7 @@ export default function Thread({
       window.removeEventListener("scroll", onScroll)
       window.removeEventListener("resize", onResize)
       cancelAnimationFrame(raf)
+      cancelAnimationFrame(rafBuild)
     }
   }, [route, drive, duration, delay])
 
