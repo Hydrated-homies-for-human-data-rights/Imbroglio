@@ -8,10 +8,10 @@ from imbroglio import db, jobs
 
 
 def test_duplicate_requests_merge(conn):
-    a, status, created = jobs.enqueue(conn, "notion.so")
-    b, _, created2 = jobs.enqueue(conn, "notion.so")
+    a, status, created, public_a = jobs.enqueue(conn, "notion.so")
+    b, _, created2, public_b = jobs.enqueue(conn, "notion.so")
     assert (status, created, created2) == ("queued", True, False)
-    assert a == b
+    assert a == b and public_a == public_b
     assert conn.execute("SELECT request_count FROM analysis_requests WHERE id = %s",
                         (a,)).fetchone()[0] == 2
 
@@ -39,7 +39,7 @@ def test_finished_domain_can_be_requested_again(conn):
     rid, *_ = jobs.enqueue(conn, "x.com")
     jobs.claim(conn, "w")
     jobs.finish(conn, rid, True, {"documents": []})
-    rid2, _, created = jobs.enqueue(conn, "x.com")
+    rid2, _, created, _ = jobs.enqueue(conn, "x.com")
     assert created and rid2 != rid
 
 
@@ -116,3 +116,30 @@ def test_enqueue_batch_skips_known_domains_and_respects_limit(conn):
     assert jobs.enqueue_batch(conn, ["new1.com", "new3.com"], dry_run=True)["queued"] == ["new3.com"]
     assert jobs.stats(conn) == {"queued": 3, "done": 1}  # dry run added nothing
     assert jobs.enqueue_batch(conn, ["new1.com", "new3.com"])["queued"] == ["new3.com"]
+
+
+def test_public_id_is_random_and_finds_the_request(conn):
+    """Clients see a random UUID, never the serial id, so they can't walk the
+    ids and list which sites other people asked about."""
+    rid, _, _, public_id = jobs.enqueue(conn, "first.com")
+    rid2, _, _, public_id2 = jobs.enqueue(conn, "second.com")
+    assert len(public_id) == 36 and public_id != public_id2
+    assert str(rid) not in (public_id, public_id2)
+    row = jobs.find(conn, public_id)
+    assert row["domain"] == "first.com" and row["id"] == public_id
+    assert jobs.get(conn, rid)["id"] == public_id  # internal lookups show the public id too
+    assert jobs.find(conn, public_id2)["domain"] == "second.com"
+
+
+def test_find_refuses_serial_and_malformed_ids(conn):
+    rid, *_ = jobs.enqueue(conn, "walked.com")
+    for guess in (str(rid), "1", "", "not-a-uuid", "00000000-0000-0000-0000-000000000000"):
+        assert jobs.find(conn, guess) is None
+
+
+def test_batch_inserts_get_a_public_id_too(conn):
+    """Batch imports insert without a public id; the column default fills it."""
+    jobs.enqueue_batch(conn, ["batch1.com", "batch2.com"])
+    ids = [r[0] for r in conn.execute(
+        "SELECT public_id FROM analysis_requests ORDER BY id").fetchall()]
+    assert len(ids) == 2 and all(ids) and ids[0] != ids[1]

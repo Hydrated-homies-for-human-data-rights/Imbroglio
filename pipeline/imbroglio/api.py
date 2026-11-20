@@ -86,7 +86,7 @@ class Document(BaseModel):
 
 
 class PendingRequest(BaseModel):
-    id: int
+    id: str = Field(description="The request's public id, for GET /v1/requests/{id}")
     status: Literal["queued", "running"]
     stage: str | None
     queue_ahead: int
@@ -280,7 +280,7 @@ def _documents(conn, domain: str) -> list[Document]:
 
 def _pending(conn, domain: str) -> PendingRequest | None:
     row = conn.execute(
-        """SELECT id, status, stage, requested_at,
+        """SELECT public_id, status, stage, requested_at,
                   (SELECT count(*) FROM analysis_requests q
                    WHERE q.status = 'queued' AND q.requested_at < r.requested_at)
            FROM analysis_requests r
@@ -289,7 +289,7 @@ def _pending(conn, domain: str) -> PendingRequest | None:
     ).fetchone()
     if row is None:
         return None
-    return PendingRequest(id=row[0], status=row[1], stage=row[2], requested_at=row[3],
+    return PendingRequest(id=str(row[0]), status=row[1], stage=row[2], requested_at=row[3],
                           queue_ahead=row[4] if row[1] == "queued" else 0)
 
 
@@ -495,7 +495,8 @@ class NewRequest(BaseModel):
 
 
 class RequestAccepted(BaseModel):
-    request_id: int | None
+    request_id: str | None = Field(
+        description="A random id (UUID) for following the request; ids are never sequential")
     domain: str
     status: Literal["queued", "running", "already_available", "no_policy_found"]
     recheck_after: datetime | None = None
@@ -504,7 +505,7 @@ class RequestAccepted(BaseModel):
 
 
 class AnalysisRequest(BaseModel):
-    id: int
+    id: str
     domain: str
     status: Literal["queued", "running", "done", "failed"]
     stage: str | None
@@ -563,8 +564,8 @@ def create_request(body: NewRequest, request: Request):
         if today >= DAILY_REQUEST_CAP:
             return JSONResponse({"error": "Daily analysis limit reached. Try again tomorrow."},
                                 status_code=429, headers={"Retry-After": "3600"})
-        request_id, status, created = jobs.enqueue(conn, domain, source="api",
-                                                   use_playwright=body.browser)
+        _, status, created, request_id = jobs.enqueue(conn, domain, source="api",
+                                                      use_playwright=body.browser)
     finally:
         conn.close()
     return RequestAccepted(request_id=request_id, domain=domain, status=status, created=created,
@@ -573,12 +574,13 @@ def create_request(body: NewRequest, request: Request):
 
 @router.get("/requests/{request_id}", response_model=AnalysisRequest,
             responses={404: {"model": ApiError}}, summary="Follow an analysis")
-def get_request(request_id: int):
+def get_request(request_id: str):
     """Status, current step, and the live progress log. Poll every second or
-    two while `status` is `queued` or `running`."""
+    two while `status` is `queued` or `running`. `request_id` is the random id
+    POST /v1/requests returned; anything else is not found."""
     conn = db.connect()
     try:
-        job = jobs.get(conn, request_id)
+        job = jobs.find(conn, request_id)
     finally:
         conn.close()
     if job is None:

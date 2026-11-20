@@ -50,7 +50,7 @@ function viewOf(r: AnalysisRequest): View {
   return { kind: "failed", error: r.error }
 }
 
-export default function RequestProgress({ id, domain }: { id: number; domain: string }) {
+export default function RequestProgress({ id, domain }: { id: string; domain: string }) {
   const router = useRouter()
   const pathname = usePathname()
   const reportPath = `/site/${encodeURIComponent(domain)}`
@@ -66,7 +66,7 @@ export default function RequestProgress({ id, domain }: { id: number; domain: st
       if (stopped) return
       let next: View
       try {
-        const res = await fetch(`/api/v1/requests/${id}`, { cache: "no-store" })
+        const res = await fetch(`/api/v1/requests/${encodeURIComponent(id)}`, { cache: "no-store" })
         if (res.status === 404) next = { kind: "lost" }
         else if (!res.ok) next = view.kind === "loading" ? { kind: "loading" } : view
         else next = viewOf((await res.json()) as AnalysisRequest)

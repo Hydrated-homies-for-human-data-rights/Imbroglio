@@ -435,7 +435,12 @@ function handle(site, shown, favIconUrl) {
     showMessage(site.domain, `We have this site’s ${docs ? docs.toLowerCase() : "documents"} but haven’t rated ${them} yet.`,
       { text: "See it on imbroglio.io", url: reportUrl(site.domain) });
   } else if (site.status === "error") {
-    showMessage(shown, `Couldn’t reach Imbroglio (${site.error}). Try again in a moment.`);
+    // Plain words, not status codes. 429 is the per-network lookup limit,
+    // which a whole campus or office on one address can reach together.
+    const busy = /\b429\b/.test(site.error || "");
+    showMessage(shown, busy
+      ? "Imbroglio is getting a lot of lookups from your network right now. Try again in a few minutes."
+      : "Couldn’t reach Imbroglio. Check your connection and try again in a moment.");
   } else {
     showMessage(shown, "We haven’t analyzed this site yet. You can ask for it on imbroglio.io, and it will be rated in turn.",
       { text: "Request it on imbroglio.io", url: requestUrl(shown) });
