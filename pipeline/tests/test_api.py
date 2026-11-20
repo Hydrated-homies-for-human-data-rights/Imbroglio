@@ -99,12 +99,52 @@ def test_request_lifecycle(conn):
     assert again["request_id"] == body["request_id"] and not again["created"]
 
 
+def _rate(conn, domain):
+    """Give the site's stored document a finding, as a finished analysis would."""
+    from imbroglio.analysis import RUBRIC_VERSION
+    vid = conn.execute("""SELECT v.id FROM document_versions v JOIN documents d ON d.id = v.document_id
+                          JOIN services s ON s.id = d.service_id WHERE s.domain = %s""",
+                       (domain,)).fetchone()[0]
+    conn.execute("""INSERT INTO findings (version_id, rubric_version, check_id, category, status,
+                                          quotes, quotes_verified, verified, explanation, model)
+                    VALUES (%s, %s, 'sells_personal_data', 'selling_sharing', 'no', '{}', '{}',
+                            false, '', 'test')""", (vid, RUBRIC_VERSION))
+    conn.commit()
+
+
 def test_cached_site_is_not_requeued_unless_refresh(conn):
     _store(conn, "cached.example")
+    _rate(conn, "cached.example")
     r = client.post("/v1/requests", json={"domain": "cached.example"})
     assert r.status_code == 200 and r.json()["status"] == "already_available"
     r = client.post("/v1/requests", json={"domain": "cached.example", "refresh": True})
     assert r.status_code == 202 and r.json()["status"] == "queued"
+
+
+def test_stored_but_never_rated_site_is_queued_again(conn, monkeypatch):
+    # The day's analysis budget ran out when it was crawled; asking again
+    # must give the analysis another go instead of "already available".
+    monkeypatch.setenv("EXTRACTION_ENABLED", "1")
+    _store(conn, "unrated.example")
+    r = client.post("/v1/requests", json={"domain": "unrated.example"})
+    assert r.status_code == 202 and r.json()["status"] == "queued"
+    monkeypatch.setenv("EXTRACTION_ENABLED", "0")
+    _store(conn, "off.example")
+    r = client.post("/v1/requests", json={"domain": "off.example"})
+    assert r.status_code == 200 and r.json()["status"] == "already_available"
+
+
+def test_subdomains_share_one_daily_limit(conn, monkeypatch):
+    monkeypatch.setattr(api, "SITE_REQUESTS_PER_DAY", 2)
+    assert client.post("/v1/requests", json={"domain": "a1.evil.example"}).status_code == 202
+    assert client.post("/v1/requests", json={"domain": "a2.evil.example"}).status_code == 202
+    r = client.post("/v1/requests", json={"domain": "a3.evil.example"})
+    assert r.status_code == 429 and "evil.example" in r.json()["error"]
+    assert client.post("/v1/requests", json={"domain": "evil.example"}).status_code == 429
+    # joining a request already in the queue isn't a new one
+    assert client.post("/v1/requests", json={"domain": "a1.evil.example"}).status_code == 202
+    # other sites are unaffected, including one whose name merely ends the same way
+    assert client.post("/v1/requests", json={"domain": "notevil.example"}).status_code == 202
 
 
 def test_per_client_rate_limit(conn, monkeypatch):

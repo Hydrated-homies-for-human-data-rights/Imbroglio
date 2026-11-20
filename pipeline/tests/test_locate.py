@@ -311,3 +311,11 @@ def test_rank(doc_type, url, via, text, expected):
 ])
 def test_site_of(host, site):
     assert locate.site_of(host) == site
+
+
+def test_a_page_too_long_to_be_one_policy_is_not_a_document():
+    text = "This privacy policy explains the personal information we collect and share. " * 7000
+    assert len(text) > locate.MAX_TEXT_CHARS
+    ok, reason = locate._validate("privacy", text)
+    assert not ok and reason.startswith("too long")
+    assert locate._validate("privacy", text[:50_000])[0]

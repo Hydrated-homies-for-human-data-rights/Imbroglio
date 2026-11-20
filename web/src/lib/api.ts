@@ -90,12 +90,22 @@ export type SiteLink = {
   source: "homepage" | "privacy" | "terms" | "known"
 }
 
+// Why we couldn't rate a site, read from what the crawl recorded. `message`
+// is one plain sentence; `tried` is a few of the pages we tried, in plain words.
+export type FailureReason = "unreachable" | "blocked" | "pdf_only" | "timed_out" | "no_policy" | "error"
+export type Failure = { reason: FailureReason; message: string; tried: string[] }
+
 export type Site = {
   domain: string
   state: "unknown" | "queued" | "analyzing" | "ready" | "no_policy_found"
   checked_at: string | null
   documents: SiteDocument[]
+  // document types we have no copy of
   missing: DocType[]
+  // documents we have that the rating doesn't use (not analyzed, or the analysis failed)
+  not_rated?: DocType[]
+  // for no_policy_found: why nothing was found
+  failure?: Failure | null
   pending_request: { id: string; status: "queued" | "running"; stage: string | null; queue_ahead: number } | null
   recheck_after: string | null
   scorecard: Scorecard | null
@@ -146,6 +156,7 @@ export type RequestAccepted = {
   domain: string
   status: "queued" | "running" | "already_available" | "no_policy_found"
   created: boolean
+  failure?: Failure | null
 }
 
 // One analysis request as the worker moves it along (GET /v1/requests/{id}).
@@ -163,6 +174,8 @@ export type AnalysisRequest = {
   requested_at: string
   started_at: string | null
   finished_at: string | null
+  // when it is done and found nothing, or failed: why
+  failure?: Failure | null
 }
 
 export class ApiError extends Error {
@@ -220,7 +233,14 @@ export async function lookup(prefix: string, clientIp: string | null): Promise<u
 // Ask for a site to be analyzed. `clientIp` is passed on with the shared
 // IMBROGLIO_WEB_KEY so the API's per-visitor rate limit applies to the
 // visitor, not to this server. The API ignores the address without the key.
-export async function requestAnalysis(domain: string, clientIp: string | null): Promise<RequestAccepted> {
+// `policyUrl` is a link to the policy someone pasted; the API only takes one
+// on the site itself (POLICY_LINK_ERROR otherwise).
+export const POLICY_LINK_ERROR = "The policy link has to be on the site itself."
+export async function requestAnalysis(
+  domain: string,
+  clientIp: string | null,
+  policyUrl: string | null = null,
+): Promise<RequestAccepted> {
   const key = process.env.IMBROGLIO_WEB_KEY
   const res = await fetch(base() + "/v1/requests", {
     method: "POST",
@@ -229,7 +249,7 @@ export async function requestAnalysis(domain: string, clientIp: string | null): 
       "Content-Type": "application/json",
       ...(clientIp && key ? { "X-Imbroglio-Web-Key": key, "X-Imbroglio-Visitor-IP": clientIp } : {}),
     }),
-    body: JSON.stringify({ domain }),
+    body: JSON.stringify(policyUrl ? { domain, policy_url: policyUrl } : { domain }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, body.error ?? body.detail?.[0]?.msg ?? `API returned ${res.status}`)

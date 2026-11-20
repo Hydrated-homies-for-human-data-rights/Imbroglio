@@ -32,10 +32,14 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import db, jobs, scorer
+from . import db, failure, jobs, scorer
 from .advice import Advice, load as load_advice
 from .rubric import NOT_DISCLOSED, load as load_rubric
 from .batch import clean_domain
+from .locate import same_site_link, site_of
+
+# The website shows this one as is when a pasted policy link is on another site.
+POLICY_LINK_ERROR = "The policy link has to be on the site itself."
 
 # Abuse limits for the only write path. Every accepted request can cost a
 # crawl (and, once extraction exists, LLM tokens), so both a per-client rate
@@ -45,6 +49,11 @@ DAILY_REQUEST_CAP = int(os.environ.get("DAILY_REQUEST_CAP", "300"))
 # One visitor's share of the day, so a single person can't use up DAILY_REQUEST_CAP
 # (and with it the day's analysis budget) for everyone else.
 REQUESTS_PER_DAY = int(os.environ.get("REQUESTS_PER_DAY", "60"))
+# New requests per registrable domain per 24 hours, all clients. Subdomains
+# are separate sites to us (a1.evil.com, a2.evil.com, ...), so without this
+# one domain owner could mint paid analyses without end. Real sites have a
+# handful of subdomains worth asking about.
+SITE_REQUESTS_PER_DAY = int(os.environ.get("SITE_REQUESTS_PER_DAY", "10"))
 PUBLIC_SOURCES = ("web", "api", "extension")
 # Lookups only read, but each one is a database query, so a client sweeping
 # hash prefixes gets cut off too. An extension user opens the popup a few
@@ -231,12 +240,31 @@ def _site_links(links: list) -> list[SiteLink]:
             for l in links]
 
 
+FailureReason = Literal["unreachable", "blocked", "pdf_only", "timed_out", "no_policy", "error"]
+
+
+class Failure(BaseModel):
+    """Why we couldn't rate a site (failure.py), read from what the crawl recorded."""
+    reason: FailureReason = Field(
+        description="unreachable: the site didn't answer or doesn't exist; blocked: bot protection "
+                    "turned us away; pdf_only: the policy is a PDF; timed_out: we ran out of time; "
+                    "no_policy: nothing at the usual places; error: something broke on our side")
+    message: str = Field(description="The reason in one plain sentence, for showing as is")
+    tried: list[str] = Field(default_factory=list,
+                             description="A few of the pages we tried and what happened, in plain words")
+
+
 class Site(BaseModel):
     domain: str
     state: SiteState
     checked_at: datetime | None
     documents: list[Document]
-    missing: list[Literal["privacy", "terms"]]
+    missing: list[Literal["privacy", "terms"]] = Field(description="Document types we have no copy of")
+    not_rated: list[Literal["privacy", "terms"]] = Field(
+        default_factory=list,
+        description="Documents we have but the rating doesn't use (not analyzed, or the analysis failed). "
+                    "With `missing`, says what the scorecard is not based on")
+    failure: Failure | None = Field(None, description="For no_policy_found: why nothing was found")
     pending_request: PendingRequest | None
     recheck_after: datetime | None = Field(
         None, description="For no_policy_found: when a new request will crawl the site again")
@@ -291,6 +319,26 @@ def _pending(conn, domain: str) -> PendingRequest | None:
         return None
     return PendingRequest(id=str(row[0]), status=row[1], stage=row[2], requested_at=row[3],
                           queue_ahead=row[4] if row[1] == "queued" else 0)
+
+
+def _awaiting_analysis(conn, domain: str) -> bool:
+    """A stored document of the site still has no rating and hasn't used up
+    its tries (analysis.pending_versions). The web service has no API key, so
+    only the on/off switch is checked here; the worker checks the rest."""
+    from .analysis import pending_versions
+
+    if os.environ.get("EXTRACTION_ENABLED", "1") != "1":
+        return False
+    return bool(pending_versions(conn, domain=domain, limit=1))
+
+
+def _site_requests_today(conn, site: str) -> int:
+    """New public requests in the last 24 hours for `site` or any of its subdomains."""
+    return conn.execute(
+        """SELECT count(*) FROM analysis_requests
+           WHERE requested_at > now() - interval '24 hours' AND source = ANY(%s)
+             AND (domain = %s OR right(domain, %s) = %s)""",
+        (list(PUBLIC_SOURCES), site, len(site) + 1, "." + site)).fetchone()[0]
 
 
 def _last_attempt(conn, domain: str) -> datetime | None:
@@ -373,10 +421,15 @@ def build_site(conn, domain: str) -> Site:
     have = {d.type for d in docs}
     recheck = (checked_at + timedelta(days=NEGATIVE_TTL_DAYS)
                if state == "no_policy_found" and checked_at else None)
+    card = _scorecard(conn, docs) if docs else None
+    # What the rating actually rests on: a stored document the scorecard
+    # doesn't cover is not part of it, even though we have it.
+    rated = set(card.documents) if card else set()
     return Site(domain=domain, state=state, checked_at=checked_at, documents=docs,
                 missing=[t for t in ("privacy", "terms") if t not in have],
-                pending_request=pending, recheck_after=recheck,
-                scorecard=_scorecard(conn, docs) if docs else None,
+                not_rated=[t for t in ("privacy", "terms") if t in have and t not in rated] if card else [],
+                failure=failure.for_site(conn, domain) if state == "no_policy_found" else None,
+                pending_request=pending, recheck_after=recheck, scorecard=card,
                 links=_site_links(db.links_for_domain(conn, domain)))
 
 
@@ -492,6 +545,11 @@ class NewRequest(BaseModel):
     domain: str = Field(max_length=253, examples=["notion.so"])
     browser: bool = Field(True, description="Allow the headless-browser fallback for JavaScript-rendered pages")
     refresh: bool = Field(False, description="Re-analyze even if the site is already available")
+    policy_url: str | None = Field(
+        None, max_length=2000, examples=["https://notion.so/privacy"],
+        description="A link to the site's privacy policy or terms, on the site itself (same registrable "
+                    "domain). Tried first, and checked like any page we find. A new link gets one crawl "
+                    "even if the site was recently checked and nothing was found")
 
 
 class RequestAccepted(BaseModel):
@@ -500,6 +558,7 @@ class RequestAccepted(BaseModel):
     domain: str
     status: Literal["queued", "running", "already_available", "no_policy_found"]
     recheck_after: datetime | None = None
+    failure: Failure | None = Field(None, description="For no_policy_found: why nothing was found")
     created: bool
     status_url: str | None
 
@@ -517,6 +576,8 @@ class AnalysisRequest(BaseModel):
     requested_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    failure: Failure | None = Field(
+        None, description="When the request is done and found nothing, or failed: why, in plain words")
 
 
 @router.post("/requests", status_code=202, response_model=RequestAccepted,
@@ -533,6 +594,11 @@ def create_request(body: NewRequest, request: Request):
     domain = clean_domain(body.domain)
     if not domain:
         return JSONResponse({"error": "not a valid domain"}, status_code=400)
+    policy_url = None
+    if body.policy_url and body.policy_url.strip():
+        policy_url = same_site_link(body.policy_url, domain)
+        if policy_url is None:
+            return JSONResponse({"error": POLICY_LINK_ERROR}, status_code=400)
     client = client_address(request)
     try:
         conn = db.connect()
@@ -541,21 +607,37 @@ def create_request(body: NewRequest, request: Request):
     try:
         db.init_schema(conn)
         if not body.refresh:
-            if _documents(conn, domain):
+            # A link nobody has given for this site lately gets one crawl
+            # past both answers below (the per-client limits still apply).
+            new_link = policy_url is not None and not jobs.link_used(conn, domain, policy_url,
+                                                                       NEGATIVE_TTL_DAYS)
+            docs = _documents(conn, domain)
+            # A site stored but never rated (the day's analysis budget ran
+            # out) is queued again rather than called available, and so is
+            # one missing a document when a new policy link is given.
+            if docs and not _awaiting_analysis(conn, domain) and \
+                    not (new_link and len({d.type for d in docs}) < 2):
                 return JSONResponse(RequestAccepted(request_id=None, domain=domain,
                                                     status="already_available", created=False,
                                                     status_url=None).model_dump(), status_code=200)
             last = _last_attempt(conn, domain)
-            if last and datetime.now(timezone.utc) - last < timedelta(days=NEGATIVE_TTL_DAYS):
+            if not docs and not new_link and last and \
+                    datetime.now(timezone.utc) - last < timedelta(days=NEGATIVE_TTL_DAYS):
                 return JSONResponse(RequestAccepted(
                     request_id=None, domain=domain, status="no_policy_found", created=False,
                     status_url=None, recheck_after=last + timedelta(days=NEGATIVE_TTL_DAYS),
+                    failure=failure.for_site(conn, domain),
                 ).model_dump(mode="json"), status_code=200)
         if not _limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_HOUR} requests per hour."},
                                 status_code=429, headers={"Retry-After": "600"})
         if not _daily_limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_DAY} requests a day."},
+                                status_code=429, headers={"Retry-After": "3600"})
+        site = site_of(domain)
+        if _pending(conn, domain) is None and _site_requests_today(conn, site) >= SITE_REQUESTS_PER_DAY:
+            return JSONResponse({"error": f"Too many new requests for {site} and its subdomains "
+                                          "today. Try again tomorrow."},
                                 status_code=429, headers={"Retry-After": "3600"})
         today = conn.execute(
             """SELECT count(*) FROM analysis_requests
@@ -565,7 +647,7 @@ def create_request(body: NewRequest, request: Request):
             return JSONResponse({"error": "Daily analysis limit reached. Try again tomorrow."},
                                 status_code=429, headers={"Retry-After": "3600"})
         _, status, created, request_id = jobs.enqueue(conn, domain, source="api",
-                                                      use_playwright=body.browser)
+                                                      use_playwright=body.browser, policy_url=policy_url)
     finally:
         conn.close()
     return RequestAccepted(request_id=request_id, domain=domain, status=status, created=created,

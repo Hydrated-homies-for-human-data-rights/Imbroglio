@@ -3,13 +3,17 @@
 import Link from "next/link"
 import { useActionState } from "react"
 import { submitRequest, type RequestState } from "@/app/actions"
+import { FALLBACK_MESSAGE } from "@/lib/failure"
 import RequestProgress from "./RequestProgress"
 
 // "Request analysis" form from the design's search results page. The success
 // box is the design's; the other outcomes (already analyzed, errors) aren't in
 // the design yet and are plain text until the UX team designs them. Once a
 // request is queued, the box is followed by its live progress.
-export default function RequestForm({ initial = "" }: { initial?: string }) {
+//
+// On a site's own page, `site` ties the form to that site: the box takes a
+// link to its policy, and the link has to be on that site.
+export default function RequestForm({ initial = "", site }: { initial?: string; site?: string }) {
   const [state, action, pending] = useActionState<RequestState, FormData>(submitRequest, { kind: "idle" })
 
   if (state.kind === "accepted" && state.status === "already_available") {
@@ -22,7 +26,7 @@ export default function RequestForm({ initial = "" }: { initial?: string }) {
   if (state.kind === "accepted" && state.status === "no_policy_found") {
     return (
       <p className="mt-4 text-sm">
-        We looked at {state.domain} recently and couldn’t find a privacy policy or terms.{" "}
+        We looked at {state.domain} recently. {state.failure?.message ?? FALLBACK_MESSAGE}{" "}
         <Link className="underline" href={`/site/${state.domain}`}>See what we tried</Link>.
       </p>
     )
@@ -40,12 +44,13 @@ export default function RequestForm({ initial = "" }: { initial?: string }) {
   return (
     <>
       <form action={action} className="mt-3 flex flex-col gap-3 sm:flex-row">
+        {site && <input type="hidden" name="site" value={site} />}
         <label className="flex-1">
-          <span className="sr-only">Domain or policy URL</span>
+          <span className="sr-only">{site ? `Link to ${site}’s policy` : "Domain or policy URL"}</span>
           <input
             name="domain"
             defaultValue={initial}
-            placeholder="example.com or https://example.com/privacy"
+            placeholder={site ? `https://${site}/privacy` : "example.com or https://example.com/privacy"}
             className="h-11 w-full rounded-lg border border-[#ccd5de] bg-white px-4 text-sm text-[#243c52] outline-none placeholder:text-[#9aa6b3] focus:border-[#6685a2] focus:ring-4 focus:ring-[#e1e8ee]"
           />
         </label>

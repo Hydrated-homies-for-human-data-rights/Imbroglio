@@ -6,10 +6,15 @@ import { useEffect, useState } from "react"
 import type { CategoryScore, Evidence, Site, WhatYouCanDo } from "@/lib/api"
 import { docName, shortDate } from "@/lib/format"
 import { disputeUrl } from "@/lib/links"
+import { requestText } from "@/lib/nextSteps"
 import { Chevron, DetailCard, RatingMark, ratingOf, ratingStyles } from "./design"
+import { CATEGORY_ABOUT } from "./home/data"
+import CopyRequest from "./CopyRequest"
+import NextSteps from "./NextSteps"
 import ShareButton from "./ShareButton"
 
 // Privacy report page from the UX team's design, fed with /v1/sites/{domain}.
+const DOC_WORDS = { privacy: "privacy policy", terms: "terms of service" } as const
 const TAGS: Record<Evidence["provenance"], string> = {
   machine: "AI-generated",
   human: "Human-reviewed",
@@ -33,6 +38,12 @@ export default function Report({ site }: { site: Site }) {
       return next
     })
   const [showScoring, setShowScoring] = useState(false)
+  // A rating that rests on one of the two documents says which, and why the
+  // other isn't in it: not found, or found but not rated.
+  const onlyOne =
+    card.documents.length === 1
+      ? { rated: card.documents[0], other: card.documents[0] === "privacy" ? ("terms" as const) : ("privacy" as const) }
+      : null
   const router = useRouter()
   const severe = card.headline === "SEVERE"
   const score = card.score ?? null
@@ -126,8 +137,11 @@ export default function Report({ site }: { site: Site }) {
             </div>
           </div>
         </div>
+        {/* Under the rating on a phone; on a wide screen, the full width under
+            the rating and the score. */}
+        <NextSteps site={site} className="lg:col-span-2 lg:row-start-2" />
         {/* Not in the design yet: plain until the UX team designs it. */}
-        <div className="flex items-center rounded-2xl border border-[#dde4ea] bg-white p-6">
+        <div className="flex items-center rounded-2xl border border-[#dde4ea] bg-white p-6 lg:col-start-2 lg:row-start-1">
           {score ? (
             <div className="w-full">
               <p className="text-sm font-semibold text-[#183149]">How this score adds up</p>
@@ -192,11 +206,12 @@ export default function Report({ site }: { site: Site }) {
           </span>
         ))}
       </div>
-      {site.missing.length > 0 && site.documents.length > 0 && (
+      {onlyOne && (
         <p className="mt-2 text-sm text-[#607186]">
-          {site.missing.includes("terms")
-            ? "We couldn’t find their terms of service, so this is based on the privacy policy alone."
-            : "We couldn’t find their privacy policy, so this is based on the terms of service alone."}
+          This rating is based on their {DOC_WORDS[onlyOne.rated]} alone.{" "}
+          {site.missing.includes(onlyOne.other)
+            ? `We couldn’t find their ${DOC_WORDS[onlyOne.other]}.`
+            : `We found their ${DOC_WORDS[onlyOne.other]} but couldn’t read it well enough to rate it.`}
         </p>
       )}
 
@@ -220,25 +235,37 @@ export default function Report({ site }: { site: Site }) {
             const rating = ratingOf[category.tier]
             return (
               <div key={category.key} id={category.key} className="scroll-mt-6 border-b border-[#e5e9ed] last:border-b-0">
-                <button
-                  onClick={() => toggle(category.key)}
-                  aria-expanded={isOpen}
-                  aria-controls={`${category.key}-details`}
-                  className={`grid w-full grid-cols-[24px_1fr_auto_22px] items-center gap-3 px-4 py-4 text-left transition hover:bg-[#f7f9fb] sm:px-5 ${
-                    isOpen ? "bg-[#f7fafc]" : ""
-                  }`}
-                >
-                  <RatingMark rating={rating} />
-                  <span className="text-[15px] font-medium text-[#193149]">{category.name}</span>
-                  <span
-                    className={`text-right text-[11px] font-bold uppercase tracking-[0.06em] sm:text-xs sm:tracking-[0.07em] ${ratingStyles[rating]}`}
+                <h3>
+                  <button
+                    onClick={() => toggle(category.key)}
+                    aria-expanded={isOpen}
+                    aria-controls={`${category.key}-details`}
+                    className={`grid w-full grid-cols-[24px_1fr_auto_22px] items-start gap-3 px-4 py-4 text-left transition hover:bg-[#f7f9fb] sm:px-5 ${
+                      isOpen ? "bg-[#f7fafc]" : ""
+                    }`}
                   >
-                    {rating}
-                  </span>
-                  <span className="text-[#8d9aa8]">
-                    <Chevron open={isOpen} />
-                  </span>
-                </button>
+                    <span className="flex h-6 items-center">
+                      <RatingMark rating={rating} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-medium leading-6 text-[#193149]">{category.name}</span>
+                      {/* what the category covers, in a reader's words */}
+                      {CATEGORY_ABOUT[category.key] && (
+                        <span className="mt-0.5 block text-[13px] font-normal leading-5 text-[#5a6b7e]">
+                          {CATEGORY_ABOUT[category.key]}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={`flex h-6 items-center justify-end text-right text-[11px] font-bold uppercase tracking-[0.06em] sm:text-xs sm:tracking-[0.07em] ${ratingStyles[rating]}`}
+                    >
+                      {rating}
+                    </span>
+                    <span className="flex h-6 items-center text-[#8d9aa8]">
+                      <Chevron open={isOpen} />
+                    </span>
+                  </button>
+                </h3>
                 {isOpen && (
                   <div id={`${category.key}-details`} className="bg-[#f7fafc] px-4 pb-5 pt-1 sm:pl-[56px] sm:pr-5">
                     <CategoryDetails site={site} category={category} />
@@ -287,6 +314,7 @@ function CategoryDetails({ site, category }: { site: Site; category: CategorySco
   for (const f of category.findings) {
     if (f.what_you_can_do) advice.set(f.what_you_can_do.learn_anchor, f.what_you_can_do)
   }
+  const topics = [...advice.values()]
   // the site's own page for this category, when one was found on its site
   const ownPage = (site.links ?? []).find((l) => l.category === category.key)
 
@@ -315,45 +343,69 @@ function CategoryDetails({ site, category }: { site: Site; category: CategorySco
         </div>
       )}
 
-      {/* The site's own page for this, found on its homepage or policy.
-          Not in the design yet: plain until the UX team designs it. */}
-      {ownPage && (
-        <p className="mt-5 rounded-xl border border-[#cfe0d3] bg-[#f1f8f3] px-5 py-4 text-sm text-[#2f5a3d]">
-          On {site.domain}:{" "}
-          <a className="font-semibold underline" href={ownPage.url} target="_blank" rel="noopener noreferrer">
-            {ownPage.text}
-          </a>
-          <span className="text-[#5f7a66]">
-            {" "}
-            {ownPage.source === "known"
-              ? "(its own settings page, checked by the Imbroglio team)"
-              : `(its own page, linked from its ${ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})`}
-          </span>
-        </p>
+      {/* What you can do: the site's own page for this when one was found on
+          its homepage or policy, or a request to send them when not, then
+          the advice for each finding (advice.yaml), shown open. */}
+      {(ownPage || topics.length > 0) && (
+        <div className="mt-5 border-t border-[#e5e9ed] pt-4 text-[15px] leading-6 text-[#364b63]">
+          <h4 className="font-semibold text-[#102338]">What you can do</h4>
+          {ownPage ? (
+            <p className="mt-1">
+              On {site.domain}:{" "}
+              <a
+                className="font-medium text-[#315f91] underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]"
+                href={ownPage.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {ownPage.text}
+              </a>
+              <span className="text-[#5a6b7e]">
+                {" "}
+                {ownPage.source === "known"
+                  ? "(its own settings page, checked by the Imbroglio team)"
+                  : `(its own page, linked from its ${ownPage.source === "homepage" ? "homepage" : docName(ownPage.source).toLowerCase()})`}
+              </span>
+            </p>
+          ) : (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <p>We didn’t find a page for this on {site.domain}. You can ask them directly.</p>
+              <CopyRequest request={requestText(category.key, site.domain)} />
+            </div>
+          )}
+          {topics.map((a) => (
+            <div key={a.learn_anchor} className="mt-3">
+              {topics.length > 1 && <p className="text-sm font-semibold text-[#183149]">{a.title}</p>}
+              <ul className="mt-1 grid list-disc gap-1 pl-5">
+                {a.steps.map((s) => (
+                  <li key={s.text}>
+                    {s.text}
+                    {s.link && (
+                      <>
+                        {" "}
+                        <a
+                          className="underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]"
+                          href={s.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {new URL(s.link).hostname.replace(/^www\./, "")}
+                        </a>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                className="mt-1 inline-block text-sm font-medium text-[#315f91] underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]"
+                href={`/learn#${a.learn_anchor}`}
+              >
+                More on this
+              </Link>
+            </div>
+          ))}
+        </div>
       )}
-
-      {/* Not in the design yet: plain until the UX team designs it. */}
-      {[...advice.values()].map((a) => (
-        <details key={a.learn_anchor} className="mt-4 text-sm">
-          <summary className="cursor-pointer">What can you do? {a.title}</summary>
-          <p className="mt-1">{a.why}</p>
-          <ul className="mt-1 list-disc pl-5">
-            {a.steps.map((s) => (
-              <li key={s.text}>
-                {s.text}{" "}
-                {s.link && (
-                  <a className="underline" href={s.link} target="_blank" rel="noopener noreferrer">
-                    link
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-          <Link className="underline" href={`/learn#${a.learn_anchor}`}>
-            More on this
-          </Link>
-        </details>
-      ))}
     </>
   )
 }

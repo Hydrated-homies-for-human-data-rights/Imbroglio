@@ -227,11 +227,14 @@ push to `main`:
 | `LOOKUPS_PER_HOUR` | Hash-prefix lookups allowed per client per hour (default 600) |
 | `DAILY_REQUEST_CAP` | Analysis requests accepted per 24 hours, all clients (default 300) |
 | `REQUESTS_PER_DAY` | Analysis requests one client may make per 24 hours (default 60; an IPv6 client counts as its /64) |
+| `SITE_REQUESTS_PER_DAY` | New analysis requests per registrable domain and its subdomains per 24 hours, all clients (default 10) (web) |
 | `CLIENT_IP_HEADER` | Header the platform sets with the caller's real address, used for the per-client limit. Set to `x-real-ip` on Railway (web). Empty means the connection's address |
 | `WEB_CLIENT_KEY` | Shared secret, 32+ random characters. Lets the website pass on each visitor's address so visitors get their own limit. Must match `IMBROGLIO_WEB_KEY` on Vercel (web) |
 | `ANTHROPIC_API_KEY` | Turns on LLM analysis (worker) |
 | `EXTRACTION_MODEL` | Model that reads the documents, default `claude-sonnet-5` (worker) |
 | `EXTRACTION_DAILY_BUDGET_USD` | LLM spend allowed per 24 hours, default 5 (worker) |
+| `BACKLOG_BUDGET_SHARE` | Share of that budget the hourly pass may spend on stored documents still waiting for analysis, default 0.5 (worker) |
+| `JOB_TIME_LIMIT` | Seconds one request may run, crawl and analysis together, before it is marked failed (default 600) (worker) |
 | `RECHECK_DAYS` | How often each stored document is fetched again to look for changes, in days (default 7; 30 for monthly; 0 turns it off). Detect-only, no model calls (worker) |
 | `RECHECK_BATCH` | Documents rechecked per hourly pass, one at a time (default 100) (worker) |
 | `RUBRIC_VERSION` | Rubric used for new analyses and for the ratings shown, default `v0.1`. `v0.2` switches to scorer s2 (set it on both services) |

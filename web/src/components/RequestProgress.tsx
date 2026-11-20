@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import type { AnalysisRequest } from "@/lib/api"
+import type { AnalysisRequest, Failure } from "@/lib/api"
+import { FALLBACK_MESSAGE } from "@/lib/failure"
 
 // Follows one analysis request while it is queued or running: polls the
 // status route every couple of seconds and shows which step the worker is
@@ -32,9 +33,10 @@ type View =
   | { kind: "loading" }
   | { kind: "queued"; ahead: number }
   | { kind: "running"; step: number; line: string | null }
-  | { kind: "done"; found: boolean }
-  | { kind: "failed"; error: string | null }
+  | { kind: "done"; found: boolean; failure: Failure | null }
+  | { kind: "failed"; failure: Failure | null }
   | { kind: "lost" }
+  | { kind: "slow" }
 
 function viewOf(r: AnalysisRequest): View {
   if (r.status === "queued") return { kind: "queued", ahead: r.queue_ahead }
@@ -45,9 +47,9 @@ function viewOf(r: AnalysisRequest): View {
   }
   if (r.status === "done") {
     const docs = r.result?.documents ?? []
-    return { kind: "done", found: docs.some((d) => d.found) }
+    return { kind: "done", found: docs.some((d) => d.found), failure: r.failure ?? null }
   }
-  return { kind: "failed", error: r.error }
+  return { kind: "failed", failure: r.failure ?? null }
 }
 
 export default function RequestProgress({ id, domain }: { id: string; domain: string }) {
@@ -80,7 +82,13 @@ export default function RequestProgress({ id, domain }: { id: string; domain: st
       // when something was found (otherwise the message below says so).
       if (next.kind === "done" && onReport) router.refresh()
       else if (next.kind === "done" && next.found) router.push(reportPath)
-      if (!active || Date.now() - started > GIVE_UP_MS) return
+      if (!active) return
+      // Stop polling after a while, and say so rather than freezing on the
+      // last step. The site page shows the result whenever it lands.
+      if (Date.now() - started > GIVE_UP_MS) {
+        setView({ kind: "slow" })
+        return
+      }
       timer = setTimeout(tick, Date.now() - started > SLOW_AFTER_MS ? SLOW_POLL_MS : POLL_MS)
     }
     tick()
@@ -100,10 +108,27 @@ export default function RequestProgress({ id, domain }: { id: string; domain: st
   if (view.kind === "lost") {
     return <p className="mt-4 text-sm">We lost track of this request. {report} to check on {domain}.</p>
   }
+  if (view.kind === "slow") {
+    return (
+      <p className="mt-4 text-sm" role="status">
+        This is taking longer than usual. Check back later; the site page will update.
+        {!onReport && (
+          <>
+            {" "}
+            <Link className="underline" href={reportPath}>
+              Go to the {domain} page
+            </Link>
+            .
+          </>
+        )}
+      </p>
+    )
+  }
   if (view.kind === "failed") {
     return (
       <div className="mt-4 rounded-lg border border-[#e3c4c0] bg-[#fbf2f1] px-4 py-3 text-sm text-[#8a3328]">
-        The analysis of {domain} failed{view.error ? `: ${view.error}` : ""}. You can request it again later.
+        {view.failure?.message ?? `Something went wrong on our side while we were reading ${domain}.`} You can
+        request it again in a few minutes.
       </div>
     )
   }
@@ -116,7 +141,14 @@ export default function RequestProgress({ id, domain }: { id: string; domain: st
           </>
         ) : (
           <>
-            We couldn’t find a privacy policy or terms for {domain}. {report} for what we tried.
+            {view.failure?.message ?? FALLBACK_MESSAGE}{" "}
+            {onReport ? (
+              "Loading what we tried…"
+            ) : (
+              <Link className="underline" href={reportPath}>
+                See what we tried and what you can do
+              </Link>
+            )}
           </>
         )}
       </div>

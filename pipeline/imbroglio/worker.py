@@ -22,8 +22,8 @@ import socket
 import threading
 import time
 
-from . import db, jobs
-from .analysis import ensure_analyzed
+from . import SERVER_ONLY, db, jobs
+from .analysis import analyze_backlog, ensure_analyzed, pending_versions
 from .analyze import analyze
 
 log = logging.getLogger("imbroglio.worker")
@@ -31,6 +31,17 @@ log = logging.getLogger("imbroglio.worker")
 POLL_SECONDS = 2.0
 TIME_BUDGET = 120.0
 PROGRESS_MIN_INTERVAL = 0.3  # seconds; throttle DB writes from chatty runs
+# Hard limit on one job, crawl and analysis together. TIME_BUDGET is the
+# crawl's own soft budget and each model call takes a minute or two, so a
+# real job ends well inside this.
+JOB_TIME_LIMIT = float(os.environ.get("JOB_TIME_LIMIT", "600"))
+# The supervising thread heart-beats on this schedule, so a long model call
+# (which logs nothing) isn't mistaken for a dead worker and reclaimed after
+# jobs.STALE_AFTER. Only a worker process that died goes quiet.
+HEARTBEAT_SECONDS = 30.0
+# What a failed request says in public. The details stay in the server log.
+TOOK_TOO_LONG = "This site took too long to analyze, so we stopped. Please try again later."
+CRASHED = "Something went wrong on our side while analyzing this site. Please try again later."
 
 _stop = threading.Event()
 
@@ -47,7 +58,7 @@ class _ProgressHandler(logging.Handler):
         self.pending: str | None = None
 
     def emit(self, record: logging.LogRecord) -> None:
-        if record.thread != self.thread_id:
+        if record.thread != self.thread_id or getattr(record, "server_only", False):
             return
         msg = record.getMessage()
         now = time.monotonic()
@@ -86,7 +97,13 @@ def _summary(outcomes) -> dict:
 
 
 def process_one(worker_id: str) -> bool:
-    """Claim and run one job. Returns False if the queue was empty."""
+    """Claim and run one job. Returns False if the queue was empty.
+
+    The job runs on its own thread while this one keeps its heartbeat going
+    and watches the clock. A job past JOB_TIME_LIMIT is marked failed and left
+    behind, so one site that stalls every fetch can't hold a worker thread
+    (and, through reclaims, the next one) forever. Python can't kill a
+    thread; the fetch deadlines in fetch.py are what make a stuck one finish."""
     conn = db.connect()
     try:
         job = jobs.claim(conn, worker_id)
@@ -95,15 +112,54 @@ def process_one(worker_id: str) -> bool:
     if job is None:
         return False
 
-    request_id, domain, use_playwright = job
+    request_id, domain, use_playwright, policy_url = job
     log.info("job %s: %s (browser %s)", request_id, domain, "on" if use_playwright else "off")
+    outcome: dict = {}
+    t = threading.Thread(target=_run_job, args=(request_id, domain, use_playwright, policy_url, outcome),
+                         daemon=True, name=f"job-{request_id}")
+    t0 = time.monotonic()
+    t.start()
+    while True:
+        t.join(HEARTBEAT_SECONDS)
+        if not t.is_alive():
+            break
+        if time.monotonic() - t0 > JOB_TIME_LIMIT:
+            log.error("job %s (%s) still running after %ss; marked failed and left behind",
+                      request_id, domain, int(JOB_TIME_LIMIT))
+            outcome = {"ok": False, "error": TOOK_TOO_LONG}
+            break
+        try:
+            conn = db.connect()
+            try:
+                jobs.heartbeat(conn, request_id)
+            finally:
+                conn.close()
+        except Exception:
+            log.exception("job %s: heartbeat failed", request_id)
+
+    conn = db.connect()
+    try:
+        if outcome.get("ok"):
+            jobs.finish(conn, request_id, True, outcome["result"])
+        else:
+            jobs.finish(conn, request_id, False, error=outcome.get("error", CRASHED))
+    finally:
+        conn.close()
+    return True
+
+
+def _run_job(request_id: int, domain: str, use_playwright: bool, policy_url: str | None,
+             outcome: dict) -> None:
+    """Crawl and analyze one site; the result goes into `outcome` for
+    process_one to record."""
     pipeline_log = logging.getLogger("imbroglio")
     pipeline_log.setLevel(logging.INFO)
     handler = _ProgressHandler(request_id, threading.get_ident())
     pipeline_log.addHandler(handler)
     t0 = time.time()
     try:
-        outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET)
+        outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET,
+                           policy_url=policy_url)
         seconds = time.time() - t0
         conn = db.connect()
         try:
@@ -117,28 +173,32 @@ def process_one(worker_id: str) -> bool:
             # never fails the crawl that already succeeded.
             for o in outcomes:
                 if o.version_id:
-                    try:
-                        o.analysis = ensure_analyzed(conn, o.version_id)
-                    except Exception:
-                        conn.rollback()
-                        log.exception("analysis failed for version %s", o.version_id)
-                        o.analysis = "failed:error"
-            pipeline_log.removeHandler(handler)
-            handler.close()
-            jobs.finish(conn, request_id, True, _summary(outcomes))
+                    o.analysis = _analyze_safely(conn, o.version_id)
+            # Documents stored earlier that are still waiting (the budget ran
+            # out, or this crawl couldn't reach them today).
+            seen = {o.version_id for o in outcomes}
+            for version_id in pending_versions(conn, domain=domain):
+                if version_id not in seen:
+                    _analyze_safely(conn, version_id)
         finally:
             conn.close()
-        log.info("job %s done in %.1fs", request_id, seconds)
-    except Exception as exc:
-        log.exception("job %s failed", request_id)
+        outcome.update(ok=True, result=_summary(outcomes))
+        log.info("job %s done in %.1fs", request_id, time.time() - t0, extra=SERVER_ONLY)
+    except Exception:
+        log.exception("job %s failed", request_id, extra=SERVER_ONLY)
+        outcome.update(ok=False, error=CRASHED)
+    finally:
         pipeline_log.removeHandler(handler)
         handler.close()
-        conn = db.connect()
-        try:
-            jobs.finish(conn, request_id, False, error=f"{type(exc).__name__}")
-        finally:
-            conn.close()
-    return True
+
+
+def _analyze_safely(conn, version_id: int) -> str:
+    try:
+        return ensure_analyzed(conn, version_id)
+    except Exception:
+        conn.rollback()
+        log.exception("analysis failed for version %s", version_id, extra=SERVER_ONLY)
+        return "failed:error"
 
 
 def _loop(worker_id: str) -> None:
@@ -171,6 +231,23 @@ def _recheck_loop() -> None:
         _stop.wait(RECHECK_TICK_SECONDS)
 
 
+BACKLOG_TICK_SECONDS = 3600.0
+
+
+def _backlog_loop() -> None:
+    """Once an hour, analyze stored documents still waiting for it, oldest
+    first, within the daily LLM budget (analysis.analyze_backlog). Without
+    this a site whose analysis was skipped for the budget stayed unrated.
+    Worker service only, like the recheck schedule."""
+    _stop.wait(RECHECK_FIRST_DELAY)
+    while not _stop.is_set():
+        try:
+            analyze_backlog(_stop)
+        except Exception:
+            log.exception("backlog pass failed (database unreachable?)")
+        _stop.wait(BACKLOG_TICK_SECONDS)
+
+
 def start_threads(n: int) -> list[threading.Thread]:
     """Start n worker threads (daemon). Used by the CLI and by the web app's
     embedded mode."""
@@ -201,6 +278,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, lambda *_: _stop.set())
     signal.signal(signal.SIGINT, lambda *_: _stop.set())
     threads = start_threads(args.concurrency)
+    threading.Thread(target=_backlog_loop, daemon=True, name="backlog").start()
     from .recheck import RECHECK_DAYS
     if RECHECK_DAYS > 0:
         threading.Thread(target=_recheck_loop, daemon=True, name="recheck").start()

@@ -40,7 +40,7 @@ What you get:
 Private by design:
 • No account, no sign-in
 • No ads, no analytics, no tracking
-• The extension never sends the name of the site you're on. It sends only the first three characters of a SHA-256 hash of it, shared by hundreds of popular sites, and finds the right answer on your own computer
+• The extension never sends the name of the site you're on. It sends only the first three characters of a SHA-256 hash of it, which many sites share, and finds the right answer on your own computer
 • What it remembers stays in your browser, filed under a key only your browser holds
 
 Imbroglio is free and open source, built as a senior capstone project at Metropolitan State University of Denver. Ratings describe what the documents say, not a company's intentions, and are not legal advice.
