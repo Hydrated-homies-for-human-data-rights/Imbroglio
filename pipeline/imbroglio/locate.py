@@ -185,6 +185,33 @@ def site_of(host: str) -> str:
     return ".".join(labels[-2:])
 
 
+MAX_LINK_CHARS = 2000
+
+
+def same_site_link(url: str, domain: str) -> str | None:
+    """A policy link someone gave us for `domain`, cleaned, or None unless it
+    is an http(s) link on the same registrable domain. 'https://help.x.com/
+    privacy#top' is fine for x.com; 'https://y.com/privacy' is not, and
+    neither is a link with a user name or password in it. Fetching it still
+    goes through netguard like every other URL."""
+    raw = (url or "").strip()
+    if not raw or len(raw) > MAX_LINK_CHARS or any(c.isspace() for c in raw):
+        return None
+    if not re.match(r"^[a-z][a-z0-9+.-]*://", raw, re.I):
+        raw = "https://" + raw
+    try:
+        p = urlparse(raw)
+        host = (p.hostname or "").rstrip(".")
+        p.port  # raises ValueError on a malformed port
+    except ValueError:
+        return None
+    if p.scheme.lower() not in ("http", "https") or not host or p.username or p.password:
+        return None
+    if site_of(host) != site_of(domain):
+        return None
+    return p._replace(scheme=p.scheme.lower(), fragment="").geturl()
+
+
 def brand_of(domain: str) -> str:
     """'linustechtips.com' -> 'linustechtips'; 'bbc.co.uk' -> 'bbc'."""
     return site_of(domain).split(".")[0]
@@ -367,6 +394,27 @@ def names_site(domain: str, text: str) -> bool:
     return False
 
 
+SUPPLIED = "supplied"   # discovered_via for a link a visitor gave us
+SUPPLIED_RANK = -1      # tried before anything we found ourselves
+
+
+def _is_type(doc_type: str, url: str, text: str) -> bool:
+    """Is a supplied link this document type? A visitor's link could be
+    either one, and terms often pass the privacy checks (they mention the
+    privacy policy, cookies and third parties), so the link's path or the
+    page's opening has to name this type and not the other first."""
+    other = "terms" if doc_type == "privacy" else "privacy"
+    path = urlparse(url).path
+    mine_path, other_path = HREF_PATTERNS[doc_type].search(path), HREF_PATTERNS[other].search(path)
+    if mine_path and not other_path:
+        return True
+    if other_path and not mine_path:
+        return False
+    head = text[:SIDE_HEAD_CHARS * 2]
+    mine, theirs = STRONG_TEXT[doc_type].search(head), STRONG_TEXT[other].search(head)
+    return bool(mine) and (theirs is None or mine.start() < theirs.start())
+
+
 def _validate(doc_type: str, text: str) -> tuple[bool, str]:
     """Returns (ok, reason). The reason separates a short page from a long
     page that doesn't read like this document type; batch 2's notes lumped
@@ -407,9 +455,13 @@ def locate_document(domain: str, doc_type: str,
                     session: requests.Session,
                     use_playwright: bool,
                     deadline: float | None = None,
-                    guess_paths: bool = True) -> Located:
+                    guess_paths: bool = True,
+                    base: str | None = None) -> Located:
+    """`base` is the home page that answered (https://www.x.com when the
+    bare domain didn't); guessed paths go there."""
     result = Located(doc_type)
-    guesses = [(f"https://{domain}{p}", "common-path", COMMON_PATH_RANK)
+    root = base or f"https://{domain}"
+    guesses = [(f"{root}{p}", "common-path", COMMON_PATH_RANK)
                for p in COMMON_PATHS[doc_type]] if guess_paths else []
     probes = sorted(candidates + guesses, key=lambda p: p[2])
     tried: set[str] = set()
@@ -443,6 +495,8 @@ def locate_document(domain: str, doc_type: str,
         ok, reason = _validate(doc_type, text)
         if ok and via.endswith("-external") and not names_site(domain, text):
             ok, reason = False, f"another site's document (doesn't mention {brand_of(domain)})"
+        if ok and via == SUPPLIED and not _is_type(doc_type, url, text):
+            ok, reason = False, f"isn't the {'privacy policy' if doc_type == 'privacy' else 'terms of service'}"
         # Links on this page that name the document ("Privacy Policy", "Main
         # Privacy Policy (English)") and point somewhere else: on a hub page,
         # those lead to the real document.
@@ -512,19 +566,43 @@ def locate_document(domain: str, doc_type: str,
 
 
 def locate_all(domain: str, use_playwright: bool = True,
-               time_budget: float | None = None) -> dict[str, Located]:
+               time_budget: float | None = None,
+               policy_url: str | None = None) -> dict[str, Located]:
     """Discover and extract both document types for a domain.
 
     time_budget (seconds) caps the probe loop for batch runs, so one slow or
     hostile site can't hold a worker for minutes. Checked between probes, so a
     single in-flight fetch can overrun it by up to one fetch timeout.
+
+    policy_url is a link a visitor gave us. It is tried first for both
+    document types, and only if it is on the same registrable domain. It
+    passes the same checks as any page we find ourselves, plus one: its
+    path or opening has to name the document type, so a terms page given as
+    a "policy link" is never stored as the privacy policy.
     """
     deadline = time.monotonic() + time_budget if time_budget else None
     session = requests.Session()
+    link = same_site_link(policy_url, domain) if policy_url else None
+    if policy_url and link is None:
+        log.info("ignoring the given link: not on %s", domain)
+    supplied = {dt: [(link, SUPPLIED, SUPPLIED_RANK)] if link else [] for dt in ("privacy", "terms")}
+
     homepage = f"https://{domain}"
     log.info("fetching homepage %s", homepage)
     html, home_status = fetch_static(homepage, session)
     home_notes: list[str] = [] if html else [f"homepage static -> {home_status}"]
+    statuses = [home_status]
+    # Some sites only answer on www (no DNS record or no server for the bare
+    # name), or answer the bare name with an error page.
+    if html is None and not domain.startswith("www."):
+        www = f"https://www.{domain}"
+        log.info("homepage failed (%s), trying %s", home_status, www)
+        w_html, w_status = fetch_static(www, session)
+        statuses.append(w_status)
+        if w_html:
+            homepage, html, home_status, home_notes = www, w_html, w_status, []
+        else:
+            home_notes.append(f"www homepage static -> {w_status}")
 
     cands: dict[str, list[tuple[str, str, int]]] = {"privacy": [], "terms": []}
     home_pages: list[str] = []  # every real homepage we got, for the link harvest
@@ -561,6 +639,21 @@ def locate_all(domain: str, use_playwright: bool = True,
             log.info("rendered homepage links: %d privacy, %d terms",
                      len(cands["privacy"]), len(cands["terms"]))
 
+    def skip_discovery(why: str) -> dict[str, Located]:
+        """Nothing worth crawling on the site itself. A given link still gets
+        one try, since it may be on a host that answers."""
+        if not link:
+            return {dt: Located(dt, notes=home_notes + [why]) for dt in ("privacy", "terms")}
+        log.info("trying only the link we were given")
+        results = {dt: locate_document(domain, dt, supplied[dt], session, use_playwright, deadline,
+                                       guess_paths=False)
+                   for dt in ("privacy", "terms")}
+        for loc in results.values():
+            if not loc.ok:
+                loc.notes[:0] = home_notes + [why]
+        _harvest_links(domain, homepage, home_pages, results)
+        return results
+
     # Unreachable host: the homepage failed at the connection level (not an
     # HTTP status) both statically and rendered. Guessed paths on the same
     # host fail the same way, and batch 4 showed them burning the whole time
@@ -568,17 +661,16 @@ def locate_all(domain: str, use_playwright: bool = True,
     walled = [n for n in home_notes if "bot challenge" in n]
     if walled and not (cands["privacy"] or cands["terms"]) and             (len(walled) == 2 or not use_playwright):
         log.info("blocked by a bot challenge, skipping discovery")
-        return {dt: Located(dt, notes=home_notes + ["blocked: bot challenge"])
-                for dt in ("privacy", "terms")}
+        return skip_discovery("blocked: bot challenge")
 
     home_failed_rendered = any(n.startswith("homepage render") for n in home_notes)
-    if not html and not home_status.isdigit() and (home_failed_rendered or not use_playwright):
+    if not html and not any(s.isdigit() for s in statuses) and (home_failed_rendered or not use_playwright):
         log.info("host unreachable, skipping discovery")
-        return {dt: Located(dt, notes=home_notes + ["host unreachable"])
-                for dt in ("privacy", "terms")}
+        return skip_discovery("host unreachable")
 
     results = {
-        dt: locate_document(domain, dt, cands[dt], session, use_playwright, deadline)
+        dt: locate_document(domain, dt, supplied[dt] + cands[dt], session, use_playwright, deadline,
+                            base=homepage)
         for dt in ("privacy", "terms")
     }
     # Legal pages link to each other: when one document was found and the

@@ -25,26 +25,41 @@ import uuid
 
 import psycopg
 
+from . import failure
+
 STALE_AFTER = "5 minutes"
 MAX_ATTEMPTS = 3
 PROGRESS_KEEP = 200  # cap log lines per request
 
 
 def enqueue(conn: psycopg.Connection, domain: str, source: str = "web",
-            use_playwright: bool = True) -> tuple[int, str, bool, str]:
+            use_playwright: bool = True, policy_url: str | None = None) -> tuple[int, str, bool, str]:
     """Returns (request_id, status, created, public_id). An open request for
     the same domain is reused (request_count += 1) instead of queueing a
-    duplicate."""
+    duplicate; a policy link given with it is kept on that request (it
+    only helps if the request hasn't started yet)."""
     row = conn.execute(
-        """INSERT INTO analysis_requests (domain, source, use_playwright)
-           VALUES (%s, %s, %s)
+        """INSERT INTO analysis_requests (domain, source, use_playwright, policy_url)
+           VALUES (%s, %s, %s, %s)
            ON CONFLICT (domain) WHERE status IN ('queued', 'running')
-           DO UPDATE SET request_count = analysis_requests.request_count + 1
+           DO UPDATE SET request_count = analysis_requests.request_count + 1,
+                         policy_url = coalesce(EXCLUDED.policy_url, analysis_requests.policy_url)
            RETURNING id, status, (xmax = 0) AS created, public_id""",
-        (domain, source, use_playwright),
+        (domain, source, use_playwright, policy_url),
     ).fetchone()
     conn.commit()
     return row[0], row[1], row[2], str(row[3])
+
+
+def link_used(conn: psycopg.Connection, domain: str, policy_url: str, days: int) -> bool:
+    """Was this policy link already given for this domain in the last `days`?
+    A new link gets one crawl past the "nothing found" cache; the same link
+    again does not."""
+    return conn.execute(
+        """SELECT 1 FROM analysis_requests
+           WHERE domain = %s AND policy_url = %s
+             AND requested_at > now() - make_interval(days => %s) LIMIT 1""",
+        (domain, policy_url, days)).fetchone() is not None
 
 
 def enqueue_batch(conn: psycopg.Connection, domains: list[str],
@@ -75,10 +90,10 @@ def enqueue_batch(conn: psycopg.Connection, domains: list[str],
             "already_requested": [d for d in domains if d in requested and d not in stored]}
 
 
-def claim(conn: psycopg.Connection, worker_id: str) -> tuple[int, str, bool] | None:
+def claim(conn: psycopg.Connection, worker_id: str) -> tuple[int, str, bool, str | None] | None:
     """Take the next job: open requests by priority (request_count, then age),
     including running jobs whose worker went silent. Returns
-    (request_id, domain, use_playwright) or None."""
+    (request_id, domain, use_playwright, policy_url) or None."""
     # Give up on jobs that keep killing their worker.
     conn.execute(
         f"""UPDATE analysis_requests
@@ -100,7 +115,7 @@ def claim(conn: psycopg.Connection, worker_id: str) -> tuple[int, str, bool] | N
                 ORDER BY request_count DESC, requested_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1)
-            RETURNING r.id, r.domain, r.use_playwright""",
+            RETURNING r.id, r.domain, r.use_playwright, r.policy_url""",
         (worker_id,),
     ).fetchone()
     conn.commit()
@@ -171,6 +186,7 @@ def _one(conn: psycopg.Connection, column: str, value) -> dict | None:
         d[k] = d[k].isoformat() if d[k] else None
     if d["status"] != "queued":
         d["queue_ahead"] = 0
+    d["failure"] = failure.for_request(d["status"], d["result"], d["domain"])
     return d
 
 
