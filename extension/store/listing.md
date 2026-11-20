@@ -50,11 +50,14 @@ Imbroglio is free and open source, built as a senior capstone project at Metropo
 **Language:** English
 
 **Graphic assets** (all in this folder, made by `make_assets.py`):
-- Store icon 128x128: `../icons/icon128.png`
+- Store icon 128x128: `store-icon-128.png` (the toolbar icon with the 16px transparent margin Google asks for)
 - Screenshots 1280x800, in this order: `screenshot-1-overview.png`, `screenshot-2-breakdown.png`, `screenshot-3-actions.png`, `screenshot-4-moderate.png`
 - Small promo tile 440x280: `promo-small-440x280.png`
+- Marquee promo tile 1400x560: `promo-marquee-1400x560.png` (optional; only shown if Google features the extension)
 
-**Official URL / homepage:** https://imbroglio.io
+**Official URL:** None (it lists only sites verified in Google Search Console; can be added later)
+
+**Homepage URL:** https://imbroglio.io
 
 **Support URL:** https://imbroglio.io/report
 
