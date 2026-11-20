@@ -1,0 +1,777 @@
+/* How we score: one sentence followed down the thread through the five
+   steps, then the scorer's rules to try, then accuracy. Shares the front
+   page's tokens (home.css) and the editorial frame (pages.css). */
+
+.score .page-main {
+  padding-top: 0;
+}
+
+/* ---- the opening: headline left, the stored sentence right ---- */
+.score .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 48px;
+  align-items: end;
+  padding: 88px 0 40px;
+}
+.score .sheet {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 18px 22px 22px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+}
+.score .sheet figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.score .sheet-lines {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 8px 10px;
+  margin-top: 14px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.score .sheet-lines .ln {
+  padding-top: 4px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.score .sheet-lines .ln.hot {
+  color: var(--pin);
+}
+.score .sheet-lines .blank {
+  height: 9px;
+  margin-top: 8px;
+  background: #edf0f3;
+}
+.score mark {
+  color: inherit;
+  background: rgba(247, 154, 192, 0.38);
+  box-shadow: 0 0 0 2px rgba(247, 154, 192, 0.38);
+  border-radius: 2px;
+}
+/* where the thread leaves the sheet */
+.score .sheet-anchor {
+  position: absolute;
+  left: 36px;
+  bottom: 0;
+}
+
+/* ---- the five stops, on the rail ---- */
+.score .follow {
+  margin: 0;
+  padding-top: 36px;
+}
+.score .body {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, 1fr);
+}
+.score .rail {
+  position: relative;
+}
+.score .stops {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.score .stop {
+  position: relative;
+  padding: 40px 0;
+}
+/* the pin, lit once the thread has reached the stop */
+.score .stop::before {
+  content: "";
+  position: absolute;
+  top: 46px;
+  left: calc(-1 * var(--gutter) / 2 - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pin);
+  box-shadow: 0 0 0 5px var(--paper);
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity 0.3s ease,
+    transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+.score .stop[data-reached="true"]::before {
+  opacity: 1;
+  transform: scale(1);
+}
+.score .stop .n {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pin);
+}
+.score .stop h2 {
+  margin: 6px 0 0;
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.score .say {
+  margin: 8px 0 0;
+  max-width: 40em;
+  font-size: 16px;
+  line-height: 1.55;
+  color: #2b3e52;
+}
+.score .say.small {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* the things each stop shows */
+.score .ex-card {
+  margin: 18px 0 0;
+  max-width: 760px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+}
+.score .ex-record {
+  padding: 14px 20px;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.score .ex-record div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+}
+.score .ex-record dt {
+  color: var(--muted);
+}
+.score .ex-record dd {
+  margin: 0;
+}
+.score .ex-q {
+  padding: 14px 18px;
+}
+.score .ex-q .mono {
+  font-size: 11px;
+  color: var(--faint);
+}
+.score .ex-q p {
+  margin: 4px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.score .ex-answers,
+.score .ex-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.score .ex-answers li {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+  padding: 9px 18px;
+  border-top: 1px solid #edf0f3;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.score .ex-answers li.on {
+  background: #fff5f9;
+  box-shadow: inset 3px 0 0 var(--pink);
+  font-weight: 600;
+}
+.score .ex-answers .verdict,
+.score .ex-flow .verdict {
+  font-size: 13px;
+}
+.score .ex-checks li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 18px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.score .ex-checks li + li {
+  border-top: 1px solid #edf0f3;
+}
+.score .ex-checks .ok {
+  color: var(--sev-limited);
+  font-weight: 700;
+}
+.score .ex-checks .no {
+  color: var(--sev-severe);
+  font-weight: 700;
+}
+.score .ex-checks .fail {
+  background: #fafbfc;
+  color: var(--muted);
+}
+.score .ex-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  max-width: 760px;
+}
+.score .ex-flow .ex-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 18px;
+  font-size: 15px;
+}
+.score .ex-flow .concern {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.score .ex-flow .arrow {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 22px;
+  color: var(--pin);
+}
+.score .ex-site {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  padding: 16px 20px;
+}
+.score .ex-math {
+  margin-top: 12px;
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.score .ex-math p {
+  margin: 0;
+}
+.score .ex-math ul {
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.score .ex-math li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 6px;
+}
+.score .ex-math .mono,
+.score .ex-domain {
+  font-weight: 600;
+  font-size: 18px;
+}
+.score .ex-site a {
+  margin-left: auto;
+  font-size: 14px;
+}
+
+/* ---- the later parts ---- */
+.score .part {
+  padding-top: 88px;
+}
+.score .part > .eyebrow {
+  margin: 0;
+}
+.score .part h2 {
+  margin: 8px 0 0;
+  max-width: 26em;
+  font-weight: 600;
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+.score .part-lede {
+  margin: 14px 0 0;
+  max-width: 46em;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #2b3e52;
+}
+.score .part-note {
+  margin: 16px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #2b3e52;
+}
+.score .part a,
+.score .stop a {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* ---- try the rules ---- */
+.score .try {
+  margin-top: 24px;
+}
+.score .try-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.score .try-presets .eyebrow {
+  margin-right: 6px;
+}
+.score .try-presets button {
+  padding: 7px 12px;
+  border: 1px solid var(--ink);
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.score .try-presets button:hover,
+.score .try-presets button:focus-visible {
+  background: var(--ink);
+  color: #fff;
+}
+.score .try-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 44px;
+  align-items: start;
+  margin-top: 8px;
+}
+.score .try-cat {
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  scroll-margin-top: 24px;
+}
+.score .try-cat legend {
+  float: left;
+  width: 100%;
+  padding: 18px 0 4px;
+  border-top: 1.5px solid var(--ink);
+}
+.score .try-q {
+  clear: both;
+  padding: 14px 0;
+  border-bottom: 1px solid #e3e8ee;
+}
+.score .try-q p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.score .try-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.score .try-opts label {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 380px;
+  padding: 6px 10px;
+  border: 1px solid #d5dce4;
+  background: var(--sheet);
+  font-size: 12.5px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.score .try-opts label:hover {
+  border-color: var(--ink);
+}
+.score .try-opts label:has(input:checked) {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+  background: #fff5f9;
+}
+.score .try-opts label:has(input:focus-visible) {
+  outline: 2px solid var(--pink-deep);
+  outline-offset: 2px;
+}
+.score .try-opts input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.score .try-opts .verdict {
+  font-size: 12px;
+}
+
+.score .try-panel {
+  position: sticky;
+  top: 20px;
+  padding: 22px 24px;
+  background: var(--sheet);
+  border: 1.5px solid var(--ink);
+}
+.score .try-panel .eyebrow {
+  margin: 0;
+}
+.score .try-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.score .try-score {
+  font-size: 76px;
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.score .try-track {
+  position: relative;
+  height: 10px;
+  margin-top: 20px;
+}
+.score .try-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0.25;
+  transition: opacity 0.2s ease;
+}
+.score .try-track i.on {
+  opacity: 1;
+}
+.score .try-track .t-SEVERE {
+  background: var(--sev-severe);
+}
+.score .try-track .t-EXTENSIVE {
+  background: var(--sev-extensive);
+}
+.score .try-track .t-MODERATE {
+  background: var(--sev-moderate);
+}
+.score .try-track .t-LIMITED {
+  background: var(--sev-limited);
+}
+.score .try-track b {
+  position: absolute;
+  top: -7px;
+  width: 3px;
+  height: 24px;
+  background: var(--ink);
+  transform: translateX(-50%);
+  transition: left 0.3s ease;
+}
+.score .try-track-labels {
+  position: relative;
+  height: 14px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.score .try-track-labels span {
+  position: absolute;
+  top: 0;
+}
+.score .try-track-labels span:not([style]) {
+  left: 0;
+}
+.score .try-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 16px 0 0;
+}
+.score .try-counts div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.score .try-counts dt {
+  order: 2;
+  font-size: 13px;
+  color: var(--muted);
+}
+.score .try-counts dd {
+  order: 1;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.score .try-why-label {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pin);
+}
+.score .try-why {
+  margin: 6px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.score .try-math {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.score .try-math p {
+  margin: 0;
+}
+.score .try-math ul {
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.score .try-math li {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 6px;
+}
+.score .try-math li .mono {
+  color: var(--ink);
+}
+.score .try-off {
+  margin-top: 24px;
+  max-width: 46em;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+/* the scorer's own wording, folded */
+.score .exact {
+  margin-top: 36px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.score .exact summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 16px 0;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.score .exact summary::-webkit-details-marker {
+  display: none;
+}
+.score .exact summary::after {
+  content: "›";
+  margin-left: auto;
+  color: var(--faint);
+  transition: transform 0.15s ease;
+}
+.score .exact[open] summary::after {
+  transform: rotate(90deg);
+}
+.score .exact summary .mono {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--faint);
+}
+.score .exact ol {
+  list-style: decimal;
+  margin: 0;
+  padding: 0 0 0 22px;
+  display: grid;
+  gap: 10px;
+  max-width: 72ch;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.score .exact-tiers {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0;
+  max-width: 72ch;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.score .exact-tiers div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+}
+.score .exact-tiers dd {
+  margin: 0;
+}
+
+/* ---- accuracy, as a ledger with each target marked ---- */
+.score .ledger {
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.score .ledger li {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 260px;
+  gap: 24px;
+  align-items: center;
+  padding: 20px 0;
+  border-top: 1px solid var(--rule);
+}
+.score .ledger .fig {
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.score .ledger .fig.miss {
+  color: var(--sev-extensive);
+}
+.score .ledger .what {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #2b3e52;
+}
+.score .ledger .when {
+  color: var(--faint);
+}
+.score .ledger .meter {
+  display: block;
+  padding-top: 18px;
+}
+.score .ledger .bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  background: #e6eaef;
+}
+.score .ledger .bar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink);
+}
+.score .ledger .bar i.miss {
+  background: var(--sev-extensive);
+}
+.score .ledger .bar b {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--pin);
+}
+.score .ledger .bar em {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% + 1px);
+  font-style: normal;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--pin);
+}
+.score .ledger .res {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.score .ledger .res.met {
+  color: var(--sev-limited);
+}
+.score .ledger .res.miss {
+  color: var(--sev-extensive);
+}
+
+.score .closing {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 48px;
+  padding-bottom: 24px;
+}
+.score .closing p {
+  margin: 10px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #2b3e52;
+}
+.score .closing .eyebrow {
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  .score .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    padding-top: 48px;
+  }
+  .score .try-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  /* the result stays in view while the questions scroll under it */
+  .score .try-panel {
+    order: -1;
+    top: 0;
+    z-index: 2;
+    margin-top: 12px;
+    padding: 12px 16px;
+  }
+  .score .try-score {
+    font-size: 44px;
+  }
+  .score .try-counts,
+  .score .try-math,
+  .score .try-track-labels,
+  .score .try-why-label {
+    display: none;
+  }
+  .score .try-why {
+    margin-top: 8px;
+    font-size: 14px;
+  }
+  .score .ledger li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .score .closing {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}
+@media (max-width: 600px) {
+  .score .ex-flow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .score .ex-flow .arrow {
+    margin: 0;
+    transform: rotate(90deg);
+  }
+  .score .ex-answers li,
+  .score .ex-record div,
+  .score .exact-tiers div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
