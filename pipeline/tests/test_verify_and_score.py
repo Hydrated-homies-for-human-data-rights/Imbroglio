@@ -68,6 +68,31 @@ def test_exact_quote_cases(quote, expected):
     assert exact_quote(quote, DOC) == expected
 
 
+FAR = ("We do not share your contact details with anyone outside the company. "
+       + "Filler sentence about something else entirely. " * 12
+       + "We sell your browsing history to data brokers for profit.")
+
+
+@pytest.mark.parametrize("quote", [
+    # pieces far apart: stitched across the document into a claim neither part makes
+    "We do not share your contact details ... to data brokers for profit",
+    # one-word pieces, close together but assembled
+    "We ... sell ... data",
+    # no piece long enough to be a clause of its own
+    "We do ... share your ... contact details",
+])
+def test_stitched_ellipsis_quotes_are_rejected(quote):
+    assert not verify_quote(quote, FAR)
+
+
+def test_ellipsis_pieces_close_together_still_verify():
+    assert verify_quote("We sell your browsing history ... for profit", FAR)
+    # first piece also appears far away; the close copy is the one used
+    doc = "We collect your email address. " + "Unrelated text. " * 40 + \
+          "We collect your email address and phone number when you sign up."
+    assert verify_quote("We collect your email address ... when you sign up", doc)
+
+
 def test_verify_quotes_batch():
     assert verify_quotes(["We do not sell your personal information.", "made up text here"], DOC) == [True, False]
 
@@ -114,3 +139,15 @@ def test_disclosed_tier_beats_not_disclosed_when_combining_documents():
 def test_scoring_is_deterministic():
     findings = [F(c.id, next(iter(c.statuses))) for c in RUBRIC.checks]
     assert scorer.category_tiers(RUBRIC, findings) == scorer.category_tiers(RUBRIC, list(reversed(findings)))
+
+
+def test_ellipsis_cannot_skip_a_negation():
+    doc = "We do not sell your personal information to anyone, for any reason."
+    assert not verify_quote("We do ... sell your personal information to anyone", doc)
+    assert verify_quote("We do not sell ... to anyone, for any reason", doc)
+
+
+def test_ellipsis_quote_has_at_most_four_pieces():
+    doc = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
+    assert verify_quote("one two three four ... six seven ... nine ten ... twelve thirteen", doc)
+    assert not verify_quote("one two three four ... six seven ... nine ten ... eleven twelve ... thirteen fourteen", doc)

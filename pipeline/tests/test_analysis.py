@@ -1,5 +1,7 @@
 """Analysis step + scorecard API, with a fake extractor (no LLM calls)."""
 
+import logging
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -183,3 +185,58 @@ def test_rebase_recalibrates_broad_government_disclosure(conn):
     tier = conn.execute("""SELECT tier FROM scores WHERE version_id = %s AND rubric_version = 'v0.1'
                            AND category = 'government'""", (vid,)).fetchone()[0]
     assert tier == "EXTENSIVE"   # was SEVERE under v0
+
+
+# --- skipped and failed analyses: what the public log says, and the backlog ---
+
+def _public(caplog):
+    """Lines a visitor following the request would see (worker._ProgressHandler)."""
+    return [r.getMessage() for r in caplog.records
+            if r.name.startswith("imbroglio") and not getattr(r, "server_only", False)]
+
+
+def test_budget_pause_reads_plainly_in_public(conn, fake_llm, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="imbroglio")
+    monkeypatch.setattr(analysis, "DAILY_BUDGET_USD", 0.0)
+    assert analysis.ensure_analyzed(conn, _store(conn, "paused.example")).startswith("skipped:daily budget")
+    assert _public(caplog) == ["analysis paused: daily limit reached, it will finish later"]
+    assert any("$" in r.getMessage() for r in caplog.records)    # the amounts are in the server log
+
+
+def test_failed_extraction_reads_plainly_and_is_retried_once(conn, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="imbroglio")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(analysis, "extract", lambda text, rubric, model: Extraction(
+        model, "error", error="InternalServerError 529: overloaded, request id req_abc"))
+    vid = _store(conn, "flaky.example")
+    assert analysis.ensure_analyzed(conn, vid) == "failed:error"
+    public = " ".join(_public(caplog))
+    assert "analysis failed, we'll retry" in public and "529" not in public and "req_abc" not in public
+    assert analysis.pending_versions(conn) == [vid]
+    analysis.ensure_analyzed(conn, vid)
+    assert analysis.pending_versions(conn) == []                 # out of tries: no paying forever
+
+
+def test_backlog_rates_skipped_documents_oldest_first_within_budget(conn, fake_llm, monkeypatch):
+    monkeypatch.setattr(analysis, "DAILY_BUDGET_USD", 0.0)
+    old = _store(conn, "old.example", POLICY + " old")
+    new = _store(conn, "new.example", POLICY + " new")
+    assert analysis.ensure_analyzed(conn, old).startswith("skipped")
+    assert analysis.pending_versions(conn) == [old, new]
+    assert analysis.pending_versions(conn, domain="new.example") == [new]
+    # a later day: the backlog's share is $0.03, so it stops after one $0.04 call
+    monkeypatch.setattr(analysis, "DAILY_BUDGET_USD", 0.10)
+    monkeypatch.setattr(analysis, "BACKLOG_BUDGET_SHARE", 0.3)
+    counts = analysis.analyze_backlog()
+    assert counts == {"analyzed": 1, "paused for budget": 1}
+    assert len(fake_llm) == 1 and fake_llm[0].endswith("old")
+    assert analysis.pending_versions(conn) == [new]
+
+
+def test_backlog_leaves_changed_policies_alone(conn, fake_llm):
+    # Rechecks only detect changes. A rated document whose newer version
+    # hasn't been analyzed is not "skipped", so the backlog doesn't pay for it.
+    rated = _store(conn, "changed.example", POLICY + " v1")
+    assert analysis.ensure_analyzed(conn, rated) == "analyzed"
+    _store(conn, "changed.example", POLICY + " v2")
+    assert analysis.pending_versions(conn) == []

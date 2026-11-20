@@ -16,3 +16,8 @@ Later modules plug into analyze.py's pipeline:
 """
 
 __version__ = "0.1.0"
+
+# Pass as `extra=` to keep a log line out of a request's public progress log
+# (worker._ProgressHandler) while it still reaches the server log: dollar
+# amounts, API error text, anything only the team should read.
+SERVER_ONLY = {"server_only": True}

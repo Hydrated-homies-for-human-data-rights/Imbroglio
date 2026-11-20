@@ -92,6 +92,12 @@ def insert_version(conn: psycopg.Connection, document_id: int, content_hash: str
                    normalized_text: str, fetch_method: str | None) -> int:
     """Insert a new version; returns existing id if this exact content is
     already stored (same document, same hash)."""
+    from .locate import MAX_TEXT_CHARS
+
+    if len(normalized_text) > MAX_TEXT_CHARS:
+        # Discovery and recheck refuse these already (locate._validate); this
+        # catches any other path before it fills the database.
+        raise ValueError(f"document text too long to store ({len(normalized_text):,} chars)")
     row = conn.execute(
         """INSERT INTO document_versions
                (document_id, content_hash, normalized_text, fetch_method)

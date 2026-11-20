@@ -21,7 +21,7 @@ import os
 
 import psycopg
 
-from . import scorer
+from . import SERVER_ONLY, scorer
 from .llm_extract import Extraction, extract
 from .rubric import load
 
@@ -127,7 +127,10 @@ def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = 
         return "skipped:extraction disabled or no API key"
     spent = spent_last_24h(conn)
     if spent >= DAILY_BUDGET_USD:
-        log.info("analysis: daily LLM budget reached ($%.2f of $%.2f), skipping", spent, DAILY_BUDGET_USD)
+        # Progress lines are public (GET /v1/requests/{id}); amounts stay in the server log.
+        log.info("analysis paused: daily limit reached, it will finish later")
+        log.info("analysis: daily LLM budget reached ($%.2f of $%.2f), version %d waits",
+                 spent, DAILY_BUDGET_USD, version_id, extra=SERVER_ONLY)
         return "skipped:daily budget reached"
 
     text = conn.execute("SELECT normalized_text FROM document_versions WHERE id = %s",
@@ -145,15 +148,98 @@ def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = 
     ).fetchone()[0]
     if ex.status != "ok":
         conn.commit()
-        log.info("analysis: extraction %s (%s)", ex.status, ex.error)
+        log.info("analysis failed, we'll retry")
+        log.info("analysis: extraction %s for version %d (%s)", ex.status, version_id, ex.error,
+                 extra=SERVER_ONLY)
         return f"failed:{ex.status}"
     _store(conn, version_id, rubric_version, ex, run_id)
     tiers = _write_scores(conn, version_id, rubric_version)
     conn.commit()
     verified = sum(f.verified and f.status != "not_disclosed" for f in ex.findings)
-    log.info("analysis: %d verified findings, headline %s, $%.3f", verified,
-             scorer.headline(tiers), ex.cost_usd)
+    log.info("analysis: %d verified findings, headline %s", verified, scorer.headline(tiers))
+    log.info("analysis: version %d cost $%.3f", version_id, ex.cost_usd, extra=SERVER_ONLY)
     return "analyzed"
+
+
+# A document the model failed on is read again at most this many times in
+# all: one retry covers a passing API error without paying for a document
+# that fails every time (too long, refused).
+MAX_ANALYSIS_TRIES = 2
+# The hourly backlog pass stops once this share of the daily budget is spent,
+# so the rest of the day stays free for sites visitors ask for.
+BACKLOG_BUDGET_SHARE = float(os.environ.get("BACKLOG_BUDGET_SHARE", "0.5"))
+BACKLOG_BATCH = 20  # documents per hourly pass at most
+_BACKLOG_LOCK = 0x1B0C_0011  # one backlog pass at a time across workers (recheck uses ..10)
+
+
+def pending_versions(conn: psycopg.Connection, domain: str | None = None,
+                     limit: int | None = None, rubric_version: str | None = None) -> list[int]:
+    """Newest stored version of each document that has never been rated under
+    the rubric (no version of it has findings) and hasn't used up its tries,
+    oldest first. These are the documents whose analysis was skipped (daily
+    budget, extraction off) or failed. A document that was rated and has
+    changed since is left alone: rechecks only detect changes (recheck.py),
+    and re-analyzing changed policies is a separate, deliberate spend.
+    `domain` narrows it to one site."""
+    rows = conn.execute(
+        """WITH latest AS (
+               SELECT DISTINCT ON (d.id) v.id AS version_id, d.id AS document_id, v.fetched_at
+               FROM documents d JOIN services s ON s.id = d.service_id
+               JOIN document_versions v ON v.document_id = d.id
+               WHERE %(domain)s::text IS NULL OR s.domain = %(domain)s
+               ORDER BY d.id, v.fetched_at DESC)
+           SELECT l.version_id FROM latest l
+           WHERE NOT EXISTS (SELECT 1 FROM findings f
+                             JOIN document_versions v2 ON v2.id = f.version_id
+                             WHERE v2.document_id = l.document_id AND f.rubric_version = %(rubric)s)
+             AND (SELECT count(*) FROM extraction_runs r
+                  WHERE r.version_id = l.version_id AND r.rubric_version = %(rubric)s) < %(tries)s
+           ORDER BY l.fetched_at, l.version_id
+           LIMIT %(limit)s""",
+        {"domain": domain, "rubric": rubric_version or RUBRIC_VERSION,
+         "tries": MAX_ANALYSIS_TRIES, "limit": limit},
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def analyze_backlog(stop=None) -> dict[str, int]:
+    """One pass over pending_versions, oldest first, stopping at
+    BACKLOG_BUDGET_SHARE of the daily budget. The worker runs it hourly, so a
+    site skipped for the budget is rated on a later day without anyone
+    asking again. Returns what happened, counted."""
+    from . import db
+
+    counts: dict[str, int] = {}
+    if not extraction_enabled():
+        return counts
+    conn = db.connect()
+    try:
+        if not conn.execute("SELECT pg_try_advisory_lock(%s)", (_BACKLOG_LOCK,)).fetchone()[0]:
+            return counts
+        try:
+            for version_id in pending_versions(conn, limit=BACKLOG_BATCH):
+                if stop is not None and stop.is_set():
+                    break
+                if spent_last_24h(conn) >= DAILY_BUDGET_USD * BACKLOG_BUDGET_SHARE:
+                    counts["paused for budget"] = counts.get("paused for budget", 0) + 1
+                    break
+                try:
+                    what = ensure_analyzed(conn, version_id)
+                except Exception:
+                    conn.rollback()
+                    log.exception("backlog: analysis failed for version %s", version_id)
+                    what = "failed:error"
+                counts[what] = counts.get(what, 0) + 1
+                if what.startswith("skipped"):
+                    break  # budget reached or extraction turned off: the rest would skip too
+            if counts:
+                log.info("backlog: %s", counts)
+            return counts
+        finally:
+            conn.execute("SELECT pg_advisory_unlock(%s)", (_BACKLOG_LOCK,))
+            conn.commit()
+    finally:
+        conn.close()
 
 
 def rebase(conn: psycopg.Connection, version_id: int, from_version: str, to_version: str) -> str:

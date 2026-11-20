@@ -1,7 +1,10 @@
 """Storing a document fetched by hand (cli store-document), for sites that block crawlers."""
 
+import pytest
+
 from imbroglio import cli, db
 from imbroglio.analyze import MIN_MANUAL_CHARS, store_manual
+from imbroglio.locate import MAX_TEXT_CHARS
 
 POLICY = "Canva collects the information you give us and shares it with our service providers. " * 30
 
@@ -47,6 +50,20 @@ def test_too_short_to_be_a_policy_is_refused(conn):
     outcome = store_manual("canva.com", "privacy", "https://www.canva.com/privacy", "Access denied.")
     assert outcome.status == "failed" and str(MIN_MANUAL_CHARS) in outcome.notes
     assert conn.execute("SELECT count(*) FROM services").fetchone()[0] == 0
+
+
+def test_too_long_to_be_one_policy_is_refused_before_storing(monkeypatch):
+    def no_db(*a, **k):
+        raise AssertionError("must not reach the database")
+    monkeypatch.setattr(db, "connect", no_db)
+    outcome = store_manual("canva.com", "privacy", "https://www.canva.com/privacy",
+                           POLICY * (MAX_TEXT_CHARS // len(POLICY) + 1))
+    assert outcome.status == "failed" and "more than any one policy" in outcome.notes
+
+
+def test_the_database_refuses_text_too_long_to_store():
+    with pytest.raises(ValueError):
+        db.insert_version(None, 1, "hash", "x" * (MAX_TEXT_CHARS + 1), "static")
 
 
 def test_cli_reads_the_file_and_reports(conn, monkeypatch, capsys, tmp_path):

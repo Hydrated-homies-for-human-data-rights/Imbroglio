@@ -272,7 +272,10 @@ def test_policy_link_on_another_site_is_refused(conn):
     assert r.status_code == 400 and r.json()["error"] == POLICY_LINK_ERROR
 
 
-def test_policy_link_for_a_site_missing_one_document(conn):
+def test_policy_link_for_a_site_missing_one_document(conn, monkeypatch):
+    # These documents are stored unrated; switch analysis off so the
+    # "unrated sites are queued again" rule (test_api) stays out of this test.
+    monkeypatch.setenv("EXTRACTION_ENABLED", "0")
     _store(conn, "half.example", "privacy")
     assert client.post("/v1/requests", json={"domain": "half.example"}).json()["status"] == "already_available"
     r = client.post("/v1/requests", json={"domain": "half.example", "policy_url": "https://half.example/tos"})
