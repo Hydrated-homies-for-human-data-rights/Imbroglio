@@ -452,7 +452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
   try {
-    // activeTab lets us read this tab's address only because the user clicked the icon.
+    // The tabs permission lets the popup read this tab's address.
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const url = tab && tab.url ? new URL(tab.url) : null;
     if (!url || !["http:", "https:"].includes(url.protocol)) {

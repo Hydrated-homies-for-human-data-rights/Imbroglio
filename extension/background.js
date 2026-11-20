@@ -3,28 +3,31 @@
 // a new site.
 //
 // Privacy: the site's name never leaves the browser. We hash it with
-// sha256, send the first few characters of the hash to /v1/lookup, and pick
-// our site out of the matches by its full hash.
+// sha256 and send only the first 3 hex characters of the hash to /v1/lookup:
+// 4,096 buckets, so each one is shared by hundreds of the web's popular
+// sites and the server can't tell which of them you are on. We pick our site
+// out of the answer by its full hash. (5 characters, before 1.0, came close
+// to naming the site: about one popular site per bucket.)
 //
 // API address: defaults to the website, which forwards lookups to the API and
 // adds the API's password on its server, so nothing secret ships in the
 // extension. Lookups only read cached results; they never start an analysis.
-// For local development, run this in the service worker console:
+// For local development, add "http://localhost:8765/*" to host_permissions
+// in manifest.json (never in a store build), reload, and run this in the
+// service worker console:
 //   chrome.storage.local.set({ apiBase: "http://localhost:8765" })
 // (and chrome.storage.local.remove("apiBase") to go back).
 
 const DEFAULT_API_BASE = "https://imbroglio.io/api";
-const PREFIX_LENGTH = 5; // the website's lookup route only accepts 5 (the API itself takes 4 to 8)
+const PREFIX_LENGTH = 3; // the website's lookup route accepts 3 (and 5, for copies from before 1.0)
 const CACHE_MS = 10 * 60 * 1000; // a rated site's result is reused this long before being looked up again
 const MISS_MS = 60 * 1000; // an unrated or unknown site is looked up again sooner, since it may be rated any minute
+// (a failed lookup waits this long too, so a busy API isn't asked again on every tab switch)
+const MAX_CANDIDATES = 3; // "a.b.c.example.com" asks about c.example.com, example.com and nothing deeper
 
 async function settings() {
-    const s = await chrome.storage.local.get(["apiBase", "apiUser", "apiPassword"]);
-    return {
-        base: (s.apiBase || DEFAULT_API_BASE).replace(/\/+$/, ""),
-        user: s.apiUser || "",
-        password: s.apiPassword || "",
-    };
+    const s = await chrome.storage.local.get(["apiBase"]);
+    return { base: (s.apiBase || DEFAULT_API_BASE).replace(/\/+$/, "") };
 }
 
 async function sha256Hex(text) {
@@ -33,22 +36,23 @@ async function sha256Hex(text) {
 }
 
 // "www.old.reddit.com" -> ["old.reddit.com", "reddit.com"]. We store sites
-// under their main domain, so subdomains fall back to their parents.
+// under their main domain, so subdomains fall back to their parents, at most
+// MAX_CANDIDATES of them. Addresses (192.168.1.1, [::1]) and names without a
+// dot (intranet hosts, localhost) aren't websites we rate, so nothing is sent.
 function candidates(hostname) {
-    const labels = hostname.toLowerCase().replace(/^www\./, "").split(".");
+    const host = hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+    if (!host.includes(".") || host.includes(":") || /^[0-9.]+$/.test(host)) return [];
+    const labels = host.split(".");
     const out = [];
     for (let i = 0; i <= labels.length - 2; i++) {
         out.push(labels.slice(i).join("."));
     }
-    return out;
+    return out.slice(-MAX_CANDIDATES);
 }
 
 async function lookup(domain, api) {
     const hash = await sha256Hex(domain);
     const headers = { Accept: "application/json" };
-    if (api.user && api.password) {
-        headers.Authorization = "Basic " + btoa(`${api.user}:${api.password}`);
-    }
     const res = await fetch(`${api.base}/v1/lookup/${hash.slice(0, PREFIX_LENGTH)}`, { headers });
     if (!res.ok) {
         throw new Error(`API returned ${res.status}`);
@@ -67,7 +71,7 @@ function toSiteData(domain, entry) {
     return {
         status: "ready",
         domain,
-        hash: entry.hash, // what this extension keeps its per-site records under
+        hash: entry.hash,
         headline: s.headline,
         score: s.score ?? null, // out of 100; null for an UNCLEAR or NOT_DISCLOSED site
         categories: s.categories.map((c) => ({ key: c.key, name: c.name, tier: c.tier, findings: c.findings })),
@@ -93,15 +97,17 @@ async function getData(hostname, fresh = false) {
     }
     const api = await settings();
     let data = { status: "unknown" };
-    for (const domain of candidates(hostname)) {
-        const entry = await lookup(domain, api);
-        if (entry) {
-            console.log(`imbroglio BG: found ${domain}`);
-            data = toSiteData(domain, entry);
-            break;
+    try {
+        for (const domain of candidates(hostname)) {
+            const entry = await lookup(domain, api);
+            if (entry) {
+                data = toSiteData(domain, entry);
+                break;
+            }
         }
+    } catch (err) {
+        data = { status: "error", error: String(err.message || err) };
     }
-    if (data.status === "unknown") console.log(`imbroglio BG: no data for ${hostname}`);
     recent.set(hostname, { at: Date.now(), data });
     return data;
 }
@@ -215,10 +221,11 @@ function iconFor(headline) {
 //
 // Both sit behind a switch in the popup's footer, on until turned off, and
 // each fires at most once per site per occasion when a tab finishes
-// loading. What the extension remembers about a site is kept under the
-// site's sha256 hash (the same one the lookup sends) with a date beside
-// it, never the site's name, so a look at the extension's storage says
-// nothing readable about where you have been.
+// loading. What the extension remembers about a site is a date, kept under
+// a key made from the site's name with a secret random to this install
+// (HMAC-SHA-256), never the name itself. Plain sha256 wouldn't do: anyone can
+// hash every rated site and match, but without this install's secret the keys
+// say nothing about where you have been.
 //
 // The Extensive nudge: the first time you land on a site rated Extensive
 // or Severe, one notification says so and names the category behind it;
@@ -231,14 +238,38 @@ function iconFor(headline) {
 // plus the domain and a date; nothing from the network is shown.
 
 const NUDGE_TIERS = new Set(["EXTENSIVE", "SEVERE"]);
-const nudgeKey = (hash) => `nudged:${hash}`;
-const seenKey = (hash) => `seen:${hash}`;
+
+let hmacKey = null;
+async function siteKey(kind, domain) {
+    if (!hmacKey) {
+        let { installSecret } = await chrome.storage.local.get("installSecret");
+        if (!installSecret) {
+            installSecret = [...crypto.getRandomValues(new Uint8Array(32))]
+                .map((b) => b.toString(16).padStart(2, "0")).join("");
+            await chrome.storage.local.set({ installSecret });
+        }
+        const raw = new Uint8Array(installSecret.match(/../g).map((h) => parseInt(h, 16)));
+        hmacKey = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    }
+    const mac = await crypto.subtle.sign("HMAC", hmacKey, new TextEncoder().encode(domain));
+    return `${kind}:` + [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Before 1.0 the records sat under the plain sha256 ("nudged:<hash>",
+// "seen:<hash>"), which can be matched against the public list of rated
+// sites. Drop them; the next visit records a site again.
+chrome.runtime.onInstalled.addListener(async () => {
+    const all = await chrome.storage.local.get(null);
+    const old = Object.keys(all).filter((k) => k.startsWith("nudged:") || k.startsWith("seen:"));
+    if (old.length) await chrome.storage.local.remove(old);
+});
 
 async function maybeNudge(data) {
-    if (!NUDGE_TIERS.has(data.headline) || !data.hash) return;
-    const got = await chrome.storage.local.get(["warnExtensive", nudgeKey(data.hash)]);
-    if (got.warnExtensive === false || got[nudgeKey(data.hash)]) return;
-    await chrome.storage.local.set({ [nudgeKey(data.hash)]: Date.now() });
+    if (!NUDGE_TIERS.has(data.headline) || !data.domain) return;
+    const key = await siteKey("n", data.domain);
+    const got = await chrome.storage.local.get(["warnExtensive", key]);
+    if (got.warnExtensive === false || got[key]) return;
+    await chrome.storage.local.set({ [key]: Date.now() });
     const tier = data.headline.charAt(0) + data.headline.slice(1).toLowerCase();
     const behind = data.categories.filter((c) => c.tier === data.headline).map((c) => c.name);
     const because = behind.length ? ` for ${behind.join(" and ")}` : "";
@@ -252,18 +283,19 @@ async function maybeNudge(data) {
 }
 
 async function maybeChangeAlert(data) {
-    if (!data.changedAt || !data.hash) return;
+    if (!data.changedAt || !data.domain) return;
     const changed = Date.parse(data.changedAt);
     if (isNaN(changed)) return;
-    const got = await chrome.storage.local.get(["policyChanges", seenKey(data.hash)]);
+    const key = await siteKey("s", data.domain);
+    const got = await chrome.storage.local.get(["policyChanges", key]);
     if (got.policyChanges === false) return;
-    const seen = got[seenKey(data.hash)];
+    const seen = got[key];
     if (seen === undefined) {
-        await chrome.storage.local.set({ [seenKey(data.hash)]: changed }); // first visit: nothing to compare yet
+        await chrome.storage.local.set({ [key]: changed }); // first visit: nothing to compare yet
         return;
     }
     if (changed <= seen) return;
-    await chrome.storage.local.set({ [seenKey(data.hash)]: changed });
+    await chrome.storage.local.set({ [key]: changed });
     const when = new Date(changed).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     chrome.notifications.create(`imbroglio:change:${data.domain}`, {
         type: "basic",
