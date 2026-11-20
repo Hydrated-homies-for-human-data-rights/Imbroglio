@@ -19,8 +19,9 @@ export const metadata: Metadata = {
 //
 // Each finding topic's id is its rubric check_id, which reports and the
 // extension link to as /learn#<check_id>; the topics are closed <details>
-// and OpenFromHash opens the one linked to. The topics come from the API
-// (pipeline/imbroglio/advice.yaml); everything else is written here.
+// and OpenFromHash (outside their Suspense boundary) opens the one linked
+// to. The topics come from the API (pipeline/imbroglio/advice.yaml);
+// everything else is written here.
 // Reports also link to #gpc, #rights and #findings.
 
 // What a reader might want to do, each pointing at the section that answers it.
@@ -202,7 +203,6 @@ async function Topics() {
           </div>
         </div>
       ))}
-      <OpenFromHash />
     </div>
   )
 }
@@ -353,6 +353,7 @@ export default function LearnPage() {
               <Suspense fallback={<p className="note">Loading…</p>}>
                 <Topics />
               </Suspense>
+              <OpenFromHash />
             </Section>
 
             <Section
