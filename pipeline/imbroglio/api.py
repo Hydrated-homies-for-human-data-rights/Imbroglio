@@ -924,6 +924,11 @@ class RubricStatus(BaseModel):
     concern: Literal["severe", "high", "medium", "info"] | None = Field(
         None, description="Scorer s2: how much this answer counts toward the overall rating; "
                           "info = reported but not rated, null = protective")
+    points: int = Field(0, description="Points this answer takes off the score out of 100 when it counts "
+                                       "(severe, high and medium concerns); 0 otherwise")
+    same_concern_as: str | None = Field(
+        None, description="Another check whose concern is about the same practice: when both answers "
+                          "are concerns, only one counts")
 
 
 class RubricCheck(BaseModel):
@@ -943,12 +948,24 @@ class TierMeaning(BaseModel):
     meaning: str
 
 
+class RubricScoring(BaseModel):
+    """The numbers behind the rules, so the website can run them on answers
+    a reader picks ("Try the rules" on How we score) without restating them."""
+    start: int = Field(description="Every rated site's score before deductions")
+    bands: dict[str, tuple[int, int]] = Field(description="Score range for each overall rating, inclusive")
+    moderate_needs: int = Field(description="Medium concerns that make a site MODERATE")
+    min_high_answered: int = Field(description="Of the high-concern questions (those with a severe or high "
+                                               "answer), how many must be answered for LIMITED; else UNCLEAR")
+    limited_requires: list[str] = Field(description="Categories that need a counted answer for LIMITED")
+
+
 class RubricInfo(BaseModel):
     rubric_version: str
     scorer_version: str
     rules: list[str] = Field(description="The scoring rules, in the order the scorer applies them")
     tiers: list[TierMeaning]
     categories: list[RubricCategory]
+    scoring: RubricScoring | None = Field(None, description="Scorer s2 and later; null for s1")
 
 
 @router.get("/rubric", response_model=RubricInfo, summary="The published rubric and scoring rules")
@@ -967,10 +984,17 @@ def rubric_info(response: Response):
         categories=[RubricCategory(key=key, name=name, checks=[
             RubricCheck(check_id=c.id, question=c.question,
                         statuses=[RubricStatus(status=s.name, meaning=s.meaning, plain=s.plain,
-                                               tier=scorer.answer_tier(s), concern=s.concern)
+                                               tier=scorer.answer_tier(s), concern=s.concern,
+                                               points=scorer.answer_points(rubric, s),
+                                               same_concern_as=s.same_concern_as)
                                   for s in c.statuses.values()])
             for c in rubric.checks if c.category == key])
-            for key, name in rubric.categories.items()])
+            for key, name in rubric.categories.items()],
+        scoring=RubricScoring(start=scorer.START, bands=scorer.bands_for(rubric),
+                              moderate_needs=scorer.moderate_needs(rubric),
+                              min_high_answered=scorer.MIN_HIGH_ANSWERED,
+                              limited_requires=list(rubric.limited_requires))
+        if rubric.uses_concerns else None)
 
 
 # --- search ----------------------------------------------------------------------

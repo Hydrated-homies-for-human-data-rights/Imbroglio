@@ -162,6 +162,17 @@ def tier_meanings(rubric: Rubric) -> dict[str, str]:
     return {**TIER_MEANINGS, INFO_TIER: INFO_MEANING, UNCLEAR_TIER: UNCLEAR_MEANING}
 
 
+def moderate_needs(rubric: Rubric) -> int:
+    """Medium concerns that make a site MODERATE: two under s2, one under s3."""
+    return 1 if version_for(rubric) == "s3" else 2
+
+
+def answer_points(rubric: Rubric, status) -> int:
+    """Points the answer takes off the score when it counts toward the rating."""
+    counts = status.concern in RATED_CONCERNS if rubric.uses_concerns else status.exposure > 0
+    return POINTS.get(status.exposure, 0) if counts else 0
+
+
 def answer_tier(status) -> str:
     """The rating an answer leads to, as shown next to it."""
     return INFO_TIER if status.concern == "info" else TIERS[status.exposure]
@@ -250,7 +261,7 @@ def rate(rubric: Rubric, findings: list[ScoredFinding]) -> tuple[dict[str, str],
     # s2: two medium concerns make a site MODERATE. s3: any one does, so
     # LIMITED means nothing took points off (sharing with advertisers alone
     # no longer reads as limited).
-    elif concerns.count("medium") >= (1 if version_for(rubric) == "s3" else 2):
+    elif concerns.count("medium") >= moderate_needs(rubric):
         flags = "MODERATE"
     else:
         flags = "LIMITED"
