@@ -103,7 +103,9 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
         </p>
         <p className="mt-2">
           {nextStep(failure?.reason)}
-          {site.recheck_after ? ` You can ask us to look again after ${shortDate(site.recheck_after)}.` : ""}
+          {site.recheck_after
+            ? ` You can ask us to look again after ${shortDate(site.recheck_after)}.`
+            : " It’s been a while since we tried, so you can ask us to look again now."}
         </p>
         {failure && failure.tried.length > 0 && (
           <>
@@ -117,11 +119,18 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
             </ul>
           </>
         )}
-        {linkCanHelp(failure?.reason) && (
+        {!site.recheck_after ? (
           <>
-            <p className="mt-4">If you know where its policy is, paste the link:</p>
-            <RequestForm site={site.domain} />
+            <p className="mt-4">Ask us to look again, or paste a link to its policy:</p>
+            <RequestForm initial={site.domain} />
           </>
+        ) : (
+          linkCanHelp(failure?.reason) && (
+            <>
+              <p className="mt-4">If you know where its policy is, paste the link:</p>
+              <RequestForm site={site.domain} />
+            </>
+          )
         )}
       </Plain>
     )
