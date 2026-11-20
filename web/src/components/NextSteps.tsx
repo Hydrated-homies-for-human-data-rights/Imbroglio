@@ -4,7 +4,7 @@ import { buildNextSteps, type NextStep } from "@/lib/nextSteps"
 import CopyRequest from "./CopyRequest"
 import { ratingOf } from "./design"
 
-// "Your next steps on {domain}", under the overall rating. The steps come
+// "Your next steps on {domain}", under the category breakdown. The steps come
 // from lib/nextSteps.ts; this only lays them out.
 export default function NextSteps({ site, className = "" }: { site: Site; className?: string }) {
   const built = buildNextSteps(site)

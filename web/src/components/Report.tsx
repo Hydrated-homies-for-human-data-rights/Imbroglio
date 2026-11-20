@@ -137,9 +137,6 @@ export default function Report({ site }: { site: Site }) {
             </div>
           </div>
         </div>
-        {/* Under the rating on a phone; on a wide screen, the full width under
-            the rating and the score. */}
-        <NextSteps site={site} className="lg:col-span-2 lg:row-start-2" />
         {/* Not in the design yet: plain until the UX team designs it. */}
         <div className="flex items-center rounded-2xl border border-[#dde4ea] bg-white p-6 lg:col-start-2 lg:row-start-1">
           {score ? (
@@ -276,6 +273,10 @@ export default function Report({ site }: { site: Site }) {
           })}
         </div>
       </section>
+
+      {/* After the results, so the reader has seen why before being told
+          what to do about it. */}
+      <NextSteps site={site} className="mt-8" />
 
       <div className="mt-6 flex flex-wrap gap-3">
         <button
