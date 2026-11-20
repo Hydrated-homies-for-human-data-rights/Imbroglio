@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 
 import requests
 
-from .netguard import BlockedURL, check_url, is_allowed
+from .netguard import NO_PUBLIC_ADDRESS, BlockedURL, check_url, is_allowed
 
 IDENTIFYING_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -158,7 +158,7 @@ def fetch_rendered(url: str) -> tuple[str | None, str]:
     except ImportError:
         return None, "playwright-not-installed"
     if not is_allowed(url):
-        return None, "blocked: non-public address"
+        return None, f"blocked: {NO_PUBLIC_ADDRESS}"
     # Each Chromium costs ~150-300 MB. On a 1 GB container, unbounded
     # concurrency (web requests + batch workers) exhausted memory and stalled
     # every connection in the process, including the database's.
@@ -184,7 +184,7 @@ def fetch_rendered(url: str) -> tuple[str | None, str]:
                     hops.append(req.url)
                     req = req.redirected_from
                 if not all(is_allowed(h) for h in hops):
-                    return None, "blocked: redirected to a non-public address"
+                    return None, f"blocked: redirected, {NO_PUBLIC_ADDRESS}"
                 page.wait_for_timeout(3000)  # hydration settle
                 return page.content(), "200 (rendered)"
             finally:

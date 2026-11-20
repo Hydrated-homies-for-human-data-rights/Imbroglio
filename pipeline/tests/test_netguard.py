@@ -37,6 +37,30 @@ def test_hostname_resolving_to_loopback_is_blocked(monkeypatch):
     netguard.clear_host_cache()
 
 
+def test_private_and_unresolvable_hosts_read_the_same(monkeypatch):
+    """The refusal reaches the public request log, so it must not name the
+    host or say whether the name resolved privately or not at all: that would
+    let anyone map internal names from where the worker runs."""
+    import socket
+    from imbroglio import netguard
+
+    def fake_dns(host, port):
+        if host == "intranet.example":
+            return [(2, 1, 6, "", ("10.1.2.3", 0))]
+        raise socket.gaierror("Name or service not known")
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_dns)
+    netguard.clear_host_cache()
+    try:
+        notes = [fetch.fetch_static(f"https://{h}/privacy")
+                 for h in ("intranet.example", "no-such-name.example")]
+        assert notes[0] == notes[1] == (None, f"blocked: {netguard.NO_PUBLIC_ADDRESS}")
+        assert not any(h in str(notes) for h in ("intranet", "no-such-name"))
+        assert fetch.fetch_rendered("https://intranet.example/") ==             fetch.fetch_rendered("https://no-such-name.example/")
+    finally:
+        netguard.clear_host_cache()
+
+
 def test_a_malformed_host_is_refused_not_crashed_on():
     # usf.edu, Nov 17: one such link raised UnicodeError and ended the site's crawl
     for url in ("https://www..usf.edu/privacy", f"https://{'a' * 64}.usf.edu/"):

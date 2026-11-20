@@ -17,6 +17,12 @@ reused for at most HOST_TTL seconds, so a name that is re-pointed is checked
 again within that time, but a quick enough switch between check and connect
 still gets through. Pinning resolved addresses or a filtering egress proxy
 would close it.
+
+A refused host is reported as NO_PUBLIC_ADDRESS, the same words for a name
+that resolves to a private address and for a name that doesn't resolve at
+all, and without the name. These notes reach the public request log
+(GET /v1/requests/{id}), and telling the two apart there would let anyone
+map which internal names exist from where the worker runs.
 """
 
 from __future__ import annotations
@@ -30,6 +36,9 @@ from urllib.parse import urlparse
 
 class BlockedURL(Exception):
     """Raised when a URL targets a disallowed scheme or address."""
+
+
+NO_PUBLIC_ADDRESS = "no public address"
 
 
 HOST_TTL = 30.0  # seconds a host's check is reused (a page loads many resources)
@@ -60,7 +69,9 @@ def _resolve_allowed(host: str) -> bool:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        return True  # unresolvable: the fetch fails on its own, nothing to protect
+        # Nothing to protect, but refused all the same so it reads exactly
+        # like a private answer (see the module docstring).
+        return False
     for info in infos:
         addr = ipaddress.ip_address(info[4][0].split("%")[0])
         if not addr.is_global or addr.is_multicast:
@@ -92,7 +103,7 @@ def check_url(url: str) -> None:
     else:
         raise BlockedURL(f"IP address literals not allowed: {host}")
     if not _host_allowed(host):
-        raise BlockedURL(f"resolves to a non-public address: {host}")
+        raise BlockedURL(NO_PUBLIC_ADDRESS)
 
 
 def is_allowed(url: str) -> bool:
