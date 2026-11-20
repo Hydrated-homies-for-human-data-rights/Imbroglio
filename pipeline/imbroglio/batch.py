@@ -143,14 +143,14 @@ def _run_one(domain: str, batch_id: int, use_playwright: bool,
                 db.insert_attempt(conn, batch_id, domain, doc_type, False, "error",
                                   None, None, None, 0, error, seconds)
         for o in outcomes:
-            db.insert_attempt(conn, batch_id, domain, o.doc_type, o.status != "failed",
+            db.insert_attempt(conn, batch_id, domain, o.doc_type, o.found,
                               o.status, o.url, o.discovered_via, o.fetch_method,
                               o.chars, o.notes or None, seconds)
         conn.commit()
     finally:
         conn.close()
 
-    ok = {o.doc_type: o.status != "failed" for o in outcomes}
+    ok = {o.doc_type: o.found for o in outcomes}
     return DomainResult(domain, seconds, ok.get("privacy", False), ok.get("terms", False), error)
 
 
@@ -207,6 +207,8 @@ def failure_cause(status: str, notes: str | None) -> str:
     n = (notes or "").lower()
     if status == "error":
         return "pipeline error"
+    if status == "held":
+        return "found the page a person held as wrong (cli held)"
     if "host unreachable" in n:
         return "host unreachable (no connection, statically or in a browser)"
     if "captcha" in n or "bot challenge" in n or re.search(r"-> (401|403|429|503)\b", n):

@@ -281,7 +281,9 @@ class ApiError(BaseModel):
 
 def _documents(conn, domain: str) -> list[Document]:
     """Each of the site's documents at its rated version (db.RATED_FIRST):
-    the newest one rated under the serving rubric, else the newest stored."""
+    the newest one rated under the serving rubric, else the newest stored.
+    A held document (the wrong page) is left out, so the report reads as if
+    we never found it."""
     from .analysis import RUBRIC_VERSION
 
     rows = conn.execute(
@@ -291,9 +293,10 @@ def _documents(conn, domain: str) -> list[Document]:
                   (SELECT count(*) FROM change_events c WHERE c.document_id = d.id),
                   (SELECT count(DISTINCT d2.service_id) FROM document_versions v2
                    JOIN documents d2 ON d2.id = v2.document_id
-                   WHERE v2.content_hash = v.content_hash AND d2.service_id <> s.id)
+                   WHERE v2.content_hash = v.content_hash AND d2.service_id <> s.id
+                     AND d2.held_reason IS NULL)
            FROM services s
-           JOIN documents d ON d.service_id = s.id
+           JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
            JOIN LATERAL (SELECT * FROM document_versions v
                          WHERE v.document_id = d.id
                          ORDER BY {db.RATED_FIRST}, v.fetched_at DESC LIMIT 1) v ON true
@@ -851,7 +854,7 @@ def lookup(prefix: str, request: Request, response: Response):
                       max(v.fetched_at),
                       max((SELECT max(c.detected_at) FROM change_events c WHERE c.document_id = d.id))
                FROM services s
-               JOIN documents d ON d.service_id = s.id
+               JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
                JOIN document_versions v ON v.document_id = d.id
                WHERE s.domain_hash LIKE %s
                GROUP BY s.domain_hash

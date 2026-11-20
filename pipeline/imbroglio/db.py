@@ -68,15 +68,78 @@ def upsert_service(conn: psycopg.Connection, domain: str) -> int:
 
 def upsert_document(conn: psycopg.Connection, service_id: int, doc_type: str,
                     url: str, discovered_via: str | None) -> int:
+    """Also lifts any hold: analyze.store_text only gets here with a page the
+    hold wasn't about (a different URL, or one a person stored by hand).
+    Lifting it sets valid_from, so the held page's versions (and any rating
+    they had) never count again."""
     row = conn.execute(
         """INSERT INTO documents (service_id, doc_type, url, discovered_via)
            VALUES (%s, %s, %s, %s)
            ON CONFLICT (service_id, doc_type)
-           DO UPDATE SET url = EXCLUDED.url, discovered_via = EXCLUDED.discovered_via
+           DO UPDATE SET url = EXCLUDED.url, discovered_via = EXCLUDED.discovered_via,
+                         held_reason = NULL,
+                         valid_from = CASE WHEN documents.held_reason IS NOT NULL
+                                           THEN now() ELSE documents.valid_from END
            RETURNING id""",
         (service_id, doc_type, url, discovered_via),
     ).fetchone()
     return row[0]
+
+
+# --- holds: a stored document that is the wrong page --------------------------
+#
+# A held document keeps its row and its text, but is treated everywhere public
+# as if we didn't have it: left out of reports, lookups, search and lists,
+# never rated, never rechecked. Every query that feeds those adds
+# `d.held_reason IS NULL`.
+
+def held(conn: psycopg.Connection, service_id: int, doc_type: str) -> tuple[str, str] | None:
+    """(url, reason) if the site's document of this type is held."""
+    return conn.execute(
+        """SELECT url, held_reason FROM documents
+           WHERE service_id = %s AND doc_type = %s AND held_reason IS NOT NULL""",
+        (service_id, doc_type),
+    ).fetchone()
+
+
+def hold_document(conn: psycopg.Connection, domain: str, doc_type: str, reason: str) -> str | None:
+    """Hold the site's stored document; returns its URL, or None if there is
+    no such document. Commits."""
+    row = conn.execute(
+        """UPDATE documents d SET held_reason = %s FROM services s
+           WHERE s.id = d.service_id AND s.domain = %s AND d.doc_type = %s
+           RETURNING d.url""",
+        (reason, domain, doc_type),
+    ).fetchone()
+    conn.commit()
+    return row[0] if row else None
+
+
+def unhold_document(conn: psycopg.Connection, domain: str, doc_type: str) -> tuple[str, str] | None:
+    """Lift a hold; returns (url, the reason it was held), or None if the
+    document isn't held. Commits."""
+    row = conn.execute(
+        """WITH target AS (
+               SELECT d.id, d.url, d.held_reason
+               FROM documents d JOIN services s ON s.id = d.service_id
+               WHERE s.domain = %s AND d.doc_type = %s AND d.held_reason IS NOT NULL)
+           UPDATE documents d SET held_reason = NULL FROM target t
+           WHERE d.id = t.id
+           RETURNING t.url, t.held_reason""",
+        (domain, doc_type),
+    ).fetchone()
+    conn.commit()
+    return row
+
+
+def held_documents(conn: psycopg.Connection) -> list[tuple]:
+    """(domain, doc_type, reason, url) for every held document."""
+    return conn.execute(
+        """SELECT s.domain, d.doc_type, d.held_reason, d.url
+           FROM documents d JOIN services s ON s.id = d.service_id
+           WHERE d.held_reason IS NOT NULL
+           ORDER BY s.domain, d.doc_type""",
+    ).fetchall()
 
 
 def latest_version(conn: psycopg.Connection, document_id: int) -> tuple[int, str] | None:
@@ -207,7 +270,7 @@ def domains_missing(conn: psycopg.Connection, doc_type: str) -> list[str]:
     such as sites rated on their privacy policy alone."""
     rows = conn.execute(
         """SELECT s.domain FROM services s
-           JOIN documents d ON d.service_id = s.id
+           JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
            JOIN document_versions v ON v.document_id = d.id
            GROUP BY s.domain
            HAVING NOT bool_or(d.doc_type = %s)
@@ -220,6 +283,7 @@ def domains_with_privacy(conn: psycopg.Connection) -> set[str]:
     rows = conn.execute(
         """SELECT DISTINCT s.domain FROM services s
            JOIN documents d ON d.service_id = s.id AND d.doc_type = 'privacy'
+                              AND d.held_reason IS NULL
            JOIN document_versions v ON v.document_id = d.id""",
     ).fetchall()
     return {r[0] for r in rows}
@@ -332,8 +396,11 @@ def audit_counts(conn: psycopg.Connection) -> dict:
 # document's new text before anyone rates it; ordering by date alone would
 # take the site's rating down until then, and a rating from the last text we
 # read is better than none. Once the new version is rated it comes first.
-RATED_FIRST = ("EXISTS (SELECT 1 FROM findings rf WHERE rf.version_id = v.id"
-               " AND rf.rubric_version = %(rubric)s) DESC")
+# Versions from before a lifted hold (documents.valid_from) were the wrong
+# page: their findings never make a version "rated".
+RATED_FIRST = ("(EXISTS (SELECT 1 FROM findings rf WHERE rf.version_id = v.id"
+               " AND rf.rubric_version = %(rubric)s)"
+               " AND v.fetched_at >= coalesce(d.valid_from, '-infinity'::timestamptz)) DESC")
 
 
 def site_findings(conn: psycopg.Connection, rubric_version: str,
@@ -341,13 +408,15 @@ def site_findings(conn: psycopg.Connection, rubric_version: str,
     """domain -> (domain_hash, check_id, status, verified, created_at) for
     every finding on the rated version of each of the site's documents: the
     newest version with findings under this rubric (RATED_FIRST). Only
-    analyzed sites appear. `hash_like` narrows it to a domain_hash pattern."""
+    analyzed sites appear, and held documents never count. `hash_like`
+    narrows it to a domain_hash pattern."""
     rows = conn.execute(
         f"""WITH latest AS (
                 SELECT DISTINCT ON (d.id) s.domain, s.domain_hash, v.id AS version_id
                 FROM documents d JOIN services s ON s.id = d.service_id
                 JOIN document_versions v ON v.document_id = d.id
-                {"WHERE s.domain_hash LIKE %(hash)s" if hash_like else ""}
+                WHERE d.held_reason IS NULL
+                {"AND s.domain_hash LIKE %(hash)s" if hash_like else ""}
                 ORDER BY d.id, {RATED_FIRST}, v.fetched_at DESC)
             SELECT l.domain, l.domain_hash, f.check_id, f.status, f.verified, f.created_at
             FROM latest l JOIN findings f ON f.version_id = l.version_id

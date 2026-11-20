@@ -14,6 +14,8 @@
     python -m imbroglio.cli report 3 --out runs/batch-3.md
     python -m imbroglio.cli reports               # new problem reports from readers
     python -m imbroglio.cli reports --mark 12 withdrawn --note "quote not in document"
+    python -m imbroglio.cli hold coinbase.com terms --reason "promo help article, not the terms"
+    python -m imbroglio.cli held                  # every held document; unhold DOMAIN TYPE lifts one
 """
 
 from __future__ import annotations
@@ -59,9 +61,11 @@ def _extract_cmd(args) -> int:
     elif not args.all:
         print("give domains, or --all")
         return 1
+    # Held documents are the wrong page: ensure_analyzed refuses them anyway,
+    # but left in they would take up --limit slots on every run.
     rows = conn.execute(
         f"""SELECT DISTINCT ON (d.id) s.domain, d.doc_type, v.id
-            FROM documents d JOIN services s ON s.id = d.service_id
+            FROM documents d JOIN services s ON s.id = d.service_id AND d.held_reason IS NULL
             JOIN document_versions v ON v.document_id = d.id {where}
             ORDER BY d.id, v.fetched_at DESC""", params).fetchall()
     if not args.force:
@@ -199,16 +203,17 @@ def _harvest_links_cmd(args) -> int:
 
     conn = db.connect()
     db.init_schema(conn)
+    # A held document's page is the wrong one, so its links aren't the site's.
     if args.domains:
         wanted = [d.strip().lower() for d in args.domains.split(",") if d.strip()]
         rows = conn.execute(
             """SELECT s.id, s.domain, array_agg(d.doc_type), array_agg(d.url)
-               FROM services s LEFT JOIN documents d ON d.service_id = s.id
+               FROM services s LEFT JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
                WHERE s.domain = ANY(%s) GROUP BY s.id ORDER BY s.id""", (wanted,)).fetchall()
     else:
         rows = conn.execute(
             """SELECT s.id, s.domain, array_agg(d.doc_type), array_agg(d.url)
-               FROM services s JOIN documents d ON d.service_id = s.id
+               FROM services s JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
                GROUP BY s.id ORDER BY s.id""").fetchall()
     if args.limit:
         rows = rows[:args.limit]
@@ -270,6 +275,44 @@ def _reports_cmd(args) -> int:
         for row in rows:
             print(_report_line(row))
         print(f"{len(rows)} reports ({args.status})")
+        return 0
+    finally:
+        conn.close()
+
+
+def _hold_cmd(args) -> int:
+    """hold / unhold / held: mark a stored document as the wrong page, or
+    lift that. Nothing is deleted; a held document is just treated as if we
+    didn't have it (db.py, "holds")."""
+    from . import db
+    from .batch import clean_domain
+
+    conn = db.connect()
+    db.init_schema(conn)
+    try:
+        if args.command == "held":
+            rows = db.held_documents(conn)
+            for domain, doc_type, reason, url in rows:
+                print(f"{domain:<28} {doc_type:<8} {reason}  {url}")
+            print(f"{len(rows)} held documents")
+            return 0
+        domain = clean_domain(args.domain) or args.domain
+        if args.command == "hold":
+            reason = " ".join(args.reason.split())
+            if not reason:
+                print("give a reason: what is wrong with the page")
+                return 2
+            url = db.hold_document(conn, domain, args.doc_type, reason)
+            if url is None:
+                print(f"no {args.doc_type} document stored for {domain}; nothing held")
+                return 1
+            print(f"held {domain} {args.doc_type}: {url}  ({reason})")
+            return 0
+        lifted = db.unhold_document(conn, domain, args.doc_type)
+        if lifted is None:
+            print(f"{domain} {args.doc_type} is not held")
+            return 1
+        print(f"unheld {domain} {args.doc_type}: {lifted[0]}  (was held: {lifted[1]})")
         return 0
     finally:
         conn.close()
@@ -399,7 +442,8 @@ def main() -> int:
     rc.add_argument("--dry-run", action="store_true", help="fetch and compare, store nothing")
 
     sd = sub.add_parser("store-document",
-                        help="store a policy you fetched by hand, for sites that block the crawler")
+                        help="store a policy you fetched by hand, for sites that block the crawler "
+                             "(lifts a hold on that document: this is the right page)")
     sd.add_argument("domain")
     sd.add_argument("doc_type", choices=["privacy", "terms"])
     sd.add_argument("url", help="where the document lives, shown on the scorecard")
@@ -427,8 +471,22 @@ def main() -> int:
                     help="also render a homepage in the headless browser when the static page has no links")
     hl.add_argument("--dry-run", action="store_true", help="print what would be stored, store nothing")
 
+    ho = sub.add_parser("hold", help="mark a stored document as the wrong page: kept, but left out of every "
+                                     "public answer, never rated or rechecked")
+    ho.add_argument("domain")
+    ho.add_argument("doc_type", choices=["privacy", "terms"])
+    ho.add_argument("--reason", required=True, help="what is wrong with the page, e.g. \"a blog post\"")
+
+    uh = sub.add_parser("unhold", help="lift a hold, so the stored document counts again")
+    uh.add_argument("domain")
+    uh.add_argument("doc_type", choices=["privacy", "terms"])
+
+    sub.add_parser("held", help="list held documents with the reason and address")
+
     args = ap.parse_args()
 
+    if args.command in ("hold", "unhold", "held"):
+        return _hold_cmd(args)
     if args.command == "reports":
         return _reports_cmd(args)
     if args.command == "harvest-links":
@@ -670,7 +728,7 @@ def main() -> int:
         if o.notes:
             line += f"  [{o.notes}]"
         print(line)
-        failed += o.status == "failed"
+        failed += not o.found
     return 1 if failed == len(outcomes) else 0
 
 
