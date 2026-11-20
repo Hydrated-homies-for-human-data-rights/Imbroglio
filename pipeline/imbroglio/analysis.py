@@ -174,20 +174,24 @@ _BACKLOG_LOCK = 0x1B0C_0011  # one backlog pass at a time across workers (rechec
 
 def pending_versions(conn: psycopg.Connection, domain: str | None = None,
                      limit: int | None = None, rubric_version: str | None = None) -> list[int]:
-    """Newest stored version of each document that has no findings under the
-    rubric yet and hasn't used up its tries, oldest first. These are the
-    documents whose analysis was skipped (daily budget, extraction off) or
-    failed. `domain` narrows it to one site."""
+    """Newest stored version of each document that has never been rated under
+    the rubric (no version of it has findings) and hasn't used up its tries,
+    oldest first. These are the documents whose analysis was skipped (daily
+    budget, extraction off) or failed. A document that was rated and has
+    changed since is left alone: rechecks only detect changes (recheck.py),
+    and re-analyzing changed policies is a separate, deliberate spend.
+    `domain` narrows it to one site."""
     rows = conn.execute(
         """WITH latest AS (
-               SELECT DISTINCT ON (d.id) v.id AS version_id, v.fetched_at
+               SELECT DISTINCT ON (d.id) v.id AS version_id, d.id AS document_id, v.fetched_at
                FROM documents d JOIN services s ON s.id = d.service_id
                JOIN document_versions v ON v.document_id = d.id
                WHERE %(domain)s::text IS NULL OR s.domain = %(domain)s
                ORDER BY d.id, v.fetched_at DESC)
            SELECT l.version_id FROM latest l
            WHERE NOT EXISTS (SELECT 1 FROM findings f
-                             WHERE f.version_id = l.version_id AND f.rubric_version = %(rubric)s)
+                             JOIN document_versions v2 ON v2.id = f.version_id
+                             WHERE v2.document_id = l.document_id AND f.rubric_version = %(rubric)s)
              AND (SELECT count(*) FROM extraction_runs r
                   WHERE r.version_id = l.version_id AND r.rubric_version = %(rubric)s) < %(tries)s
            ORDER BY l.fetched_at, l.version_id

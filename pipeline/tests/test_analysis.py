@@ -231,3 +231,12 @@ def test_backlog_rates_skipped_documents_oldest_first_within_budget(conn, fake_l
     assert counts == {"analyzed": 1, "paused for budget": 1}
     assert len(fake_llm) == 1 and fake_llm[0].endswith("old")
     assert analysis.pending_versions(conn) == [new]
+
+
+def test_backlog_leaves_changed_policies_alone(conn, fake_llm):
+    # Rechecks only detect changes. A rated document whose newer version
+    # hasn't been analyzed is not "skipped", so the backlog doesn't pay for it.
+    rated = _store(conn, "changed.example", POLICY + " v1")
+    assert analysis.ensure_analyzed(conn, rated) == "analyzed"
+    _store(conn, "changed.example", POLICY + " v2")
+    assert analysis.pending_versions(conn) == []
