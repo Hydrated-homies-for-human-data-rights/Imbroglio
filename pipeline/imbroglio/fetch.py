@@ -245,6 +245,11 @@ def fetch_static(url: str, session: requests.Session | None = None) -> tuple[str
                     return None, too_slow
                 last_status = type(exc).__name__
             else:
+                if deadline.expired:
+                    # Cut off mid-headers, http.client can hand back what it
+                    # had as a short "200" with no headers (seen on Linux).
+                    resp.close()
+                    return None, too_slow
                 ctype = resp.headers.get("content-type", "")
                 if resp.status_code == 200 and ("html" in ctype or "xml" in ctype):
                     try:
@@ -268,7 +273,7 @@ def fetch_static(url: str, session: requests.Session | None = None) -> tuple[str
                 time.sleep(BACKOFF * (2**attempt))
                 if deadline.expired:
                     break
-    return None, last_status
+    return None, too_slow if deadline.expired else last_status
 
 
 def _guard(route) -> None:
