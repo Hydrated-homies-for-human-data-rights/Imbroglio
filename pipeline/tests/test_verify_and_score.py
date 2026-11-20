@@ -139,3 +139,15 @@ def test_disclosed_tier_beats_not_disclosed_when_combining_documents():
 def test_scoring_is_deterministic():
     findings = [F(c.id, next(iter(c.statuses))) for c in RUBRIC.checks]
     assert scorer.category_tiers(RUBRIC, findings) == scorer.category_tiers(RUBRIC, list(reversed(findings)))
+
+
+def test_ellipsis_cannot_skip_a_negation():
+    doc = "We do not sell your personal information to anyone, for any reason."
+    assert not verify_quote("We do ... sell your personal information to anyone", doc)
+    assert verify_quote("We do not sell ... to anyone, for any reason", doc)
+
+
+def test_ellipsis_quote_has_at_most_four_pieces():
+    doc = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
+    assert verify_quote("one two three four ... six seven ... nine ten ... twelve thirteen", doc)
+    assert not verify_quote("one two three four ... six seven ... nine ten ... eleven twelve ... thirteen fourteen", doc)

@@ -74,11 +74,13 @@ def _find_piece(piece: str, doc: str, start: int) -> tuple[int, int] | None:
     if len(piece) < 40:
         return None  # short pieces must match exactly; fuzzy would accept near-anything
     # Anchor on the longest exact run, then compare a same-sized window.
-    m = SequenceMatcher(None, doc, piece, autojunk=False)
+    # Only the rest of the document: a quote's pieces come in order, and
+    # rescanning from the top on every anchor try would multiply the work.
+    m = SequenceMatcher(None, doc[start:], piece, autojunk=False)
     block = max(m.get_matching_blocks(), key=lambda b: b.size)
     if block.size < len(piece) * 0.3:
         return None
-    lo = max(start, block.a - block.b - 10)
+    lo = max(start, start + block.a - block.b - 10)
     window = doc[lo: lo + len(piece) + 20]
     best = SequenceMatcher(None, window, piece, autojunk=False)
     if best.ratio() * (len(window) + len(piece)) / (2 * len(piece)) < FUZZY_THRESHOLD:
@@ -108,6 +110,7 @@ MAX_PIECE_GAP = 300        # canonical characters skipped between two pieces
 MIN_PIECE_WORDS = 2
 MIN_ANCHOR_WORDS = 4       # the longest piece of an ellipsis quote
 MAX_ANCHOR_TRIES = 50      # places tried for the first piece of an ellipsis quote
+MAX_PIECES = 4             # ellipsis pieces in one quote (bounds the work per quote)
 
 
 def _chain(pieces: list[str], doc: str, start: int) -> list[tuple[int, int]] | None:
@@ -118,6 +121,10 @@ def _chain(pieces: list[str], doc: str, start: int) -> list[tuple[int, int]] | N
     for piece in pieces:
         span = _find_piece(piece, doc, pos)
         if span is None or (spans and span[0] - spans[-1][1] > MAX_PIECE_GAP):
+            return None
+        # What the ellipsis skips must not hold a negation: "We do ... sell
+        # your data" is not a quote of "We do not sell your data".
+        if spans and _negations(doc[spans[-1][1]:span[0]]):
             return None
         spans.append(span)
         pos = span[1]
@@ -134,6 +141,8 @@ def _spans(quote: str, doc: str) -> list[tuple[int, int]] | None:
         return None
     if len(pieces) == 1:
         return _chain(pieces, doc, 0)
+    if len(pieces) > MAX_PIECES:
+        return None
     words = [len(p.split()) for p in pieces]
     if min(words) < MIN_PIECE_WORDS or max(words) < MIN_ANCHOR_WORDS:
         return None
