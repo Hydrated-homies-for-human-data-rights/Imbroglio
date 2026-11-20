@@ -1081,3 +1081,21 @@ def list_sites(response: Response):
         return rated
     response.headers["Cache-Control"] = "private, max-age=60"
     return SiteList(count=len(rated), sites=[_search_result(e) for e in rated])
+
+
+@router.get("/health", include_in_schema=False)
+def health_report():
+    """Queue, worker and budget numbers for the health watch
+    (.github/workflows/health.yml): counts and times only, never which sites
+    were asked about. Behind the API password like every route but /healthz."""
+    from . import health
+
+    try:
+        conn = db.connect()
+    except Exception:
+        return JSONResponse({"ok": False, "problems": ["The API can't reach the database."]},
+                            status_code=503)
+    try:
+        return health.report(conn, PUBLIC_SOURCES)
+    finally:
+        conn.close()
