@@ -87,7 +87,7 @@ class _ProgressHandler(logging.Handler):
 def _summary(outcomes) -> dict:
     return {
         "documents": [
-            {"doc_type": o.doc_type, "found": o.status != "failed", "status": o.status,
+            {"doc_type": o.doc_type, "found": o.found, "status": o.status,
              "url": o.url, "chars": o.chars, "version_id": o.version_id,
              "discovered_via": o.discovered_via, "fetch_method": o.fetch_method,
              "notes": o.notes, "analysis": getattr(o, "analysis", None)}
@@ -164,7 +164,7 @@ def _run_job(request_id: int, domain: str, use_playwright: bool, policy_url: str
         conn = db.connect()
         try:
             for o in outcomes:  # same audit trail as batch and console runs
-                db.insert_attempt(conn, None, domain, o.doc_type, o.status != "failed",
+                db.insert_attempt(conn, None, domain, o.doc_type, o.found,
                                   o.status, o.url, o.discovered_via, o.fetch_method,
                                   o.chars, o.notes or None, seconds)
             conn.commit()

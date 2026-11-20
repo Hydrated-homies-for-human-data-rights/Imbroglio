@@ -108,10 +108,21 @@ def _copy_findings(conn, source_version: int, version_id: int, rubric_version: s
     )
 
 
+def _held(conn, version_id: int) -> bool:
+    row = conn.execute(
+        """SELECT d.held_reason IS NOT NULL FROM document_versions v
+           JOIN documents d ON d.id = v.document_id WHERE v.id = %s""", (version_id,)).fetchone()
+    return bool(row and row[0])
+
+
 def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = False,
                     model: str | None = None, rubric_version: str | None = None) -> str:
-    """Returns what happened: done-already | reused | analyzed | skipped:<why> | failed:<why>."""
+    """Returns what happened: done-already | reused | analyzed | held | skipped:<why> | failed:<why>."""
     rubric_version = rubric_version or RUBRIC_VERSION
+    # A held document is the wrong page: rating it would only cost money and
+    # put a wrong rating in the database. Checked before anything, force too.
+    if _held(conn, version_id):
+        return "held"
     if not force and _has_findings(conn, version_id, rubric_version):
         return "done-already"
 
@@ -180,13 +191,14 @@ def pending_versions(conn: psycopg.Connection, domain: str | None = None,
     budget, extraction off) or failed. A document that was rated and has
     changed since is left alone: rechecks only detect changes (recheck.py),
     and re-analyzing changed policies is a separate, deliberate spend.
-    `domain` narrows it to one site."""
+    Held documents are never pending. `domain` narrows it to one site."""
     rows = conn.execute(
         """WITH latest AS (
                SELECT DISTINCT ON (d.id) v.id AS version_id, d.id AS document_id, v.fetched_at
                FROM documents d JOIN services s ON s.id = d.service_id
                JOIN document_versions v ON v.document_id = d.id
-               WHERE %(domain)s::text IS NULL OR s.domain = %(domain)s
+               WHERE d.held_reason IS NULL
+                 AND (%(domain)s::text IS NULL OR s.domain = %(domain)s)
                ORDER BY d.id, v.fetched_at DESC)
            SELECT l.version_id FROM latest l
            WHERE NOT EXISTS (SELECT 1 FROM findings f
@@ -351,11 +363,13 @@ def reanalysis_targets(conn: psycopg.Connection, from_version: str,
                        where: dict[str, list[str]]) -> list[list[int]]:
     """Latest document versions whose `from_version` answer to any check in
     `where` is one of the listed statuses, grouped by identical text (each
-    group is read once)."""
+    group is read once). Held documents are left out: no paying to re-read
+    the wrong page."""
     rows = conn.execute(
         """WITH latest AS (
                SELECT DISTINCT ON (d.id) v.id AS version_id, v.content_hash
                FROM documents d JOIN document_versions v ON v.document_id = d.id
+               WHERE d.held_reason IS NULL
                ORDER BY d.id, v.fetched_at DESC)
            SELECT DISTINCT l.version_id, l.content_hash
            FROM latest l JOIN findings f ON f.version_id = l.version_id

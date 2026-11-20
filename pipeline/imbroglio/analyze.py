@@ -19,8 +19,9 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
-from . import db
+from . import SERVER_ONLY, db
 
 log = logging.getLogger("imbroglio")
 from .extract import extract_text
@@ -31,7 +32,7 @@ from .normalize import content_hash, normalize
 @dataclass
 class DocOutcome:
     doc_type: str
-    status: str            # stored-new | unchanged | changed | failed
+    status: str            # stored-new | unchanged | changed | held | failed
     url: str | None = None
     version_id: int | None = None
     chars: int = 0
@@ -39,6 +40,12 @@ class DocOutcome:
     content_hash: str | None = None
     discovered_via: str | None = None
     fetch_method: str | None = None
+
+    @property
+    def found(self) -> bool:
+        # "held": discovery found the page a person marked as wrong again,
+        # which for every reader is the same as not finding the document.
+        return self.status not in ("failed", "held")
 
 
 def analyze(domain: str, use_playwright: bool = True,
@@ -94,11 +101,38 @@ def analyze(domain: str, use_playwright: bool = True,
     return outcomes
 
 
+def same_url(a: str, b: str) -> bool:
+    """Two addresses for one page: scheme, host case, a leading www., a
+    trailing slash and the fragment don't matter. The query does (help
+    centers tell articles apart by it), less any tracking parameters."""
+    from .locate import _strip_tracking
+
+    def key(url: str) -> tuple:
+        p = urlparse(_strip_tracking(url.strip()))
+        return (p.hostname or "").lower().removeprefix("www."), p.path.rstrip("/"), p.query
+
+    return key(a) == key(b)
+
+
 def store_text(conn, service_id: int, doc_type: str, url: str, discovered_via: str | None,
-               fetch_method: str | None, text: str) -> DocOutcome:
+               fetch_method: str | None, text: str, *, by_hand: bool = False) -> DocOutcome:
     """Store normalized `text` as the document's newest version and say whether
-    it is new, unchanged, or a change from the stored one. Commits."""
+    it is new, unchanged, or a change from the stored one. Commits.
+
+    The one place every stored page passes through, so it also keeps holds:
+    if a person held this document and discovery comes back with the same
+    page, nothing is stored ("held"). A different page is a new candidate
+    and is stored, which lifts the hold (db.upsert_document), as does a
+    page a person stores by hand (`by_hand`)."""
     digest = content_hash(text)
+    hold = db.held(conn, service_id, doc_type)
+    if hold is not None and not by_hand and same_url(hold[0], url):
+        # Progress lines are public; the reason is a note for the team.
+        log.info("[%s] this page was marked as the wrong one, not stored", doc_type)
+        log.info("[%s] held: %s", doc_type, hold[1], extra=SERVER_ONLY)
+        conn.commit()
+        return DocOutcome(doc_type, "held", url, None, len(text), f"held: {hold[1]}", digest,
+                          discovered_via, fetch_method)
     document_id = db.upsert_document(conn, service_id, doc_type, url, discovered_via)
     previous = db.latest_version(conn, document_id)
     version_id = db.insert_version(conn, document_id, digest, text, fetch_method)
@@ -116,7 +150,8 @@ def store_text(conn, service_id: int, doc_type: str, url: str, discovered_via: s
                  doc_type, previous[0])
 
     conn.commit()
-    return DocOutcome(doc_type, status, url, version_id, len(text), "", digest,
+    note = f"hold lifted (was held: {hold[1]})" if hold is not None else ""
+    return DocOutcome(doc_type, status, url, version_id, len(text), note, digest,
                       discovered_via, fetch_method)
 
 
@@ -155,6 +190,6 @@ def store_manual(domain: str, doc_type: str, url: str, raw: str,
     try:
         db.init_schema(conn)
         service_id = db.upsert_service(conn, domain)
-        return store_text(conn, service_id, doc_type, url, "manual", "manual", text)
+        return store_text(conn, service_id, doc_type, url, "manual", "manual", text, by_hand=True)
     finally:
         conn.close()
