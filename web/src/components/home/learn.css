@@ -1,0 +1,337 @@
+/* What you can do (/learn): "what do you want to do?" cards, then the
+   sections with their contents pinned beside them on a wide screen. Uses
+   the front page's tokens (home.css) inside the editorial frame (pages.css). */
+
+.learn {
+  margin-top: 40px;
+}
+.learn a {
+  color: var(--ink);
+}
+.learn .l-card {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+}
+
+/* ---- what do you want to do? ---- */
+.learn .l-wants h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.learn .l-want-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.learn .l-want {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  text-decoration: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.learn .l-want:hover,
+.learn .l-want:focus-visible {
+  border-color: var(--pink-deep);
+  box-shadow: 0 0 0 3px rgba(247, 154, 192, 0.25);
+}
+.learn .l-want strong {
+  font-size: 17px;
+  font-weight: 600;
+}
+.learn .l-want span {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.learn .l-want .go {
+  margin-top: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pink-deep);
+}
+
+/* ---- contents beside the sections ---- */
+.learn .l-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 48px;
+  margin-top: 64px;
+  align-items: start;
+}
+.learn .l-contents {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 14px;
+  border-left: 2px solid var(--pink);
+  font-size: 14px;
+}
+.learn .l-contents .eyebrow {
+  font-size: 11px;
+}
+.learn .l-contents a {
+  text-decoration: none;
+}
+.learn .l-contents a:hover {
+  color: var(--pink-deep);
+}
+.learn .l-main {
+  display: flex;
+  flex-direction: column;
+  gap: 72px;
+  min-width: 0;
+}
+
+/* ---- a section ---- */
+.learn .l-section {
+  scroll-margin-top: 24px;
+}
+.learn .l-section > .eyebrow {
+  margin: 0;
+}
+.learn .l-section > h2 {
+  margin: 8px 0 0;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.learn .l-lede {
+  margin: 10px 0 18px;
+  max-width: 42em;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #2b3e52;
+}
+.learn .l-section p {
+  max-width: 46em;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.learn .l-small {
+  margin: 12px 0 0;
+  font-size: 14px !important;
+  color: var(--muted);
+}
+.learn .l-section a:not(.l-want) {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-underline-offset: 3px;
+}
+.learn .quote {
+  margin: 4px 0 0;
+  padding: 16px 20px;
+  background: var(--sheet);
+  border-left: 3px solid var(--pink);
+  font-family: var(--font-newsreader), Newsreader, Georgia, serif;
+  font-style: italic;
+  font-size: 18px;
+}
+
+/* ---- GPC, browser by browser ---- */
+.learn .l-gpc > div {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 6px 16px;
+  padding: 14px 20px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.learn .l-gpc > div + div {
+  border-top: 1px solid var(--rule);
+}
+.learn .l-gpc .done {
+  color: var(--sev-limited);
+  font-weight: 600;
+}
+
+/* ---- findings, grouped and folded ---- */
+.learn .l-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.learn .l-groups h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+.learn .l-topic {
+  scroll-margin-top: 24px;
+}
+.learn .l-topic + .l-topic {
+  border-top: 1px solid var(--rule);
+}
+.learn .l-topic summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.learn .l-topic summary::-webkit-details-marker {
+  display: none;
+}
+.learn .l-topic summary:hover .l-topic-title {
+  color: var(--pink-deep);
+}
+.learn .l-topic-title {
+  font-size: 16px;
+}
+.learn .l-topic-count {
+  flex: none;
+  font-size: 14px;
+  color: var(--faint);
+}
+.learn .l-topic-count::after {
+  content: "›";
+  display: inline-block;
+  margin-left: 6px;
+  transition: transform 0.15s ease;
+}
+.learn .l-topic[open] {
+  background: #fbfcfd;
+  box-shadow: inset 3px 0 0 var(--pink);
+}
+.learn .l-topic[open] .l-topic-title {
+  font-weight: 600;
+}
+.learn .l-topic[open] .l-topic-count::after {
+  transform: rotate(90deg);
+}
+.learn .l-topic-body {
+  padding: 0 20px 18px;
+}
+.learn .l-topic .why {
+  margin: 0;
+  font-style: italic;
+  font-size: 17px;
+  color: var(--muted);
+}
+.learn .l-topic ol {
+  list-style: decimal;
+  margin: 10px 0 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+  max-width: 46em;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* ---- rights, by region ---- */
+.learn .tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--rule);
+}
+.learn .tablist button {
+  margin-bottom: -1px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.learn .tablist button[aria-selected="true"] {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+  font-weight: 600;
+}
+.learn .tablist button:focus-visible {
+  outline: 2px solid var(--pink-deep);
+  outline-offset: 2px;
+}
+.learn .tabpanel {
+  padding-top: 18px;
+}
+.learn .tabpanel > p {
+  margin: 14px 0 0;
+}
+.learn .l-rights {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.learn .l-rights .l-card {
+  padding: 14px 16px;
+}
+.learn .l-rights p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.learn .l-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.learn .l-chips li {
+  padding: 4px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--sheet);
+  font-size: 13px;
+}
+
+/* ---- tools ---- */
+.learn .l-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.learn .l-tools .l-card {
+  padding: 18px 20px;
+}
+.learn .l-tools h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.learn .l-tools p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.learn .does,
+.learn .doesnt {
+  font-weight: 600;
+}
+.learn .does {
+  color: var(--sev-limited);
+}
+.learn .doesnt {
+  color: var(--sev-severe);
+}
+
+@media (max-width: 860px) {
+  .learn .l-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    margin-top: 48px;
+  }
+  .learn .l-contents {
+    position: static;
+  }
+  .learn .l-gpc > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
