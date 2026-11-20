@@ -16,7 +16,9 @@ import { ApiError, lookup } from "@/lib/api"
 // stale: someone who just requested a site would otherwise see "not rated"
 // for up to fifteen minutes after its rating is ready.
 
-const PREFIX = /^[0-9a-f]{5}$/ // extension/background.js PREFIX_LENGTH
+// extension/background.js PREFIX_LENGTH: 3 since extension 1.0 (5 before;
+// still accepted for copies loaded unpacked before then)
+const PREFIX = /^(?:[0-9a-f]{3}|[0-9a-f]{5})$/
 const CACHE = "public, s-maxage=300, stale-while-revalidate=600"
 const CACHE_UNRATED = "public, s-maxage=30"
 
@@ -31,7 +33,7 @@ function allRated(body: Body): boolean {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ prefix: string }> }) {
   const { prefix } = await params
   if (!PREFIX.test(prefix)) {
-    return Response.json({ error: "prefix must be 5 lowercase hex characters" }, { status: 400 })
+    return Response.json({ error: "prefix must be 3 lowercase hex characters" }, { status: 400 })
   }
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip")
   try {

@@ -21,6 +21,9 @@ export default function Footer() {
         <Link className="underline" href="/about">
           About
         </Link>
+        <Link className="underline" href="/privacy">
+          Privacy
+        </Link>
         <Link className="underline" href={disputeUrl()}>
           Report a problem
         </Link>

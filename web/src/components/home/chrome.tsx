@@ -76,6 +76,7 @@ export function BottomBar() {
             <Link href="/sites">Every site</Link>
             <Link href="/research">The research</Link>
             <Link href="/about">About</Link>
+            <Link href="/privacy">Privacy</Link>
             <Link href="/report">Report a problem</Link>
           </div>
         </div>
