@@ -37,9 +37,9 @@ def test_ready_site_with_documents(conn):
 
 
 def test_queued_then_analyzing(conn):
-    rid, *_ = jobs.enqueue(conn, "new.example")
+    rid, _, _, public_id = jobs.enqueue(conn, "new.example")
     body = client.get("/v1/sites/new.example").json()
-    assert body["state"] == "queued" and body["pending_request"]["id"] == rid
+    assert body["state"] == "queued" and body["pending_request"]["id"] == public_id
     jobs.claim(conn, "w")
     jobs.progress(conn, rid, "fetching homepage")
     body = client.get("/v1/sites/new.example").json()
@@ -91,8 +91,9 @@ def test_request_lifecycle(conn):
     assert r.status_code == 202
     body = r.json()
     assert body["domain"] == "brand-new.example" and body["status"] == "queued" and body["created"]
+    assert body["status_url"] == f"/v1/requests/{body['request_id']}"
     job = client.get(body["status_url"]).json()
-    assert job["status"] == "queued" and job["progress"] == []
+    assert job["status"] == "queued" and job["progress"] == [] and job["id"] == body["request_id"]
     # a second request joins the same job instead of queueing a duplicate
     again = client.post("/v1/requests", json={"domain": "brand-new.example"}).json()
     assert again["request_id"] == body["request_id"] and not again["created"]
@@ -122,6 +123,18 @@ def test_daily_cap(conn, monkeypatch):
 
 def test_unknown_request_404(conn):
     assert client.get("/v1/requests/999999").status_code == 404
+    assert client.get("/v1/requests/00000000-0000-0000-0000-000000000000").status_code == 404
+
+
+def test_request_ids_cannot_be_walked(conn):
+    """The serial id behind a request never works as its address: only the
+    random id POST /v1/requests handed out does."""
+    body = client.post("/v1/requests", json={"domain": "someone-else.example"}).json()
+    serial = conn.execute("SELECT id FROM analysis_requests WHERE domain = %s",
+                          ("someone-else.example",)).fetchone()[0]
+    assert client.get(f"/v1/requests/{serial}").status_code == 404
+    assert client.get(f"/v1/requests/{body['request_id']}").status_code == 200
+    assert str(serial) != body["request_id"]
 
 
 # --- GET /v1/lookup/{prefix} ---

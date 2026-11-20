@@ -96,7 +96,7 @@ export type Site = {
   checked_at: string | null
   documents: SiteDocument[]
   missing: DocType[]
-  pending_request: { id: number; status: "queued" | "running"; stage: string | null; queue_ahead: number } | null
+  pending_request: { id: string; status: "queued" | "running"; stage: string | null; queue_ahead: number } | null
   recheck_after: string | null
   scorecard: Scorecard | null
   links?: SiteLink[]
@@ -142,7 +142,7 @@ export type RubricInfo = {
 }
 
 export type RequestAccepted = {
-  request_id: number | null
+  request_id: string | null
   domain: string
   status: "queued" | "running" | "already_available" | "no_policy_found"
   created: boolean
@@ -152,7 +152,7 @@ export type RequestAccepted = {
 // `progress` is the worker's own log lines, newest last; `result` is filled
 // in when it is done.
 export type AnalysisRequest = {
-  id: number
+  id: string
   domain: string
   status: "queued" | "running" | "done" | "failed"
   stage: string | null
@@ -200,7 +200,7 @@ export const getRecent = (limit = 10) => get<{ sites: SearchResult[] }>(`/v1/rec
 export const getSites = () => get<{ count: number; sites: SearchResult[] }>("/v1/sites")
 export const getLearn = () => get<Learn>("/v1/learn")
 export const getRubric = () => get<RubricInfo>("/v1/rubric")
-export const getRequest = (id: number) => get<AnalysisRequest>(`/v1/requests/${id}`)
+export const getRequest = (id: string) => get<AnalysisRequest>(`/v1/requests/${encodeURIComponent(id)}`)
 // Passed through untouched to the browser extension (see app/api/v1/lookup).
 // Like requestAnalysis, it passes on the visitor's address so the API's
 // per-visitor lookup limit applies to them, not to this server.

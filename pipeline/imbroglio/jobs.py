@@ -5,7 +5,12 @@
     claim()    — a worker takes the highest-priority job, safely
     progress() — worker heartbeat + one line of live log
     finish()   — mark done / failed with a result summary
-    get()      — clients poll a request by id
+    get()      — one request by its internal id (the worker, tests)
+    find()     — one request by its public id (what clients poll)
+
+Each request has two ids. The serial id is internal: it counts up, so it
+would let anyone walk every request and see which sites other people asked
+about. Clients only ever see public_id, a random UUID (migration 0011).
 
 Claiming uses FOR UPDATE SKIP LOCKED, so any number of worker threads or
 processes can pull from the same table without taking the same job. A job
@@ -16,6 +21,7 @@ after STALE_AFTER; after MAX_ATTEMPTS it is marked failed instead.
 from __future__ import annotations
 
 import json
+import uuid
 
 import psycopg
 
@@ -25,19 +31,20 @@ PROGRESS_KEEP = 200  # cap log lines per request
 
 
 def enqueue(conn: psycopg.Connection, domain: str, source: str = "web",
-            use_playwright: bool = True) -> tuple[int, str, bool]:
-    """Returns (request_id, status, created). An open request for the same
-    domain is reused (request_count += 1) instead of queueing a duplicate."""
+            use_playwright: bool = True) -> tuple[int, str, bool, str]:
+    """Returns (request_id, status, created, public_id). An open request for
+    the same domain is reused (request_count += 1) instead of queueing a
+    duplicate."""
     row = conn.execute(
         """INSERT INTO analysis_requests (domain, source, use_playwright)
            VALUES (%s, %s, %s)
            ON CONFLICT (domain) WHERE status IN ('queued', 'running')
            DO UPDATE SET request_count = analysis_requests.request_count + 1
-           RETURNING id, status, (xmax = 0) AS created""",
+           RETURNING id, status, (xmax = 0) AS created, public_id""",
         (domain, source, use_playwright),
     ).fetchone()
     conn.commit()
-    return row[0], row[1], row[2]
+    return row[0], row[1], row[2], str(row[3])
 
 
 def enqueue_batch(conn: psycopg.Connection, domains: list[str],
@@ -127,22 +134,39 @@ def finish(conn: psycopg.Connection, request_id: int, ok: bool,
 
 
 def get(conn: psycopg.Connection, request_id: int) -> dict | None:
+    """One request by its internal id, shaped as clients see it."""
+    return _one(conn, "id", request_id)
+
+
+def find(conn: psycopg.Connection, public_id: str) -> dict | None:
+    """One request by its public id. Anything that isn't a UUID is simply
+    not found, the same answer as a UUID nobody was given."""
+    try:
+        key = uuid.UUID(public_id)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return _one(conn, "public_id", key)
+
+
+def _one(conn: psycopg.Connection, column: str, value) -> dict | None:
+    # The "id" clients see is always the public one.
     row = conn.execute(
-        """SELECT id, domain, status, stage, progress, result, error, request_count,
+        f"""SELECT public_id, domain, status, stage, progress, result, error, request_count,
                   requested_at, started_at, finished_at,
                   (SELECT count(*) FROM analysis_requests q
                    WHERE q.status = 'queued'
                      AND (q.request_count > r.request_count
                           OR (q.request_count = r.request_count
                               AND q.requested_at < r.requested_at))) AS ahead
-           FROM analysis_requests r WHERE id = %s""",
-        (request_id,),
+           FROM analysis_requests r WHERE {column} = %s""",
+        (value,),
     ).fetchone()
     if row is None:
         return None
     keys = ["id", "domain", "status", "stage", "progress", "result", "error",
             "request_count", "requested_at", "started_at", "finished_at", "queue_ahead"]
     d = dict(zip(keys, row))
+    d["id"] = str(d["id"])
     for k in ("requested_at", "started_at", "finished_at"):
         d[k] = d[k].isoformat() if d[k] else None
     if d["status"] != "queued":

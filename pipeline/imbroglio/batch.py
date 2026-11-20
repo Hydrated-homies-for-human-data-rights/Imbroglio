@@ -215,7 +215,8 @@ def failure_cause(status: str, notes: str | None) -> str:
         return "only found another company's policy (e.g. a vendor's)"
     if "time budget" in n:
         return "time budget exceeded"
-    if re.search(r"connectionerror|sslerror|timeout|nameresolution|playwright:error", n):
+    if re.search(r"connectionerror|sslerror|timeout|nameresolution|playwright:error"
+                 r"|no public address", n):
         return "network / DNS / TLS (site unreachable)"
     if re.search(r"no (privacy|terms) signals", n):
         return "long page found, but doesn't read like a policy"
