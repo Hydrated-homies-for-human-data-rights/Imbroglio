@@ -12,16 +12,19 @@ Every fetch path calls check_url() before connecting:
   * fetch_rendered routes all browser requests through check_url
 
 Known limit: DNS rebinding (a hostname resolving public at check time and
-private at connect time) is not prevented. Acceptable for a
-password-protected prototype; the production pipeline should pin resolved
-addresses or egress through a filtering proxy.
+private at connect time) is narrowed, not prevented: a host's answer is
+reused for at most HOST_TTL seconds, so a name that is re-pointed is checked
+again within that time, but a quick enough switch between check and connect
+still gets through. Pinning resolved addresses or a filtering egress proxy
+would close it.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
-from functools import lru_cache
+import threading
+import time
 from urllib.parse import urlparse
 
 
@@ -29,8 +32,31 @@ class BlockedURL(Exception):
     """Raised when a URL targets a disallowed scheme or address."""
 
 
-@lru_cache(maxsize=4096)
+HOST_TTL = 30.0  # seconds a host's check is reused (a page loads many resources)
+_host_cache: dict[str, tuple[float, bool]] = {}
+_host_lock = threading.Lock()
+
+
 def _host_allowed(host: str) -> bool:
+    now = time.monotonic()
+    with _host_lock:
+        hit = _host_cache.get(host)
+    if hit is not None and now - hit[0] < HOST_TTL:
+        return hit[1]
+    ok = _resolve_allowed(host)
+    with _host_lock:
+        if len(_host_cache) > 4096:
+            _host_cache.clear()
+        _host_cache[host] = (now, ok)
+    return ok
+
+
+def clear_host_cache() -> None:
+    with _host_lock:
+        _host_cache.clear()
+
+
+def _resolve_allowed(host: str) -> bool:
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:

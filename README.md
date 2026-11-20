@@ -226,6 +226,7 @@ push to `main`:
 | `REQUESTS_PER_HOUR` | Analysis requests allowed per client per hour (default 30) |
 | `LOOKUPS_PER_HOUR` | Hash-prefix lookups allowed per client per hour (default 600) |
 | `DAILY_REQUEST_CAP` | Analysis requests accepted per 24 hours, all clients (default 300) |
+| `REQUESTS_PER_DAY` | Analysis requests one client may make per 24 hours (default 60; an IPv6 client counts as its /64) |
 | `CLIENT_IP_HEADER` | Header the platform sets with the caller's real address, used for the per-client limit. Set to `x-real-ip` on Railway (web). Empty means the connection's address |
 | `WEB_CLIENT_KEY` | Shared secret, 32+ random characters. Lets the website pass on each visitor's address so visitors get their own limit. Must match `IMBROGLIO_WEB_KEY` on Vercel (web) |
 | `ANTHROPIC_API_KEY` | Turns on LLM analysis (worker) |

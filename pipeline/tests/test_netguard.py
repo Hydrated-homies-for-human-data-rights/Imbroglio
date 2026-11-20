@@ -31,10 +31,10 @@ def test_hostname_resolving_to_loopback_is_blocked(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo",
                         lambda host, port: [(2, 1, 6, "", ("127.0.0.1", 0))])
     from imbroglio import netguard
-    netguard._host_allowed.cache_clear()
+    netguard.clear_host_cache()
     with pytest.raises(BlockedURL):
         check_url("http://totally-public.example/")
-    netguard._host_allowed.cache_clear()
+    netguard.clear_host_cache()
 
 
 def test_a_malformed_host_is_refused_not_crashed_on():
@@ -49,9 +49,9 @@ def test_public_host_allowed(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo",
                         lambda host, port: [(2, 1, 6, "", ("93.184.216.34", 0))])
     from imbroglio import netguard
-    netguard._host_allowed.cache_clear()
+    netguard.clear_host_cache()
     check_url("https://example.com/privacy")
-    netguard._host_allowed.cache_clear()
+    netguard.clear_host_cache()
 
 
 class _FakeResp:

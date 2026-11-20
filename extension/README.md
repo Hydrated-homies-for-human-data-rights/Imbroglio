@@ -8,27 +8,32 @@ biggest flags, and a Share button that copies the report's link), with a
 category breakdown behind it and a "what you can do" screen with one action
 per flagged category. An action gets a button only when the lookup carries
 the site's own page for it (the API's link harvest); otherwise it is text
-and a "mark done". Manifest V3; works in Chrome, Edge, Opera and other
-Chromium browsers.
+with a "how" link to imbroglio.io/learn. Manifest V3; works in Chrome, Edge,
+Opera and other Chromium browsers.
 
 It is a thin client over the public read API. Nothing is analyzed in the
 browser, there is no account, and the site's name never leaves the browser:
-`background.js` hashes the domain with sha256 and sends only the first five
+`background.js` hashes the domain with sha256 and sends only the first three
 characters of the hash to `imbroglio.io/api/v1/lookup/<prefix>`, then picks
-the site out of the matches by its full hash. Lookups only read cached
+the site out of the matches by its full hash. Three hex characters make 4,096
+buckets, each shared by hundreds of popular sites, so the prefix doesn't say
+which one you're on (five, before 1.0, nearly did). Lookups only read cached
 results. A site we haven't analyzed gets a link to request it on the website,
 where the request limits apply.
 
 ## Files
 
 - `manifest.json`: permissions (`tabs` to know which site each tab is on, so
-  the badge can be drawn as you browse; `notifications` for the two one-time
-  alerts, "warn me on Extensive sites" and "tell me when a site's policy
-  changes"; `activeTab` for the popup; `storage` for the two switches, the
-  per-site records behind the alerts, and the local API override). The
-  per-site records are kept under the site's sha256 hash with a date beside
-  it, never the site's name. The badge lookups are the same hash-prefix lookups as the popup's,
-  cached ten minutes per site, so browsing still never sends a site's name.
+  the badge can be drawn as you browse and the popup knows its site;
+  `notifications` for the two one-time alerts, "warn me on Extensive sites"
+  and "tell me when a site's policy changes"; `storage` for the two switches,
+  the per-site records behind the alerts, and the local API override), and
+  `imbroglio.io` as the only host. The per-site records are a date under an
+  HMAC of the site's name with a secret random to the install, never the name
+  or a plain hash of it. The badge lookups are the same hash-prefix lookups as
+  the popup's, cached ten minutes per rated site (a minute for unrated sites
+  and failed lookups), at most three per page (the site and two parents), and
+  none for IP addresses or names without a dot.
 - `background.js`: the lookup and the badge. The icon is drawn in a canvas
   (the logo, plus the worst level's shape in the corner; dimmed with no
   badge for a site we haven't rated), so no badge icons are shipped as files.
@@ -53,8 +58,11 @@ After pulling changes, click the reload arrow on the extension's card.
 
 ## Local development
 
-By default the extension talks to imbroglio.io. To point it at a local API,
-open the service worker console from the extension's card and run:
+By default the extension talks to imbroglio.io, the only host it has
+permission for. To point it at a local API, add `"http://localhost:8765/*"`
+to `host_permissions` in `manifest.json` (don't commit it: the store build
+must not ask for localhost), reload the extension, open the service worker
+console from the extension's card and run:
 
 ```js
 chrome.storage.local.set({ apiBase: "http://localhost:8765" })
@@ -62,3 +70,14 @@ chrome.storage.local.set({ apiBase: "http://localhost:8765" })
 
 and `chrome.storage.local.remove("apiBase")` to go back. Opera blocks
 extension requests to localhost, so test locally in Chrome or Edge.
+
+## Releasing to the Chrome Web Store
+
+1. Bump `version` in `manifest.json`.
+2. Build the upload: `python extension/store/package.py` writes
+   `extension/store/imbroglio-<version>.zip` with only the files the
+   extension runs on (no README, doc images or store assets).
+3. Upload it in the developer dashboard. The listing text, permission
+   justifications and privacy answers are in `store/listing.md`; the images
+   are made by `store/make_assets.py`. The privacy policy is
+   https://imbroglio.io/privacy.

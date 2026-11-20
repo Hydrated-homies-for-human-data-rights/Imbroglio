@@ -17,6 +17,7 @@ fetches a website or runs a model.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -41,6 +42,9 @@ from .batch import clean_domain
 # and a global daily ceiling apply.
 REQUESTS_PER_HOUR = int(os.environ.get("REQUESTS_PER_HOUR", "30"))
 DAILY_REQUEST_CAP = int(os.environ.get("DAILY_REQUEST_CAP", "300"))
+# One visitor's share of the day, so a single person can't use up DAILY_REQUEST_CAP
+# (and with it the day's analysis budget) for everyone else.
+REQUESTS_PER_DAY = int(os.environ.get("REQUESTS_PER_DAY", "60"))
 PUBLIC_SOURCES = ("web", "api", "extension")
 # Lookups only read, but each one is a database query, so a client sweeping
 # hash prefixes gets cut off too. An extension user opens the popup a few
@@ -411,19 +415,26 @@ def get_site(domain: str, request: Request, response: Response):
 # --- analysis requests ----------------------------------------------------------
 
 class _RateLimiter:
-    """Sliding one-hour window per client. In memory: fine for one web
-    instance; move to the database if the web service is ever scaled out."""
+    """Sliding window per client (an hour unless told otherwise). In memory:
+    fine for one web instance; move to the database if the web service is
+    ever scaled out. Never written anywhere (the privacy page says so)."""
 
-    def __init__(self, per_hour: int) -> None:
-        self.per_hour = per_hour
+    MAX_CLIENTS = 50_000  # past this, clients with no hit in the window are dropped
+
+    def __init__(self, per_hour: int, window: float = 3600) -> None:
+        self.per_hour = per_hour  # hits allowed per window
+        self.window = window
         self.hits: dict[str, deque] = defaultdict(deque)
         self.lock = threading.Lock()
 
     def allow(self, client: str) -> bool:
         now = time.monotonic()
         with self.lock:
+            if len(self.hits) > self.MAX_CLIENTS:
+                for key in [k for k, q in self.hits.items() if not q or now - q[-1] > self.window]:
+                    del self.hits[key]
             q = self.hits[client]
-            while q and now - q[0] > 3600:
+            while q and now - q[0] > self.window:
                 q.popleft()
             if len(q) >= self.per_hour:
                 return False
@@ -432,6 +443,7 @@ class _RateLimiter:
 
 
 _limiter = _RateLimiter(REQUESTS_PER_HOUR)
+_daily_limiter = _RateLimiter(REQUESTS_PER_DAY, window=86400)
 _lookup_limiter = _RateLimiter(LOOKUPS_PER_HOUR)
 _report_limiter = _RateLimiter(REPORTS_PER_HOUR)
 
@@ -447,18 +459,33 @@ CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", "").strip().lower()
 WEB_CLIENT_KEY = os.environ.get("WEB_CLIENT_KEY", "")
 
 
+def _network(addr: str) -> str:
+    """An IPv6 address counts as its /64 network: one home or phone is handed
+    a whole /64, so counting single addresses would let anyone rotate past
+    the limits. IPv4 addresses (and anything unparseable) count as given."""
+    try:
+        ip = ipaddress.ip_address(addr.strip().strip("[]").split("%")[0])
+    except ValueError:
+        return addr[:64]
+    if ip.version == 6:
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return str(ip)
+
+
 def client_address(request: Request) -> str:
     if WEB_CLIENT_KEY:
         key = request.headers.get("x-imbroglio-web-key", "")
         visitor = request.headers.get("x-imbroglio-visitor-ip", "").strip()
         if visitor and secrets.compare_digest(key.encode(), WEB_CLIENT_KEY.encode()):
-            return "visitor " + visitor[:64]
+            return "visitor " + _network(visitor[:64])
     if CLIENT_IP_HEADER:
         # If the platform appends to a list, the last entry is the one it added.
         value = request.headers.get(CLIENT_IP_HEADER, "").split(",")[-1].strip()
         if value:
-            return value[:64]
-    return request.client.host if request.client else "unknown"
+            return _network(value[:64])
+    return _network(request.client.host) if request.client else "unknown"
 
 
 class NewRequest(BaseModel):
@@ -526,6 +553,9 @@ def create_request(body: NewRequest, request: Request):
         if not _limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_HOUR} requests per hour."},
                                 status_code=429, headers={"Retry-After": "600"})
+        if not _daily_limiter.allow(client):
+            return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_DAY} requests a day."},
+                                status_code=429, headers={"Retry-After": "3600"})
         today = conn.execute(
             """SELECT count(*) FROM analysis_requests
                WHERE requested_at > now() - interval '24 hours' AND source = ANY(%s)""",
@@ -573,7 +603,9 @@ def _clean_text(value: str | None) -> str | None:
 def _site_page(value: str | None) -> str | None:
     """Only a path on our own site is worth keeping; anything else is noise
     or a link someone wants a reviewer to click."""
-    if value and (value.startswith("/") or value.startswith("https://imbroglio.io/")):
+    if not value or "\\" in value or value.startswith("//"):
+        return None  # "//evil.example/x" is another site, despite the leading slash
+    if value.startswith("/") or value.startswith("https://imbroglio.io/"):
         return value
     return None
 
@@ -641,7 +673,7 @@ def create_report(body: NewReport, request: Request):
 
 # --- privacy-preserving lookup ---------------------------------------------------
 
-HASH_PREFIX = re.compile(r"^[0-9a-f]{4,8}$")
+HASH_PREFIX = re.compile(r"^[0-9a-f]{3,8}$")
 
 
 class LookupCategory(BaseModel):
@@ -721,7 +753,7 @@ def lookup(prefix: str, request: Request, response: Response):
     when the user asks to see them, since it names the domain."""
     p = prefix.lower()
     if not HASH_PREFIX.match(p):
-        return JSONResponse({"error": "prefix must be 4-8 lowercase hex characters"}, status_code=400)
+        return JSONResponse({"error": "prefix must be 3-8 lowercase hex characters"}, status_code=400)
     if not _lookup_limiter.allow(client_address(request)):
         return JSONResponse({"error": f"Rate limit: at most {LOOKUPS_PER_HOUR} lookups per hour."},
                             status_code=429, headers={"Retry-After": "600"})
