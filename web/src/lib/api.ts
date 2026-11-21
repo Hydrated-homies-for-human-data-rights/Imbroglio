@@ -147,8 +147,28 @@ export type RubricInfo = {
   categories: {
     key: string
     name: string
-    checks: { check_id: string; question: string; statuses: { status: string; meaning: string; tier: Tier }[] }[]
+    checks: {
+      check_id: string
+      question: string
+      statuses: {
+        status: string
+        meaning: string
+        plain?: string | null
+        tier: Tier
+        concern?: "severe" | "high" | "medium" | "info" | null
+        points?: number // taken off the score when the answer counts
+        same_concern_as?: string | null // counted once with this check's concern
+      }[]
+    }[]
   }[]
+  // the numbers behind the rules (scorer s2 on); null for s1
+  scoring?: {
+    start: number
+    bands: Record<string, [number, number]>
+    moderate_needs: number
+    min_high_answered: number
+    limited_requires: string[]
+  } | null
 }
 
 export type RequestAccepted = {
