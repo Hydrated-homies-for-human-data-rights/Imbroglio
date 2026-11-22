@@ -4,8 +4,9 @@ Ranking is done in Python over the whole catalogue (domain, name), which is
 cached briefly. That's fast well past 10,000 sites; if the catalogue grows
 far beyond that, move it into Postgres with the pg_trgm extension.
 
-Order: exact domain, exact brand or name, prefix, substring, then close
-spellings ("facebok" -> facebook.com). Analyzed sites win ties.
+Order: exact domain, a subdomain of a site we have ("open.spotify.com" ->
+spotify.com), exact brand or name, prefix, substring, then close spellings
+("facebok" -> facebook.com). Analyzed sites win ties.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from .locate import brand_of
+from .locate import brand_of, site_of
 
 MIN_QUERY = 2
 TYPO_RATIO = 0.75       # SequenceMatcher ratio for a "close spelling"
@@ -50,6 +51,12 @@ def score(q: str, e: Entry) -> float:
     name = (e.name or "").lower()
     if q == e.domain:
         return 100
+    # A typed address on a subdomain is the site it belongs to, judged by its
+    # registrable domain, never by its first label ("open.spotify.com" is
+    # spotify.com, not a close spelling of openai.com).
+    as_domain = "." in q and " " not in q
+    if as_domain and site_of(q) == e.domain:
+        return 95
     if q in (brand, name):
         return 90
     words = name.split()
@@ -58,7 +65,7 @@ def score(q: str, e: Entry) -> float:
     if q in e.domain or (name and q in name):
         return 60
     if len(q) >= 3:
-        bare = q.split(".")[0]          # "facebok.com" -> compare "facebok" with the brand
+        bare = brand_of(q) if as_domain else q   # "open.facebok.com" -> compare "facebok" with the brand
         ratio = max(difflib.SequenceMatcher(None, bare, brand).ratio(),
                     difflib.SequenceMatcher(None, q, name).ratio() if name else 0)
         if ratio >= TYPO_RATIO:

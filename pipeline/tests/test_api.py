@@ -36,6 +36,21 @@ def test_ready_site_with_documents(conn):
     assert body["scorecard"] is None
 
 
+def test_documents_say_when_they_were_last_checked_not_just_first_stored(conn):
+    _store(conn, "checked.example")
+    conn.execute("UPDATE document_versions SET fetched_at = now() - interval '20 days'")
+    doc_id = conn.execute("SELECT id FROM documents").fetchone()[0]
+    conn.execute("INSERT INTO document_checks (document_id, outcome, checked_at) "
+                 "VALUES (%s, 'unchanged', now() - interval '2 days')", (doc_id,))
+    conn.execute("INSERT INTO document_checks (document_id, outcome, checked_at) "
+                 "VALUES (%s, 'failed', now())", (doc_id,))   # a failed check didn't read it
+    conn.commit()
+    doc = client.get("/v1/sites/checked.example").json()["documents"][0]
+    assert doc["checked_at"] > doc["fetched_at"]
+    assert conn.execute("SELECT %s::timestamptz < now() - interval '1 day'",
+                        (doc["checked_at"],)).fetchone()[0]
+
+
 def test_queued_then_analyzing(conn):
     rid, _, _, public_id = jobs.enqueue(conn, "new.example")
     body = client.get("/v1/sites/new.example").json()

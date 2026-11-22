@@ -88,6 +88,10 @@ class Document(BaseModel):
     fetched_at: datetime
     versions_stored: int
     changes_detected: int
+    checked_at: datetime | None = Field(
+        None, description="When we last read the document at its address: the newest stored "
+                          "version or the newest recheck that could read it, whichever is later. "
+                          "`fetched_at` is when the shown version was first stored.")
     shared_with: int = Field(
         description="Other sites whose current document is word-for-word identical. "
                     "Common for policy generators and for one company running several "
@@ -291,6 +295,10 @@ def _documents(conn, domain: str) -> list[Document]:
                   length(v.normalized_text), v.fetched_at,
                   (SELECT count(*) FROM document_versions v2 WHERE v2.document_id = d.id),
                   (SELECT count(*) FROM change_events c WHERE c.document_id = d.id),
+                  greatest((SELECT max(v3.fetched_at) FROM document_versions v3
+                            WHERE v3.document_id = d.id),
+                           (SELECT max(k.checked_at) FROM document_checks k
+                            WHERE k.document_id = d.id AND k.outcome <> 'failed')),
                   (SELECT count(DISTINCT d2.service_id) FROM document_versions v2
                    JOIN documents d2 ON d2.id = v2.document_id
                    WHERE v2.content_hash = v.content_hash AND d2.service_id <> s.id
@@ -306,7 +314,8 @@ def _documents(conn, domain: str) -> list[Document]:
     ).fetchall()
     return [Document(type=r[0], url=r[1], discovered_via=r[2], fetch_method=r[3],
                      version_id=r[4], content_hash=r[5], chars=r[6], fetched_at=r[7],
-                     versions_stored=r[8], changes_detected=r[9], shared_with=r[10])
+                     versions_stored=r[8], changes_detected=r[9], checked_at=r[10],
+                     shared_with=r[11])
             for r in rows]
 
 
