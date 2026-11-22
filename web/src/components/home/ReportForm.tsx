@@ -31,6 +31,14 @@ export type Pickable = {
 // `website` field is a honeypot: hidden from people, and a submission that
 // fills it is dropped.
 //
+// The radio buttons need one more step. React's reset puts each radio back
+// to how it was when it was first drawn (its default), and React doesn't
+// redraw it because its `checked` prop hasn't changed, so after an error the
+// buttons could show, and resend, the first choice instead of the reader's:
+// a retry from ?finding= would file "quote". So each error redraws them
+// (`key`, from the action's attempt count): new radios start out checked
+// from the state, and that is also the default the reset goes back to.
+//
 // Opened from a site's report (`/report?site=`), it lists that site's
 // findings first, so the reader can point at the one that's wrong. Which one
 // travels in the existing `page` field: /site/<domain>?doc=<type>#<check_id>.
@@ -55,13 +63,15 @@ export default function ReportForm({
       <div className="received" role="status">
         <p>
           <strong>Received.</strong> This is report {state.id}. A team member rereads it against the stored
-          document; if the quote doesn’t support the finding, we withdraw it rather than defend it.
+          document; if the quote doesn’t support the finding, we withdraw it rather than defend it and work out the
+          rating again.
         </p>
       </div>
     )
   }
 
   const bad = state.kind === "error" ? state.field : undefined
+  const round = state.kind === "error" ? state.attempt : 0
   const target = findings.find((f) => f.key === picked)
   const pointing = site && findings.length > 0
   const page = !site ? "" : target ? `/site/${site}?doc=${target.document}#${target.check_id}` : `/site/${site}`
@@ -102,7 +112,7 @@ export default function ReportForm({
 
       <fieldset className="rp-kinds" aria-invalid={bad === "kind" || undefined}>
         <legend className="lbl mono">What kind of problem</legend>
-        <div>
+        <div key={round}>
           {KINDS.map((k) => (
             <label key={k.value}>
               <input
@@ -182,7 +192,7 @@ export default function ReportForm({
     <form action={action} className="rp-grid" noValidate>
       <fieldset className="rp-pick">
         <legend className="lbl mono">1 · Which finding on {site}</legend>
-        <div className="rp-list">
+        <div className="rp-list" key={round}>
           {findings.map((f) => (
             <label key={f.key} className="rp-finding">
               <input type="radio" name="finding" value={f.key} checked={picked === f.key} onChange={() => pick(f.key)} />

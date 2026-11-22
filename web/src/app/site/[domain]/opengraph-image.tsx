@@ -1,3 +1,4 @@
+import { cacheLife } from "next/cache"
 import { ImageResponse } from "next/og"
 import { getSite, type Site } from "@/lib/api"
 import { cleanDomain } from "@/lib/format"
@@ -11,6 +12,17 @@ export const alt = "The site's Imbroglio privacy rating"
 export const size = OG_SIZE
 export const contentType = "image/png"
 
+// A preview is fetched by every chat app a link is pasted into, so the data
+// behind it is cached for a few minutes per site instead of read on every
+// hit, and the image itself may be kept by the CDN as long. A failed read
+// throws, so it isn't cached; the image then says "not rated yet" once.
+async function siteFor(domain: string): Promise<Site> {
+  "use cache"
+  cacheLife({ stale: 300, revalidate: 900, expire: 86_400 })
+  return getSite(domain)
+}
+const CACHE_CONTROL = "public, max-age=300, s-maxage=900, stale-while-revalidate=86400"
+
 export default async function Image({ params }: { params: Promise<{ domain: string }> }) {
   // Only ever a cleaned domain on the image: arbitrary text from the link
   // would otherwise be drawn as if we said it.
@@ -19,7 +31,7 @@ export default async function Image({ params }: { params: Promise<{ domain: stri
     domain = cleanDomain(decodeURIComponent((await params).domain))
   } catch {}
   if (!domain) return new Response(null, { status: 404 })
-  const site: Site | null = await getSite(domain).catch(() => null)
+  const site: Site | null = await siteFor(domain).catch(() => null)
   const card = site?.scorecard ?? null
 
   const body = card ? (
@@ -74,6 +86,6 @@ export default async function Image({ params }: { params: Promise<{ domain: stri
 
   return new ImageResponse(
     <OgFrame footer="Every rating quotes the site’s own policy, checked word for word · imbroglio.io">{body}</OgFrame>,
-    { ...size, fonts: await ogFonts() },
+    { ...size, fonts: await ogFonts(), headers: { "Cache-Control": CACHE_CONTROL } },
   )
 }

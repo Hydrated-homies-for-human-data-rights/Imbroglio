@@ -1,6 +1,7 @@
 import Link from "next/link"
 import LogoGlyph from "./LogoGlyph"
 import { SearchIcon } from "./design"
+import { SkipLink } from "./home/chrome"
 
 // Header from the UX team's design. The search box is a plain GET form to
 // /search, so it works without JavaScript.
@@ -14,6 +15,8 @@ export default function Header({
   query?: string
 }) {
   return (
+    <>
+    <SkipLink />
     <header className="border-b border-[#dbe1e7] bg-[rgb(247,154,192)]">
       <div className="mx-auto flex min-h-[72px] max-w-[1180px] items-center gap-5 px-5 py-3 sm:px-8">
         <Link
@@ -50,7 +53,7 @@ export default function Header({
                 name="q"
                 defaultValue={query}
                 placeholder="Search a service or website"
-                className={`h-11 w-full rounded-full border border-[#cfd7df] bg-white pr-4 text-sm text-[#142a3f] outline-none transition placeholder:text-[#8995a3] focus:border-[#74879a] focus:ring-4 focus:ring-[#dfe8ef] ${
+                className={`h-11 w-full rounded-full border border-[#cfd7df] bg-white pr-4 text-sm text-[#142a3f] outline-none transition placeholder:text-[#647180] focus:border-[#74879a] focus:ring-4 focus:ring-[#dfe8ef] ${
                   view === "report" ? "pl-11" : "pl-5"
                 }`}
               />
@@ -65,5 +68,6 @@ export default function Header({
         )}
       </div>
     </header>
+    </>
   )
 }

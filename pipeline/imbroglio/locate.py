@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 
 from .extract import extract_text
 from .fetch import fetch_rendered, fetch_static
+from .normalize import normalize
 
 TEXT_PATTERNS = {
     # English first; then the link text ToS;DR's non-English services use in
@@ -572,6 +573,32 @@ def locate_document(domain: str, doc_type: str,
     return result
 
 
+def _one_page_one_type(results: dict[str, Located]) -> None:
+    """One page is never stored as both the privacy policy and the terms.
+    16 sites had the same page under both (a combined legal page, or two
+    links that land on one place), so the scorecard showed one page as two
+    documents. Same page means the same address (query included: help
+    centers tell articles apart by it) or the same text, which also catches
+    two addresses redirected to one page. It is kept as the type its
+    opening names first (the page's own title, not the link that led to
+    it), privacy when the opening names neither; the other type is left not
+    found, with a note saying why."""
+    privacy, terms = results.get("privacy"), results.get("terms")
+    if not (privacy and terms and privacy.ok and terms.ok):
+        return
+    same_address = (_same_page(privacy.url, terms.url)
+                    and urlparse(privacy.url).query == urlparse(terms.url).query)
+    if not (same_address or normalize(privacy.text) == normalize(terms.text)):
+        return
+    head = privacy.text[:SIDE_HEAD_CHARS * 2]
+    p, t = STRONG_TEXT["privacy"].search(head), STRONG_TEXT["terms"].search(head)
+    keep = "terms" if t and (p is None or t.start() < p.start()) else "privacy"
+    drop = "terms" if keep == "privacy" else "privacy"
+    log.info("[%s] same page as the %s document, not stored twice", drop, keep)
+    results[drop] = Located(drop, notes=[f"same page as the {keep} document"],
+                            links=results[drop].links, pages_seen=results[drop].pages_seen)
+
+
 def locate_all(domain: str, use_playwright: bool = True,
                time_budget: float | None = None,
                policy_url: str | None = None) -> dict[str, Located]:
@@ -659,6 +686,7 @@ def locate_all(domain: str, use_playwright: bool = True,
             if not loc.ok:
                 loc.notes[:0] = home_notes + [why]
         _harvest_links(domain, homepage, home_pages, results)
+        _one_page_one_type(results)
         return results
 
     # Unreachable host: the homepage failed at the connection level (not an
@@ -701,6 +729,7 @@ def locate_all(domain: str, use_playwright: bool = True,
         if not loc.ok:
             loc.notes[:0] = home_notes  # homepage outcome explains most misses
     _harvest_links(domain, homepage, home_pages, results)
+    _one_page_one_type(results)
     return results
 
 

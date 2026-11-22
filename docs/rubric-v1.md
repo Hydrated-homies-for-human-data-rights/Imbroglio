@@ -1,8 +1,8 @@
 # Rubric v1.0 (draft, for review)
 
 **Status:** draft. The questions are in `pipeline/imbroglio/rubric/v1.0.yaml` and pass every check the
-loader runs, but nothing uses them yet: the live site stays on v0.2 until v1.0 is reviewed, run on every
-document, and meets the launch bar below. Sam owns the rubric; this page is the proposal to review.
+loader runs, but nothing uses them yet: the live site stays on v0.3 (since Nov 17; v0.2 before) until
+v1.0 is reviewed, run on every document, and meets the launch bar below. Sam owns the rubric; this page is the proposal to review.
 
 The goal is a rating people can trust when the site launches publicly at the end of the semester.
 
@@ -155,7 +155,7 @@ already exists, or by the answer key.
    evidence words and decisions carry into v1.0.
 2. **Answer key:** merge the `feature/gold-set` tooling and label 30 to 50 policies.
 3. **Trial:** run v1.0 on 20 to 30 sites (about $1) and read the answers against the documents. Running it
-   writes v1.0 findings next to the v0.2 ones; the live site keeps showing v0.2:
+   writes v1.0 findings next to the v0.3 ones; the live site keeps showing v0.3:
 
    ```
    RUBRIC_VERSION=v1.0 python -m imbroglio.cli extract tiktok.com reddit.com discord.com --force

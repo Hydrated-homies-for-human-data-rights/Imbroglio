@@ -99,6 +99,48 @@ export default function RequestProgress({ id, domain }: { id: string; domain: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, onReport])
 
+  // One status line for screen readers that stays put while the box below
+  // changes, so each step is announced once and the worker's technical log
+  // lines are never read out.
+  const said =
+    view.kind === "queued"
+      ? view.ahead > 0
+        ? `Queued: ${view.ahead} ${view.ahead === 1 ? "site" : "sites"} ahead of ${domain}.`
+        : `Queued: ${domain} is next.`
+      : view.kind === "running"
+        ? `Analyzing ${domain}: ${STEPS[view.step]}, step ${view.step + 1} of ${STEPS.length}.`
+        : view.kind === "done"
+          ? view.found
+            ? "Done. Opening the report."
+            : (view.failure?.message ?? FALLBACK_MESSAGE)
+          : view.kind === "failed"
+            ? (view.failure?.message ?? `Something went wrong on our side while we were reading ${domain}.`)
+            : view.kind === "lost"
+              ? "We lost track of this request."
+              : view.kind === "slow"
+                ? "This is taking longer than usual. Check back later."
+                : ""
+  return (
+    <>
+      <p className="sr-only" role="status" aria-live="polite">
+        {said}
+      </p>
+      <ProgressBox view={view} domain={domain} reportPath={reportPath} onReport={onReport} />
+    </>
+  )
+}
+
+function ProgressBox({
+  view,
+  domain,
+  reportPath,
+  onReport,
+}: {
+  view: View
+  domain: string
+  reportPath: string
+  onReport: boolean
+}) {
   const report = (
     <Link className="underline" href={reportPath}>
       See the report
@@ -110,7 +152,7 @@ export default function RequestProgress({ id, domain }: { id: string; domain: st
   }
   if (view.kind === "slow") {
     return (
-      <p className="mt-4 text-sm" role="status">
+      <p className="mt-4 text-sm">
         This is taking longer than usual. Check back later; the site page will update.
         {!onReport && (
           <>
@@ -157,7 +199,7 @@ export default function RequestProgress({ id, domain }: { id: string; domain: st
 
   const step = view.kind === "running" ? view.step : -1
   return (
-    <div className="mt-4 rounded-lg border border-[#ccd5de] bg-white px-4 py-3 text-sm" role="status" aria-live="polite">
+    <div className="mt-4 rounded-lg border border-[#ccd5de] bg-white px-4 py-3 text-sm">
       <p className="font-medium text-[#243c52]">
         {view.kind === "queued"
           ? view.ahead > 0

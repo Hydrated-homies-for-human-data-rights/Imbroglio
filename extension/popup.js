@@ -398,10 +398,12 @@ async function render(site, favIconUrl) {
   renderBreakdown(site);
 }
 
-// For a look without the extension loaded: popup.html?mock=ready|unknown|error
-// serves a sample site, with nothing fetched.
+// For a look without the extension loaded:
+// popup.html?mock=ready|unknown|not_analyzed|not_public|error serves a
+// sample site, with nothing fetched.
 function mockSite(kind) {
   if (kind === "unknown") return { status: "unknown" };
+  if (kind === "not_public") return { status: "not_public" };
   if (kind === "error") return { status: "error", error: "API returned 503" };
   if (kind === "not_analyzed") return { status: "not_analyzed", domain: "example-shop.com", documents: ["privacy"] };
   return {
@@ -441,6 +443,9 @@ function handle(site, shown, favIconUrl) {
     showMessage(shown, busy
       ? "Imbroglio is getting a lot of lookups from your network right now. Try again in a few minutes."
       : "Couldn’t reach Imbroglio. Check your connection and try again in a moment.");
+  } else if (site.status === "not_public") {
+    // localhost, an address, a name on your own network: nothing to rate or request
+    showMessage(shown, "Imbroglio rates public websites. This address isn’t one, so there is nothing to look up here.");
   } else {
     showMessage(shown, "We haven’t analyzed this site yet. You can ask for it on imbroglio.io, and it will be rated in turn.",
       { text: "Request it on imbroglio.io", url: requestUrl(shown) });

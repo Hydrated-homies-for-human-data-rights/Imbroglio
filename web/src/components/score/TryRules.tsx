@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from "react"
 import { Verdict } from "@/components/home/chrome"
 import type { RubricInfo } from "@/lib/api"
+import { signed } from "@/lib/format"
 import { rateAnswers, statusIndex, type Answers } from "@/lib/tryRules"
 
 // "Try the rules": every question with every allowed answer. Pick what a
@@ -147,7 +148,7 @@ export default function TryRules({ rubric, presets, start = 0 }: { rubric: Rubri
               <p>
                 {out.raw === out.score
                   ? `= ${out.score}, inside the ${out.band[0]} to ${out.band[1]} range.`
-                  : `= ${out.raw}, kept inside the ${out.band[0]} to ${out.band[1]} range: ${out.score}.`}
+                  : `= ${signed(out.raw)}, kept inside the ${out.band[0]} to ${out.band[1]} range: ${out.score}.`}
               </p>
             </div>
           )}

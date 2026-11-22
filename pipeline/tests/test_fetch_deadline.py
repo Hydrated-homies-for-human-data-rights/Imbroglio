@@ -62,6 +62,7 @@ class _Dripper:
 def local(monkeypatch):
     # the SSRF guard refuses 127.0.0.1; these tests need it
     monkeypatch.setattr(fetch, "check_url", lambda url: None)
+    monkeypatch.setattr(fetch, "check_peer", lambda sock: None)
     monkeypatch.setattr(fetch, "MAX_SECONDS", 1.5)
     monkeypatch.setattr(fetch, "BACKOFF", 0.01)
     servers = []

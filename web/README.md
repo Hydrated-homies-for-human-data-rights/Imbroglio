@@ -27,8 +27,8 @@ IMBROGLIO_API_URL=https://<api host> IMBROGLIO_API_USER=imbroglio IMBROGLIO_API_
 
 Environment variables (set in Vercel → Project → Settings → Environment Variables):
 
-- `IMBROGLIO_API_URL`: the read API, e.g. `https://api.imbroglio.io`
-- `IMBROGLIO_API_USER`, `IMBROGLIO_API_PASSWORD`: only while the API is password-protected
+- `IMBROGLIO_API_URL`: the read API: the Railway API service's public address, no trailing slash
+- `IMBROGLIO_API_USER`, `IMBROGLIO_API_PASSWORD`: the API's basic-auth login (every API route but `/healthz` needs it)
 - `SITE_URL`: optional, the site's own address for link previews (default `https://imbroglio.io`). Set it
   on preview deployments so shared links point at the preview
 - `IMBROGLIO_WEB_KEY`: the same value as the API's `WEB_CLIENT_KEY`. It lets the site pass on

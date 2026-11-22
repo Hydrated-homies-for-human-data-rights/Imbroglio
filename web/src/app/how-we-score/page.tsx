@@ -8,6 +8,7 @@ import { Reach } from "@/components/home/reach"
 import Thread, { type Stop } from "@/components/home/Thread"
 import TryRules, { type Preset } from "@/components/score/TryRules"
 import { getRubric, getSite, type RubricInfo } from "@/lib/api"
+import { signed } from "@/lib/format"
 import { answersOf } from "@/lib/tryRules"
 import "@/components/home/home.css"
 import "@/components/home/pages.css"
@@ -53,7 +54,16 @@ const EX = {
 
 // Measured figures, with when they were measured. Update these with each new
 // measurement; docs/evaluation.md has the details behind each one.
-const MEASUREMENTS: { figure: string; value: number; target?: number; targetLabel?: string; what: string; when: string }[] = [
+// `rubric` is the rubric the figure was measured on, when it depends on one.
+const MEASUREMENTS: {
+  figure: string
+  value: number
+  target?: number
+  targetLabel?: string
+  what: string
+  when: string
+  rubric?: string
+}[] = [
   {
     figure: "99.4%",
     value: 99.4,
@@ -61,12 +71,14 @@ const MEASUREMENTS: { figure: string; value: number; target?: number; targetLabe
     targetLabel: "target 95%",
     what: "of the 8,407 quotes the model cited across 559 sites were found word for word in the stored document.",
     when: "Nov 2, 2026",
+    rubric: "v0.2",
   },
   {
     figure: "78.7%",
     value: 78.7,
     what: "of those quotes also contained one of the question’s evidence words, so they are about the question asked. Only quotes that pass both checks are shown; the rest are kept for review.",
     when: "Nov 2, 2026",
+    rubric: "v0.2",
   },
   {
     figure: "88.4%",
@@ -75,6 +87,7 @@ const MEASUREMENTS: { figure: string; value: number; target?: number; targetLabe
     targetLabel: "target 90%",
     what: "of answers came out the same in all three runs when 50 privacy policies were analyzed three times each. Overall ratings matched in 66% of documents.",
     when: "Oct 30, 2026",
+    rubric: "v0.2",
   },
   { figure: "79%", value: 79, what: "of 86 reachable sites from a random sample of 100 had their privacy policy found.", when: "Oct 2026" },
   { figure: "19 of 20", value: 95, what: "sites in the feasibility sample had their privacy policy found and extracted correctly.", when: "Sep 2026" },
@@ -171,7 +184,7 @@ async function SiteNow() {
           <p>
             {card.score.unadjusted === card.score.value
               ? `That leaves ${card.score.value}.`
-              : `That leaves ${card.score.unadjusted}, kept inside ${TIER_WORD[card.headline]}’s range of ${card.score.band[0]} to ${card.score.band[1]}: ${card.score.value}.`}
+              : `That leaves ${signed(card.score.unadjusted)}, kept inside ${TIER_WORD[card.headline]}’s range of ${card.score.band[0]} to ${card.score.band[1]}: ${card.score.value}.`}
           </p>
         </div>
       )}
@@ -258,7 +271,7 @@ export default function HowWeScore() {
     <div className="home page score">
       <Thread route={ROUTE} />
       <Masthead current="/how-we-score" />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <section className="hero" aria-labelledby="hws-h1">
           <div className="page-head">
             <div className="eyebrow mono">How we score</div>
@@ -455,7 +468,11 @@ export default function HowWeScore() {
                 <li key={m.figure}>
                   <span className={`fig${miss ? " miss" : ""}`}>{m.figure}</span>
                   <span className="what">
-                    {m.what} <span className="when">Measured {m.when}.</span>
+                    {m.what}{" "}
+                    <span className="when">
+                      Measured {m.when}
+                      {m.rubric && ` on rubric ${m.rubric}`}.
+                    </span>
                   </span>
                   <span className="meter">
                     <span className="bar" aria-hidden="true">
@@ -495,7 +512,8 @@ export default function HowWeScore() {
             <p className="eyebrow mono">If we got something wrong</p>
             <p>
               <Link href="/report">Report a problem</Link> with any rating or finding. A team member rereads it against
-              the stored document, and if the quote doesn’t support the finding, we withdraw it rather than defend it.
+              the stored document, and if the quote doesn’t support the finding, we withdraw it rather than defend it
+              and work out the rating again.
             </p>
           </div>
         </section>

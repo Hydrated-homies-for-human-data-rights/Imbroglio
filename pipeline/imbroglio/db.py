@@ -408,8 +408,8 @@ def site_findings(conn: psycopg.Connection, rubric_version: str,
     """domain -> (domain_hash, check_id, status, verified, created_at) for
     every finding on the rated version of each of the site's documents: the
     newest version with findings under this rubric (RATED_FIRST). Only
-    analyzed sites appear, and held documents never count. `hash_like`
-    narrows it to a domain_hash pattern."""
+    analyzed sites appear, and held documents and withdrawn findings never
+    count. `hash_like` narrows it to a domain_hash pattern."""
     rows = conn.execute(
         f"""WITH latest AS (
                 SELECT DISTINCT ON (d.id) s.domain, s.domain_hash, v.id AS version_id
@@ -420,13 +420,134 @@ def site_findings(conn: psycopg.Connection, rubric_version: str,
                 ORDER BY d.id, {RATED_FIRST}, v.fetched_at DESC)
             SELECT l.domain, l.domain_hash, f.check_id, f.status, f.verified, f.created_at
             FROM latest l JOIN findings f ON f.version_id = l.version_id
-            WHERE f.rubric_version = %(rubric)s""",
+            WHERE f.rubric_version = %(rubric)s AND f.withdrawn_at IS NULL""",
         {"rubric": rubric_version, "hash": hash_like},
     ).fetchall()
     out: dict[str, list[tuple]] = {}
     for domain, *rest in rows:
         out.setdefault(domain, []).append(tuple(rest))
     return out
+
+
+# --- withdrawals: a finding its quote doesn't support -------------------------
+#
+# A person rereads a finding against the stored document (usually after a
+# reader's report) and, if the quote doesn't support it, withdraws it. The row
+# stays, with who, why and when, but it is never scored and never shown: every
+# query that feeds a rating or a public answer adds `withdrawn_at IS NULL`.
+# A withdrawn finding still means the version was read, so it never makes a
+# document look unrated (RATED_FIRST, analysis.pending_versions) and never
+# sends it back to the model. The mark sticks to the finding row (one check,
+# one document version, one rubric); migration 0014 says how it survives
+# re-reads and copies.
+
+def rated_version(conn: psycopg.Connection, domain: str, doc_type: str,
+                  rubric_version: str) -> int | None:
+    """The version of the site's document that its rating uses (the same
+    choice as api._documents), or None if the site has no such document or
+    it is held."""
+    row = conn.execute(
+        f"""SELECT v.id FROM services s
+            JOIN documents d ON d.service_id = s.id AND d.held_reason IS NULL
+            JOIN document_versions v ON v.document_id = d.id
+            WHERE s.domain = %(domain)s AND d.doc_type = %(doc_type)s
+            ORDER BY {RATED_FIRST}, v.fetched_at DESC LIMIT 1""",
+        {"domain": domain, "doc_type": doc_type, "rubric": rubric_version},
+    ).fetchone()
+    return row[0] if row else None
+
+
+def finding_state(conn: psycopg.Connection, version_id: int, rubric_version: str,
+                  check_id: str) -> tuple[str, bool] | None:
+    """(status, withdrawn) of one finding, or None if there is none."""
+    return conn.execute(
+        """SELECT status, withdrawn_at IS NOT NULL FROM findings
+           WHERE version_id = %s AND rubric_version = %s AND check_id = %s""",
+        (version_id, rubric_version, check_id),
+    ).fetchone()
+
+
+def withdraw_finding(conn: psycopg.Connection, version_id: int, rubric_version: str, check_id: str,
+                     reason: str, by: str | None, report_id: int | None = None) -> str | None:
+    """Withdraw one finding and score the version again from what remains,
+    in one transaction. Returns the withdrawn answer (its status), or None
+    if the version has no such finding or it is already withdrawn. Commits."""
+    from .analysis import rescore
+
+    row = conn.execute(
+        """UPDATE findings SET withdrawn_at = now(), withdrawn_reason = %s, withdrawn_by = %s,
+                              withdrawn_report = %s
+           WHERE version_id = %s AND rubric_version = %s AND check_id = %s AND withdrawn_at IS NULL
+           RETURNING status""",
+        (reason, by, report_id, version_id, rubric_version, check_id),
+    ).fetchone()
+    if row is None:
+        conn.rollback()
+        return None
+    rescore(conn, version_id, rubric_version)
+    conn.commit()
+    return row[0]
+
+
+def unwithdraw_finding(conn: psycopg.Connection, version_id: int, rubric_version: str,
+                       check_id: str) -> tuple[str, str] | None:
+    """Restore a withdrawn finding and score the version again. Returns
+    (status, the reason it was withdrawn), or None if it isn't withdrawn.
+    Commits."""
+    from .analysis import rescore
+
+    row = conn.execute(
+        """WITH target AS (
+               SELECT id, withdrawn_reason FROM findings
+               WHERE version_id = %s AND rubric_version = %s AND check_id = %s
+                 AND withdrawn_at IS NOT NULL)
+           UPDATE findings f SET withdrawn_at = NULL, withdrawn_reason = NULL, withdrawn_by = NULL,
+                                 withdrawn_report = NULL
+           FROM target t WHERE f.id = t.id
+           RETURNING f.status, t.withdrawn_reason""",
+        (version_id, rubric_version, check_id),
+    ).fetchone()
+    if row is None:
+        conn.rollback()
+        return None
+    rescore(conn, version_id, rubric_version)
+    conn.commit()
+    return row
+
+
+def withdrawn_findings(conn: psycopg.Connection) -> list[tuple]:
+    """(domain, doc_type, check_id, status, rubric_version, version_id,
+    withdrawn_at, reason, by, report_id) for every withdrawn finding, newest
+    withdrawal first."""
+    return conn.execute(
+        """SELECT s.domain, d.doc_type, f.check_id, f.status, f.rubric_version, f.version_id,
+                  f.withdrawn_at, f.withdrawn_reason, f.withdrawn_by, f.withdrawn_report
+           FROM findings f JOIN document_versions v ON v.id = f.version_id
+           JOIN documents d ON d.id = v.document_id
+           JOIN services s ON s.id = d.service_id
+           WHERE f.withdrawn_at IS NOT NULL
+           ORDER BY f.withdrawn_at DESC, s.domain, d.doc_type, f.check_id""",
+    ).fetchall()
+
+
+def identical_copies(conn: psycopg.Connection, version_id: int, rubric_version: str,
+                     check_id: str) -> list[str]:
+    """Other sites with a stored document word for word the same as this
+    version that still have this finding. A withdrawal is per site, so these
+    are worth a look: the quote won't support the finding there either."""
+    rows = conn.execute(
+        """SELECT DISTINCT s.domain
+           FROM document_versions me
+           JOIN document_versions v ON v.content_hash = me.content_hash AND v.id <> me.id
+           JOIN documents d ON d.id = v.document_id AND d.held_reason IS NULL
+           JOIN services s ON s.id = d.service_id
+           JOIN findings f ON f.version_id = v.id AND f.rubric_version = %s AND f.check_id = %s
+                          AND f.withdrawn_at IS NULL
+           WHERE me.id = %s
+           ORDER BY s.domain""",
+        (rubric_version, check_id, version_id),
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
 def headlines(conn: psycopg.Connection, rubric_version: str) -> dict[str, str]:

@@ -1,11 +1,13 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { Suspense } from "react"
 import { Chapter } from "@/components/home/Page"
 import { BottomBar, Masthead } from "@/components/home/chrome"
 import Knot from "@/components/home/Knot"
 import Thread, { type Stop } from "@/components/home/Thread"
 import { FIGURES } from "@/components/home/data"
 import { Reach } from "@/components/home/reach"
+import { ratedSites } from "@/components/home/ratedSites"
 import "@/components/home/home.css"
 import "@/components/home/pages.css"
 import "@/components/home/about.css"
@@ -28,7 +30,8 @@ const ROUTE: Stop[] = [
 ]
 
 // Everything here comes from the project proposal and team agreement; the
-// figures are the same ones the front page shows (components/home/data.ts).
+// figures are the same ones the front page shows (components/home/data.ts),
+// and the count of rated sites is the every-site page's (ratedSites).
 const TEAM = [
   { name: "Gage Gunn", role: "Technical lead. Extraction, hosting, the API." },
   { name: "Sam Holton", role: "Project manager. Documentation, the rubric, the scorer." },
@@ -41,17 +44,27 @@ const RULES: [string, string][] = [
   ["No quote, no finding.", "Every quote is checked in code against the stored text before it can count."],
   ["The model extracts and the code scores.", "No model ever gives a rating."],
   ["Not disclosed is its own answer.", "Silence is reported, never read as good or bad."],
-  ["The overall rating is the worst category,", "never an average."],
+  [
+    "The overall rating counts concerns across every document,",
+    "never an average: one high concern makes a site Extensive, and two, or any severe one, make it Severe.",
+  ],
   ["Everything is versioned:", "the rubric, the scorer and the document a rating was made from."],
   ["No accounts.", "Nothing on this site asks who you are."],
 ]
+
+// How many sites are rated today, from the same list the every-site page
+// shows. Nothing when the API can't be reached.
+async function SiteCount() {
+  const sites = await ratedSites()
+  return sites ? <>{sites.length} sites rated · </> : null
+}
 
 export default function AboutPage() {
   return (
     <div className="home page about">
       <Thread route={ROUTE} drive="time" />
       <Masthead current="/about" />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <section className="hero" aria-labelledby="about-h1">
           <div className="page-head">
             <div className="eyebrow mono">About · Imbroglio</div>
@@ -115,8 +128,12 @@ export default function AboutPage() {
                   gap. We report what the documents say and let you decide.
                 </p>
                 <p className="note mono">
-                  as of {FIGURES.measured} · {FIGURES.sites} sites rated · {FIGURES.quotes.toLocaleString("en-US")}{" "}
-                  quotes cited · {FIGURES.found}% found word for word · <Link href="/how-we-score">how we score →</Link>
+                  <Suspense fallback={null}>
+                    <SiteCount />
+                  </Suspense>
+                  measured {FIGURES.measured} on rubric {FIGURES.rubric}: {FIGURES.quotes.toLocaleString("en-US")} quotes
+                  cited across {FIGURES.sites} sites · {FIGURES.found}% found word for word ·{" "}
+                  <Link href="/how-we-score">how we score →</Link>
                 </p>
               </div>
             </Reach>
@@ -154,7 +171,7 @@ export default function AboutPage() {
                 </ol>
                 <p style={{ marginTop: 22, maxWidth: "66ch" }}>
                   If we got something wrong, <Link href="/report">tell us</Link>. A person rereads the finding against
-                  the document, and if the quote doesn’t support it, we withdraw it.
+                  the document, and if the quote doesn’t support it, we withdraw it and work out the rating again.
                 </p>
               </div>
             </Reach>

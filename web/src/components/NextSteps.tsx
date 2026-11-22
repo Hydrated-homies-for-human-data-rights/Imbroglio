@@ -43,7 +43,7 @@ function StepItem({ step, domain }: { step: NextStep; domain: string }) {
     <li className="border-t border-[#e5e9ed] py-[18px]">
       <p
         className={`text-[11px] font-bold uppercase tracking-[0.08em] ${
-          step.general ? "text-[#8b95a4]" : "text-[#55606f]"
+          step.general ? "text-[#667182]" : "text-[#55606f]"
         }`}
       >
         {step.from ? `${step.from.name} · ${ratingOf[step.from.tier]}` : "On every site"}

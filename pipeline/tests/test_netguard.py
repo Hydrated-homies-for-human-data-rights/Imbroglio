@@ -120,3 +120,81 @@ def test_browser_cap_returns_busy_instead_of_launching(monkeypatch):
     finally:
         fetch._browser_slots.release()
     assert html is None and status == "playwright:busy"
+
+
+@pytest.mark.parametrize("url", [
+    # urlparse reads example.com, requests connects to 127.0.0.1 (audit, Nov 21)
+    "http://127.0.0.1\\@example.com/x",
+    "http://169.254.169.254\\@example.com/",
+    "http://example.com\\@127.0.0.1/",
+    "http://user:pass@example.com/",
+    "http://127.0.0.1@example.com/",
+    "http://exa\tmple.com/",
+    "http://example.com\n.evil/",
+    "http://[::ffff:127.0.0.1]/",
+])
+def test_addresses_two_parsers_could_read_differently_are_refused(url, monkeypatch):
+    monkeypatch.setattr("socket.getaddrinfo",
+                        lambda host, port: [(2, 1, 6, "", ("93.184.216.34", 0))])
+    from imbroglio import netguard
+    netguard.clear_host_cache()
+    try:
+        assert not is_allowed(url)
+        html, status = fetch.fetch_static(url)
+        assert html is None and status.startswith("blocked")
+    finally:
+        netguard.clear_host_cache()
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.com/privacy?x=1#top",
+    "https://EXAMPLE.com.:443/legal/privacy",
+    "https://münchen.de/datenschutz",
+    "https://example.com/a@b/terms",
+])
+def test_ordinary_policy_addresses_still_pass(url, monkeypatch):
+    monkeypatch.setattr("socket.getaddrinfo",
+                        lambda host, port: [(2, 1, 6, "", ("93.184.216.34", 0))])
+    from imbroglio import netguard
+    netguard.clear_host_cache()
+    try:
+        check_url(url)
+    finally:
+        netguard.clear_host_cache()
+
+
+def test_a_connection_that_lands_on_a_private_address_is_refused(monkeypatch):
+    """DNS rebinding: the name looked public when checked, then the socket
+    connected somewhere private. check_peer looks at where it really went."""
+    import socket
+    import threading
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    served = []
+
+    def serve():
+        try:
+            conn, _ = srv.accept()
+        except OSError:
+            return
+        served.append(conn.recv(65536))
+        conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 6\r\n\r\nsecret")
+        conn.close()
+
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+    monkeypatch.setattr(fetch, "check_url", lambda url: None)  # "resolved public"
+    try:
+        html, status = fetch.fetch_static(f"http://127.0.0.1:{srv.getsockname()[1]}/privacy")
+    finally:
+        srv.close()
+    assert html is None
+    assert status == "blocked: no public address"
+    assert not served or not served[0]  # the request itself was never sent
+
+
+def test_fetches_ignore_proxy_and_netrc_settings():
+    sess = fetch._watched(requests.Session())
+    assert sess.trust_env is False

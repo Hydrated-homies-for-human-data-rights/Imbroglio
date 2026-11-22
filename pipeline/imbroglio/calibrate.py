@@ -263,7 +263,8 @@ def load_sites(conn, rubric: Rubric) -> dict[str, dict[str, str]]:
            SELECT s.domain, f.check_id, f.status, f.verified
            FROM latest l JOIN documents d ON d.id = l.document_id
            JOIN services s ON s.id = d.service_id
-           JOIN findings f ON f.version_id = l.id AND f.rubric_version = %s""",
+           JOIN findings f ON f.version_id = l.id AND f.rubric_version = %s
+                          AND f.withdrawn_at IS NULL""",
         (rubric.version, rubric.version)).fetchall()
     per_site = defaultdict(list)
     for domain, check_id, status, verified in rows:

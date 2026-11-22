@@ -6,16 +6,21 @@
   --sheet: #ffffff;
   --ink: #11253a;
   --muted: #5a6b7e;
-  --faint: #8995a3;
+  /* text colors are at least 4.5:1 on --paper; --faint-line keeps the
+     lighter grey for dashed borders and chart fills, which aren't text */
+  --faint: #647180;
+  --faint-line: #8995a3;
   --rule: #dfe4ea;
   --pink: #f79ac0;
   --pink-deep: #e6739f;
+  /* focus rings and focused borders: --pink-deep's hue at 3:1 on --paper */
+  --focus: #e25f91;
   --pin: #c0392b;
   --sev-severe: #b73329;
-  --sev-extensive: #c76017;
+  --sev-extensive: #b25615;
   --sev-moderate: #546579;
   --sev-limited: #39704e;
-  --sev-not_disclosed: #8b95a4;
+  --sev-not_disclosed: #667182;
   --sev-unclear: #6b7280;
   --sev-info: #6b7280;
   /* room either side of every band for the thread's vertical runs */
@@ -67,6 +72,7 @@
   transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 .home > section,
+.home > main > section,
 .home > header,
 .home > footer {
   position: relative;
@@ -267,7 +273,7 @@
 }
 .finding-card:hover,
 .finding-card:focus-visible {
-  border-color: var(--pink-deep);
+  border-color: var(--focus);
 }
 .finding-head {
   display: flex;
@@ -314,7 +320,7 @@
   transition: border-color 0.2s ease;
 }
 .search:focus-within {
-  border-bottom: 2px solid var(--pink-deep);
+  border-bottom: 2px solid var(--focus);
   padding-bottom: 9px;
 }
 .search input {
@@ -433,11 +439,36 @@
 .verdict.t-INFO {
   color: var(--sev-info);
 }
+/* a ring with a "?" or an "i" in it, as the report pages draw them, so
+   neither reads as Moderate's filled dot or Limited's empty ring */
 .verdict.t-UNCLEAR .mark,
 .verdict.t-INFO .mark {
-  background: currentColor;
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
   border-radius: 50%;
-  opacity: 0.7;
+  box-sizing: border-box;
+}
+.verdict.t-UNCLEAR .mark::after,
+.verdict.t-INFO .mark::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+}
+.verdict.t-UNCLEAR .mark::after {
+  content: "?";
+}
+.verdict.t-INFO .mark::after {
+  content: "i";
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-style: italic;
 }
 /* the score out of 100, after the rating word, in the rating's color */
 .verdict .score {
@@ -837,7 +868,7 @@
   border-bottom-color: transparent;
 }
 .close .search:focus-within {
-  border-bottom-color: var(--pink-deep);
+  border-bottom-color: var(--focus);
 }
 
 /* ---- mobile ---- */
@@ -846,17 +877,18 @@
     --gutter: 22px;
   }
   .masthead-inner {
+    flex-wrap: wrap;
+    gap: 6px 16px;
     padding: 10px 16px;
   }
   .wordmark {
     font-size: 24px;
   }
+  /* the links wrap under the wordmark instead of being cut */
   .masthead nav {
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 4px 16px;
     font-size: 13px;
-  }
-  .masthead nav a:nth-child(n + 3) {
-    display: none;
   }
   .band {
     padding: 64px calc(16px + var(--gutter)) 40px;

@@ -17,11 +17,17 @@ browser, there is no account, and the site's name never leaves the browser:
 characters of the hash to `imbroglio.io/api/v1/lookup/<prefix>`, then picks
 the site out of the matches by its full hash. Three hex characters make 4,096
 buckets, so many sites share each one and a single prefix doesn't say which
-one you're on (five, before 1.0, nearly did). A subdomain can take up to three
-lookups in a row (the name, then its parents), which narrows it down much
-more; 1.1 will look up only the registrable domain. Lookups only read cached
-results. A site we haven't analyzed gets a link to request it on the website,
-where the request limits apply.
+one you're on (five, before 1.0, nearly did). One site, one prefix, with one
+exception: a subdomain (mail.example.com) is looked up first as itself, since
+some subdomains are rated as sites of their own, and only if it has no rating
+does a second prefix ask about its main domain (example.com). Two prefixes
+narrow it down more than one, which is why it stops at two (1.0 sent up to
+three). The main domain comes from a short built-in list of two-part endings
+(co.uk, com.au) and hosting platforms (github.io, vercel.app), not the full
+public suffix list. Lookups only read cached results. A site we haven't
+analyzed gets a link to request it on the website, where the request limits
+apply; localhost, addresses and names on a private network get neither a
+lookup nor that link.
 
 ## Files
 
@@ -34,14 +40,17 @@ where the request limits apply.
   HMAC of the site's name with a secret random to the install, never the name
   or a plain hash of it. The badge lookups are the same hash-prefix lookups as
   the popup's, cached ten minutes per rated site (a minute for unrated sites
-  and failed lookups), at most three per page (the site and two parents), and
-  none for IP addresses or names without a dot.
+  and failed lookups) in session storage, which is memory only and cleared
+  when the browser closes. At most two per page (the site, then its main
+  domain if the site has no rating), none for IP addresses, names without a
+  dot or private endings like .local, an 8 second timeout on each, and none
+  at all until a Retry-After from the API has passed.
 - `background.js`: the lookup and the badge. The icon is drawn in a canvas
   (the logo, plus the worst level's shape in the corner; dimmed with no
   badge for a site we haven't rated), so no badge icons are shipped as files.
 - `popup.html`, `popup.css`, `popup.js`: the three screens. Tier colors and
   rating marks are the website's (`web/src/components/design.tsx`). Open
-  `popup.html?mock=ready` (or `unknown`, `not_analyzed`, `error`) in a plain
+  `popup.html?mock=ready` (or `unknown`, `not_analyzed`, `not_public`, `error`) in a plain
   browser tab to see each state with sample data, no extension needed.
 - `icons/`: the logo at the sizes Chrome asks for (the store listing and the
   extensions page; the toolbar icon is drawn).

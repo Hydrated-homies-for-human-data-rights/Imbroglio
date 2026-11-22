@@ -105,7 +105,7 @@ SHOTS = [
      "Where a site offers its own opt-out or settings page, the button takes you straight there."),
     ("screenshot-4-moderate.png", "duckduckgo.com", [],
      "It never sends where you are.",
-     "Only three characters of a scrambled site name leave your browser. No account, no tracking."),
+     "Only three characters of a scrambled site name per lookup leave your browser. No account, no tracking."),
 ]
 
 

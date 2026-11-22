@@ -8,9 +8,13 @@ import "./globals.css"
 // build: that fetch failed CI twice. Same faces and CSS variables as before.
 
 // The design's font stack starts with Inter (Figma Make src/index.css).
-// italic too: quotes are italic, and the design turns off synthesized italics
+// italic too: quotes are italic, and the design turns off synthesized italics.
+// Not preloaded: only the report, search and history screens use Inter (the
+// front page and the editorial pages use the three faces below), and the
+// root layout would otherwise preload its 100 KB on every page.
 const inter = localFont({
   variable: "--font-inter",
+  preload: false,
   src: [
     { path: "./fonts/inter-latin-wght-normal.woff2", weight: "100 900", style: "normal" },
     { path: "./fonts/inter-latin-wght-italic.woff2", weight: "100 900", style: "italic" },

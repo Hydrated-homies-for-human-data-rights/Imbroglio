@@ -74,6 +74,33 @@ def test_an_ipv6_visitor_counts_as_its_slash_64(monkeypatch, given, counted):
     assert api.client_address(via_site) == "visitor " + counted
 
 
+@pytest.mark.parametrize("given, counted", [
+    ("2001:db8:1:2:aaaa::1", "2001:db8:1::/48"),
+    ("2001:db8:1:ffff::1", "2001:db8:1::/48"),      # another /64 in the same /48
+    ("::ffff:8.8.8.8", "8.8.8.8"),
+    ("8.8.8.8", "8.8.8.8"),                          # IPv4 stays per address
+])
+def test_the_daily_limit_counts_an_ipv6_visitor_by_its_slash_48(monkeypatch, given, counted):
+    # One customer often holds a /48, which is 65,536 /64s: enough to use up
+    # the whole day's cap one /64 at a time.
+    monkeypatch.setattr(api, "CLIENT_IP_HEADER", "x-real-ip")
+    r = _request({"X-Real-IP": given})
+    assert api.client_address(r, api.DAILY_IPV6_PREFIX) == counted
+    monkeypatch.setattr(api, "WEB_CLIENT_KEY", "k" * 32)
+    via_site = _request({"X-Imbroglio-Web-Key": "k" * 32, "X-Imbroglio-Visitor-IP": given})
+    assert api.client_address(via_site, api.DAILY_IPV6_PREFIX) == "visitor " + counted
+
+
+def test_rotating_slash_64s_in_one_slash_48_shares_the_daily_limit(monkeypatch):
+    monkeypatch.setattr(api, "CLIENT_IP_HEADER", "x-real-ip")
+    day = api._RateLimiter(2, window=86400)
+    keys = [api.client_address(_request({"X-Real-IP": f"2001:db8:7:{n:x}::1"}), api.DAILY_IPV6_PREFIX)
+            for n in range(3)]
+    assert [day.allow(k) for k in keys] == [True, True, False]
+    # the hourly limit still tells those /64s apart
+    assert len({api.client_address(_request({"X-Real-IP": f"2001:db8:7:{n:x}::1"})) for n in range(3)}) == 3
+
+
 def test_the_daily_limit_holds_past_the_hourly_window():
     day = api._RateLimiter(2, window=86400)
     assert day.allow("a") and day.allow("a") and not day.allow("a")

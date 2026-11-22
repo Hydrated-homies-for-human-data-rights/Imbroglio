@@ -211,6 +211,7 @@ export default function Home() {
 
       <Masthead />
 
+      <main id="main">
       <section className="opening" aria-labelledby="h1">
         <Knot />
         <p className="kicker mono">Imbroglio · privacy policies, read for you</p>
@@ -340,14 +341,15 @@ export default function Home() {
           Figures
         </div>
         <p>
-          Across {FIGURES.sites} sites, the AI cited {FIGURES.quotes.toLocaleString("en-US")} quotes.{" "}
+          Across {FIGURES.sites} sites rated under rubric {FIGURES.rubric}, the AI cited{" "}
+          {FIGURES.quotes.toLocaleString("en-US")} quotes.{" "}
           {FIGURES.found} percent were really in the policy, word for word, above our 95 percent target, and{" "}
           {FIGURES.onTopic} percent were also clearly about the question they answered. Only those are shown. When we
           analyzed 50 policies three times each, the answers matched every time {FIGURES.consistency} percent of the
           time, just short of our 90 percent target. Both numbers are published with how we measured them.
         </p>
         <p className="meta mono" style={{ fontSize: 11, marginTop: 12 }}>
-          quotes measured {FIGURES.measured} · consistency measured {FIGURES.consistencyMeasured} ·{" "}
+          measured on rubric {FIGURES.rubric} · quotes {FIGURES.measured} · consistency {FIGURES.consistencyMeasured} ·{" "}
           <Link href="/how-we-score">how we score</Link>
         </p>
       </section>
@@ -374,6 +376,7 @@ export default function Home() {
         <h2 id="close-h">Pull another thread.</h2>
         <Search wide label="Search a site or service" />
       </section>
+      </main>
 
       <BottomBar />
     </div>

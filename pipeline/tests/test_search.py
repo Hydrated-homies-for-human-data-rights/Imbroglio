@@ -58,6 +58,20 @@ def test_typos():
     assert domains("facebok.com")[0] == "facebook.com"
 
 
+def test_subdomain_finds_its_site_not_a_lookalike():
+    catalogue = CATALOGUE + [Entry("spotify.com", "Spotify", ("privacy",), "MODERATE"),
+                             Entry("openai.com", "OpenAI", ("privacy",), "EXTENSIVE")]
+    hits = [e.domain for e in search.search("open.spotify.com", catalogue)]
+    assert hits[0] == "spotify.com"
+    assert "openai.com" not in hits
+    assert [e.domain for e in search.search("https://news.bbc.co.uk/x", catalogue)][0] == "bbc.co.uk"
+
+
+def test_subdomain_of_an_unknown_site_is_not_matched_by_its_first_label():
+    catalogue = CATALOGUE + [Entry("openai.com", "OpenAI", ("privacy",), "EXTENSIVE")]
+    assert [e.domain for e in search.search("open.example.com", catalogue)] == []
+
+
 def test_too_short_or_no_match():
     assert domains("f") == []
     assert domains("zzzzzz") == []

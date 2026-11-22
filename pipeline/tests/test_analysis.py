@@ -70,6 +70,52 @@ def test_daily_budget_stops_llm_calls(conn, fake_llm, monkeypatch):
     assert len(fake_llm) == 2
 
 
+def test_two_callers_at_once_cannot_both_pass_the_budget(conn, monkeypatch):
+    # Both used to read "$0 spent" before either call was recorded, then
+    # both spent. Now the first one's reservation is what the second sees.
+    import threading
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(analysis, "DAILY_BUDGET_USD", 0.03)   # one call's estimate ($0.036) uses it up
+    both_in = threading.Barrier(2)
+    calls = []
+
+    def slow_extract(text, rubric, model):
+        calls.append(text)
+        threading.Event().wait(0.5)  # the call is in flight while the other caller checks
+        return Extraction(model, "ok", findings=[], cost_usd=0.04)
+    monkeypatch.setattr(analysis, "extract", slow_extract)
+    versions = [_store(conn, f"race{i}.example", POLICY + str(i)) for i in range(2)]
+    outcomes = []
+
+    def one(vid):
+        c = db.connect()
+        try:
+            both_in.wait(5)
+            outcomes.append(analysis.ensure_analyzed(c, vid))
+        finally:
+            c.close()
+    threads = [threading.Thread(target=one, args=(v,)) for v in versions]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert sorted(outcomes) == ["analyzed", "skipped:daily budget reached"]
+    assert len(calls) == 1
+    status, cost = conn.execute("SELECT status, cost_usd FROM extraction_runs").fetchone()
+    assert status == "ok" and float(cost) == 0.04     # the reservation became the real cost
+
+
+def test_a_cancelled_job_starts_no_model_call(conn, fake_llm):
+    import threading
+
+    cancel = threading.Event()
+    cancel.set()
+    assert analysis.ensure_analyzed(conn, _store(conn, "late.example"), cancel=cancel) == "skipped:cancelled"
+    assert fake_llm == []
+    assert conn.execute("SELECT count(*) FROM extraction_runs").fetchone()[0] == 0
+
+
 def test_no_api_key_skips_cleanly(conn, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert analysis.ensure_analyzed(conn, _store(conn, "nokey.example")).startswith("skipped")
@@ -240,3 +286,52 @@ def test_backlog_leaves_changed_policies_alone(conn, fake_llm):
     assert analysis.ensure_analyzed(conn, rated) == "analyzed"
     _store(conn, "changed.example", POLICY + " v2")
     assert analysis.pending_versions(conn) == []
+
+
+def test_scores_table_lists_old_scorer_rows_without_touching_them(conn, fake_llm):
+    from imbroglio import cli, scorer
+    vid = _store(conn, "scored.example")
+    analysis.ensure_analyzed(conn, vid)
+    conn.execute("""INSERT INTO scores (version_id, rubric_version, scorer_version, category, tier)
+                    VALUES (%s, %s, 's0', 'old category', 'LIMITED')""", (vid, analysis.RUBRIC_VERSION))
+    conn.commit()
+    before = conn.execute("SELECT count(*) FROM scores").fetchone()[0]
+    rows = {(r[0], r[1]): r[5] for r in cli.scores_table(conn, analysis.RUBRIC_VERSION)}
+    current = scorer.version_for(load(analysis.RUBRIC_VERSION))
+    assert rows == {(analysis.RUBRIC_VERSION, current): True, (analysis.RUBRIC_VERSION, "s0"): False}
+    assert conn.execute("SELECT count(*) FROM scores").fetchone()[0] == before
+
+
+def test_text_too_long_to_read_is_never_pending(conn, monkeypatch):
+    # extract() refuses it before any call, so it would only fill a slot.
+    from imbroglio import llm_extract
+    monkeypatch.setattr(llm_extract, "MAX_DOCUMENT_CHARS", len(POLICY) + 10)
+    fits = _store(conn, "fits.example")
+    _store(conn, "huge.example", POLICY * 2)
+    assert analysis.pending_versions(conn) == [fits]
+
+
+def test_extract_all_skips_documents_that_cannot_succeed(conn, monkeypatch):
+    # The daily `cli extract --all --limit N` used to spend slots on these
+    # every day (bitpay, represent). Same rule as the worker's backlog.
+    from argparse import Namespace
+
+    from imbroglio import cli, llm_extract
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(llm_extract, "MAX_DOCUMENT_CHARS", len(POLICY) + 10)
+    fits = _store(conn, "fits.example")
+    _store(conn, "huge.example", POLICY * 2)
+    tried = _store(conn, "tried.example", POLICY + " tried")
+    for _ in range(analysis.MAX_ANALYSIS_TRIES):
+        conn.execute("""INSERT INTO extraction_runs (version_id, rubric_version, model, status, cost_usd)
+                        VALUES (%s, %s, 'test', 'error', 0)""", (tried, analysis.RUBRIC_VERSION))
+    conn.commit()
+    seen = []
+    monkeypatch.setattr(analysis, "ensure_analyzed", lambda c, vid, **k: seen.append(vid) or "analyzed")
+    args = Namespace(domains=[], all=True, limit=50, model=None, force=False, workers=1)
+    assert cli._extract_cmd(args) == 0
+    assert seen == [fits]
+    # --force reads again whatever was tried before, but never text too long to read
+    seen.clear()
+    assert cli._extract_cmd(Namespace(**{**vars(args), "force": True})) == 0
+    assert sorted(seen) == sorted([fits, tried])

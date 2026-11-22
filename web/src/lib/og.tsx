@@ -1,3 +1,4 @@
+import { cacheLife } from "next/cache"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { ReactNode } from "react"
@@ -10,9 +11,18 @@ import type { Tier } from "@/lib/api"
 
 export const OG_SIZE = { width: 1200, height: 630 }
 
-const font = (file: string) => readFile(join(process.cwd(), "assets/fonts", file))
+// as an ArrayBuffer, which the cache below can store
+const font = async (file: string) => {
+  const b = await readFile(join(process.cwd(), "assets/fonts", file))
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+}
 
+// The files never change between deploys, so they are read once and cached
+// instead of on every image: that read is what kept even the fixed front
+// page preview from being prerendered.
 export async function ogFonts() {
+  "use cache"
+  cacheLife("max")
   const [medium, bold, extraBold] = await Promise.all([
     font("inter-latin-500-normal.woff"),
     font("inter-latin-700-normal.woff"),
@@ -33,10 +43,10 @@ export const PAPER = "#f5f7f9"
 export const PINK = "#f79ac0"
 export const TIER_COLOR: Record<Tier, string> = {
   SEVERE: "#b73329",
-  EXTENSIVE: "#c76017",
+  EXTENSIVE: "#b25615",
   MODERATE: "#546579",
   LIMITED: "#39704e",
-  NOT_DISCLOSED: "#8b95a4",
+  NOT_DISCLOSED: "#667182",
   UNCLEAR: "#6b7280",
   INFO: "#6b7280",
 }
@@ -62,6 +72,22 @@ export function TierShape({ tier, size }: { tier: Tier; size: number }) {
       <circle cx="12" cy="12" r="9" fill="none" stroke={c} strokeWidth="2.6" />
     ) : tier === "NOT_DISCLOSED" ? (
       <rect x="3" y="3" width="18" height="18" fill="none" stroke={c} strokeWidth="2" strokeDasharray="4 3" />
+    ) : tier === "UNCLEAR" || tier === "INFO" ? (
+      // a ring with a "?" or an "i", as on the site: never Moderate's filled dot
+      <g fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round">
+        <circle cx="12" cy="12" r="9.5" />
+        {tier === "UNCLEAR" ? (
+          <>
+            <path d="M9.4 9.4a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.3 1-1.3 1.9v.6" />
+            <circle cx="12" cy="17.2" r="0.4" fill={c} />
+          </>
+        ) : (
+          <>
+            <circle cx="12" cy="7.6" r="0.4" fill={c} />
+            <path d="M12 11v6" />
+          </>
+        )}
+      </g>
     ) : (
       <circle cx="12" cy="12" r="9.5" fill={c} />
     )

@@ -50,6 +50,47 @@ def test_a_job_past_the_time_limit_is_failed_and_left_behind(fake, monkeypatch):
         release.set()
 
 
+def test_a_job_given_up_on_stops_instead_of_carrying_on(fake, monkeypatch):
+    # Python can't kill the thread, so it is told to stop: once the slow
+    # crawl returns, it records nothing, starts no paid analysis, and writes
+    # no more lines to a request already marked failed.
+    from imbroglio.analyze import DocOutcome
+
+    release = threading.Event()
+    analyzed, attempts = [], []
+    log = logging.getLogger("imbroglio")
+
+    def slow_crawl(*a, **k):
+        release.wait(30)
+        log.info("late line")
+        return [DocOutcome("privacy", "stored-new", "https://slow.example/privacy", 5)]
+    monkeypatch.setattr(worker, "analyze", slow_crawl)
+    monkeypatch.setattr(worker, "ensure_analyzed", lambda conn, vid, **k: analyzed.append(vid) or "analyzed")
+    monkeypatch.setattr(worker.db, "insert_attempt", lambda *a, **k: attempts.append(a))
+    monkeypatch.setattr(worker, "JOB_TIME_LIMIT", 0.3)
+    monkeypatch.setattr(worker, "HEARTBEAT_SECONDS", 0.1)
+    try:
+        assert worker.process_one("w") is True
+        assert fake["finish"] == [(False, None, worker.TOOK_TOO_LONG)]
+        job = next(t for t in threading.enumerate() if t.name == "job-7")
+    finally:
+        release.set()
+    job.join(5)
+    assert not job.is_alive()
+    assert analyzed == [] and attempts == []
+    assert "late line" not in fake["progress"]
+
+
+def test_the_polling_connection_is_reused(fake, monkeypatch):
+    opened = []
+    monkeypatch.setattr(worker.db, "connect", lambda *a, **k: opened.append(1) or _Conn())
+    monkeypatch.setattr(worker.jobs, "claim", lambda conn, wid: None)
+    shared = _Conn()
+    assert worker.process_one("w", shared) is False
+    assert worker.process_one("w", shared) is False
+    assert opened == []
+
+
 def test_a_crash_reads_as_a_plain_sentence(fake, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("OperationalError: connection to 10.0.0.3 refused")

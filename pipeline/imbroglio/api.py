@@ -88,6 +88,10 @@ class Document(BaseModel):
     fetched_at: datetime
     versions_stored: int
     changes_detected: int
+    checked_at: datetime | None = Field(
+        None, description="When we last read the document at its address: the newest stored "
+                          "version or the newest recheck that could read it, whichever is later. "
+                          "`fetched_at` is when the shown version was first stored.")
     shared_with: int = Field(
         description="Other sites whose current document is word-for-word identical. "
                     "Common for policy generators and for one company running several "
@@ -291,6 +295,10 @@ def _documents(conn, domain: str) -> list[Document]:
                   length(v.normalized_text), v.fetched_at,
                   (SELECT count(*) FROM document_versions v2 WHERE v2.document_id = d.id),
                   (SELECT count(*) FROM change_events c WHERE c.document_id = d.id),
+                  greatest((SELECT max(v3.fetched_at) FROM document_versions v3
+                            WHERE v3.document_id = d.id),
+                           (SELECT max(k.checked_at) FROM document_checks k
+                            WHERE k.document_id = d.id AND k.outcome <> 'failed')),
                   (SELECT count(DISTINCT d2.service_id) FROM document_versions v2
                    JOIN documents d2 ON d2.id = v2.document_id
                    WHERE v2.content_hash = v.content_hash AND d2.service_id <> s.id
@@ -306,7 +314,8 @@ def _documents(conn, domain: str) -> list[Document]:
     ).fetchall()
     return [Document(type=r[0], url=r[1], discovered_via=r[2], fetch_method=r[3],
                      version_id=r[4], content_hash=r[5], chars=r[6], fetched_at=r[7],
-                     versions_stored=r[8], changes_detected=r[9], shared_with=r[10])
+                     versions_stored=r[8], changes_detected=r[9], checked_at=r[10],
+                     shared_with=r[11])
             for r in rows]
 
 
@@ -361,7 +370,9 @@ def _what_you_can_do(a: Advice | None) -> WhatYouCanDo | None:
 
 def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
     """Combine the latest analyzed version of each document into one card.
-    Only verified findings appear, and only their verified quotes."""
+    Only verified findings appear, and only their verified quotes. A
+    withdrawn finding (cli withdraw) is left out of the evidence and the
+    rating alike, as if the model had never given it."""
     from .analysis import RUBRIC_VERSION
 
     rubric = load_rubric(RUBRIC_VERSION)
@@ -371,7 +382,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
         rows = conn.execute(
             """SELECT check_id, status, quotes, quotes_verified, verified, explanation, model,
                       provenance, reused_from_version_id IS NOT NULL, created_at
-               FROM findings WHERE version_id = %s AND rubric_version = %s""",
+               FROM findings WHERE version_id = %s AND rubric_version = %s AND withdrawn_at IS NULL""",
             (d.version_id, rubric.version)).fetchall()
         if not rows:
             continue
@@ -518,10 +529,19 @@ CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", "").strip().lower()
 WEB_CLIENT_KEY = os.environ.get("WEB_CLIENT_KEY", "")
 
 
-def _network(addr: str) -> str:
-    """An IPv6 address counts as its /64 network: one home or phone is handed
-    a whole /64, so counting single addresses would let anyone rotate past
-    the limits. IPv4 addresses (and anything unparseable) count as given."""
+# The daily per-client limit counts an IPv6 client by this wider network.
+# One customer is commonly handed a /48 (65,536 /64s), so per /64 a single
+# person could rotate through enough networks to use up DAILY_REQUEST_CAP,
+# and with it the day's analysis budget. The hourly limits stay per /64, so
+# neighbours on one /48 only share the day's allowance.
+DAILY_IPV6_PREFIX = 48
+
+
+def _network(addr: str, v6_prefix: int = 64) -> str:
+    """An IPv6 address counts as its /64 network (or `v6_prefix`): one home
+    or phone is handed a whole /64, so counting single addresses would let
+    anyone rotate past the limits. IPv4 addresses (and anything unparseable)
+    count as given."""
     try:
         ip = ipaddress.ip_address(addr.strip().strip("[]").split("%")[0])
     except ValueError:
@@ -529,22 +549,22 @@ def _network(addr: str) -> str:
     if ip.version == 6:
         if ip.ipv4_mapped is not None:
             return str(ip.ipv4_mapped)
-        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+        return str(ipaddress.ip_network(f"{ip}/{v6_prefix}", strict=False))
     return str(ip)
 
 
-def client_address(request: Request) -> str:
+def client_address(request: Request, v6_prefix: int = 64) -> str:
     if WEB_CLIENT_KEY:
         key = request.headers.get("x-imbroglio-web-key", "")
         visitor = request.headers.get("x-imbroglio-visitor-ip", "").strip()
         if visitor and secrets.compare_digest(key.encode(), WEB_CLIENT_KEY.encode()):
-            return "visitor " + _network(visitor[:64])
+            return "visitor " + _network(visitor[:64], v6_prefix)
     if CLIENT_IP_HEADER:
         # If the platform appends to a list, the last entry is the one it added.
         value = request.headers.get(CLIENT_IP_HEADER, "").split(",")[-1].strip()
         if value:
-            return _network(value[:64])
-    return _network(request.client.host) if request.client else "unknown"
+            return _network(value[:64], v6_prefix)
+    return _network(request.client.host, v6_prefix) if request.client else "unknown"
 
 
 class NewRequest(BaseModel):
@@ -637,7 +657,7 @@ def create_request(body: NewRequest, request: Request):
         if not _limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_HOUR} requests per hour."},
                                 status_code=429, headers={"Retry-After": "600"})
-        if not _daily_limiter.allow(client):
+        if not _daily_limiter.allow(client_address(request, DAILY_IPV6_PREFIX)):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_DAY} requests a day."},
                                 status_code=429, headers={"Retry-After": "3600"})
         site = site_of(domain)

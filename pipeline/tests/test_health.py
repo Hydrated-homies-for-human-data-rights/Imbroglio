@@ -31,12 +31,40 @@ def test_a_busy_queue_that_is_moving_is_not_a_problem():
 def test_each_problem_reads_plainly():
     bad = replace(QUIET, queued=5, running=0, visitor_queued=1, oldest_visitor_wait_minutes=41.0,
                   minutes_since_last_finish=55.0, stale_running=1, failed_24h=6,
-                  spent_24h_usd=5.2, hours_since_last_recheck=30.0)
+                  spent_24h_usd=5.2, hours_since_last_recheck=30.0, overdue_rechecks=4)
     found = health.problems(bad)
     assert len(found) == 6
     assert found[0].startswith("A visitor's request has waited 41 minutes")
     assert any(p.startswith("The worker looks stopped") for p in found)
     assert any("budget is used up" in p for p in found)
+
+
+def test_a_quiet_day_with_nothing_due_is_not_a_stopped_recheck():
+    # Every document was checked within RECHECK_DAYS, so the hourly pass had
+    # nothing to record. That used to post "rechecks stopped" every day.
+    nothing_due = replace(QUIET, hours_since_last_recheck=40.0, overdue_rechecks=0)
+    assert health.problems(nothing_due) == []
+    stopped = replace(nothing_due, overdue_rechecks=12)
+    assert health.problems(stopped) == [
+        "Rechecks look stopped: 12 document(s) are overdue and no policy recheck was recorded in 40 hours."]
+    # overdue documents while checks are still being recorded: a backlog, not a stop
+    assert health.problems(replace(QUIET, overdue_rechecks=12)) == []
+
+
+def test_overdue_counts_only_documents_past_due(conn, monkeypatch):
+    from imbroglio import db, recheck
+    from imbroglio.normalize import content_hash
+    monkeypatch.setattr(recheck, "RECHECK_DAYS", 30)
+    sid = db.upsert_service(conn, "old.example")
+    for doc_type, age in (("privacy", "31 days"), ("terms", "29 days")):
+        did = db.upsert_document(conn, sid, doc_type, f"https://old.example/{doc_type}", "link-text")
+        vid = db.insert_version(conn, did, content_hash(doc_type), doc_type, "static")
+        conn.execute("UPDATE document_versions SET fetched_at = now() - %s::interval WHERE id = %s",
+                     (age, vid))
+    conn.commit()
+    s = health.snapshot(conn, ("web",))
+    assert s.overdue_rechecks == 1 and s.hours_since_last_recheck is None
+    assert health.problems(s)[-1].startswith("Rechecks look stopped: 1 document(s) are overdue")
 
 
 def test_the_worker_isnt_stopped_while_a_job_is_running():

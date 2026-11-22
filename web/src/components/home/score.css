@@ -406,7 +406,7 @@
   background: #fff5f9;
 }
 .score .try-opts label:has(input:focus-visible) {
-  outline: 2px solid var(--pink-deep);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .score .try-opts input {
