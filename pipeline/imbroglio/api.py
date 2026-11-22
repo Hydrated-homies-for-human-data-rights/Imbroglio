@@ -361,7 +361,9 @@ def _what_you_can_do(a: Advice | None) -> WhatYouCanDo | None:
 
 def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
     """Combine the latest analyzed version of each document into one card.
-    Only verified findings appear, and only their verified quotes."""
+    Only verified findings appear, and only their verified quotes. A
+    withdrawn finding (cli withdraw) is left out of the evidence and the
+    rating alike, as if the model had never given it."""
     from .analysis import RUBRIC_VERSION
 
     rubric = load_rubric(RUBRIC_VERSION)
@@ -371,7 +373,7 @@ def _scorecard(conn, docs: list[Document]) -> Scorecard | None:
         rows = conn.execute(
             """SELECT check_id, status, quotes, quotes_verified, verified, explanation, model,
                       provenance, reused_from_version_id IS NOT NULL, created_at
-               FROM findings WHERE version_id = %s AND rubric_version = %s""",
+               FROM findings WHERE version_id = %s AND rubric_version = %s AND withdrawn_at IS NULL""",
             (d.version_id, rubric.version)).fetchall()
         if not rows:
             continue

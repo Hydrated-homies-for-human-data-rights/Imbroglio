@@ -35,6 +35,7 @@ issues").
 | `verified` | at least one quote verified. **Only use rows where this is true**, plus `not_disclosed` rows |
 | `explanation` | Claude's one-sentence reason |
 | `labeler`, `provenance` | which model; `machine` until a human reviews it |
+| `withdrawn` | a person reread it against the document and found the quote doesn't support it (`cli withdraw`). The site no longer shows or scores it, so **drop these rows**, or treat the answer as known to be wrong |
 
 ## Turning it into a training set
 

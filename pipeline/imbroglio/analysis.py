@@ -64,8 +64,10 @@ def _reusable_version(conn, version_id: int, rubric_version: str) -> int | None:
 
 
 def _write_scores(conn, version_id: int, rubric_version: str) -> dict[str, str]:
+    """A withdrawn finding is left out, as if the model had never given it."""
     rubric = load(rubric_version)
-    rows = conn.execute("SELECT check_id, status, verified FROM findings WHERE version_id = %s AND rubric_version = %s",
+    rows = conn.execute("""SELECT check_id, status, verified FROM findings
+                           WHERE version_id = %s AND rubric_version = %s AND withdrawn_at IS NULL""",
                         (version_id, rubric_version)).fetchall()
     tiers = scorer.category_tiers(rubric, [scorer.ScoredFinding(*r) for r in rows])
     for category, tier in tiers.items():
@@ -79,7 +81,17 @@ def _write_scores(conn, version_id: int, rubric_version: str) -> dict[str, str]:
     return tiers
 
 
+def rescore(conn: psycopg.Connection, version_id: int, rubric_version: str) -> dict[str, str]:
+    """Write a version's category scores again from its findings, after a
+    finding was withdrawn or restored. Plain code over stored findings, no
+    model call. Doesn't commit."""
+    return _write_scores(conn, version_id, rubric_version)
+
+
 def _store(conn, version_id: int, rubric_version: str, ex: Extraction, run_id: int) -> None:
+    """A new reading replaces the answer but never the withdrawal columns: a
+    finding a person withdrew stays withdrawn when the same version is read
+    again (migration 0014)."""
     for f in ex.findings:
         conn.execute(
             """INSERT INTO findings (version_id, run_id, rubric_version, check_id, category, status,
@@ -96,12 +108,16 @@ def _store(conn, version_id: int, rubric_version: str, ex: Extraction, run_id: i
 
 
 def _copy_findings(conn, source_version: int, version_id: int, rubric_version: str) -> None:
+    """A withdrawn finding is copied withdrawn: the text is the same, so the
+    quote doesn't support it here either."""
     conn.execute(
         """INSERT INTO findings (version_id, run_id, rubric_version, check_id, category, status, quotes,
                                  quotes_verified, verified, explanation, model, provenance,
-                                 reused_from_version_id)
+                                 reused_from_version_id, withdrawn_at, withdrawn_reason, withdrawn_by,
+                                 withdrawn_report)
            SELECT %s, run_id, rubric_version, check_id, category, status, quotes, quotes_verified,
-                  verified, explanation, model, provenance, version_id
+                  verified, explanation, model, provenance, version_id, withdrawn_at, withdrawn_reason,
+                  withdrawn_by, withdrawn_report
            FROM findings WHERE version_id = %s AND rubric_version = %s
            ON CONFLICT (version_id, rubric_version, check_id) DO NOTHING""",
         (version_id, source_version, rubric_version),
@@ -268,7 +284,8 @@ def rebase(conn: psycopg.Connection, version_id: int, from_version: str, to_vers
     if _has_findings(conn, version_id, to_version):
         return "done-already"
     rows = conn.execute(
-        """SELECT check_id, status, quotes, explanation, model, run_id, provenance, reused_from_version_id
+        """SELECT check_id, status, quotes, explanation, model, run_id, provenance, reused_from_version_id,
+                  withdrawn_at, withdrawn_reason, withdrawn_by, withdrawn_report
            FROM findings WHERE version_id = %s AND rubric_version = %s""",
         (version_id, from_version)).fetchall()
     if not rows:
@@ -281,15 +298,17 @@ def rebase(conn: psycopg.Connection, version_id: int, from_version: str, to_vers
     for f in check_findings(rubric, raw, text):
         if f.check_id not in meta:
             continue  # the new rubric added a check: needs a real extraction
-        _, _, _, _, model, run_id, provenance, reused_from = meta[f.check_id]
+        # The model's answer is carried over, so a withdrawal of it is too.
+        _, _, _, _, model, run_id, provenance, reused_from, *withdrawal = meta[f.check_id]
         conn.execute(
             """INSERT INTO findings (version_id, run_id, rubric_version, check_id, category, status,
                                      quotes, quotes_verified, verified, explanation, model,
-                                     provenance, reused_from_version_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                     provenance, reused_from_version_id, withdrawn_at,
+                                     withdrawn_reason, withdrawn_by, withdrawn_report)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (version_id, rubric_version, check_id) DO NOTHING""",
             (version_id, run_id, to_version, f.check_id, f.category, f.status, f.quotes,
-             f.quotes_verified, f.verified, f.explanation, model, provenance, reused_from),
+             f.quotes_verified, f.verified, f.explanation, model, provenance, reused_from, *withdrawal),
         )
     _write_scores(conn, version_id, to_version)
     conn.commit()
@@ -299,13 +318,16 @@ def rebase(conn: psycopg.Connection, version_id: int, from_version: str, to_vers
 def _copy_checks(conn, source_version: int, version_id: int, rubric_version: str,
                  checks: list[str]) -> None:
     """Copy `checks`' findings from an identical document, replacing what the
-    target had for them."""
+    target had for them. The answer is replaced; a withdrawal on the target
+    stays (it is lifted only by cli unwithdraw)."""
     conn.execute(
         """INSERT INTO findings (version_id, run_id, rubric_version, check_id, category, status, quotes,
                                  quotes_verified, verified, explanation, model, provenance,
-                                 reused_from_version_id)
+                                 reused_from_version_id, withdrawn_at, withdrawn_reason, withdrawn_by,
+                                 withdrawn_report)
            SELECT %s, run_id, rubric_version, check_id, category, status, quotes, quotes_verified,
-                  verified, explanation, model, provenance, version_id
+                  verified, explanation, model, provenance, version_id, withdrawn_at, withdrawn_reason,
+                  withdrawn_by, withdrawn_report
            FROM findings WHERE version_id = %s AND rubric_version = %s AND check_id = ANY(%s)
            ON CONFLICT (version_id, rubric_version, check_id) DO UPDATE SET
              run_id = EXCLUDED.run_id, status = EXCLUDED.status, quotes = EXCLUDED.quotes,

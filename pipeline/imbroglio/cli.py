@@ -16,6 +16,9 @@
     python -m imbroglio.cli reports --mark 12 withdrawn --note "quote not in document"
     python -m imbroglio.cli hold coinbase.com terms --reason "promo help article, not the terms"
     python -m imbroglio.cli held                  # every held document; unhold DOMAIN TYPE lifts one
+    python -m imbroglio.cli withdraw notion.so sells_personal_data --doc privacy \\
+        --reason "the quote is about cookies, not selling" --report 12
+    python -m imbroglio.cli withdrawn             # every withdrawn finding; unwithdraw puts one back
 """
 
 from __future__ import annotations
@@ -318,6 +321,104 @@ def _hold_cmd(args) -> int:
         conn.close()
 
 
+def _site_rating(conn, domain: str, rubric) -> str:
+    """The site's headline and score as the API works them out, for showing
+    what a withdrawal changed."""
+    from . import db, scorer
+
+    found = db.site_findings(conn, rubric.version, hash_like=db.domain_hash(domain)).get(domain)
+    if not found:
+        return "not rated"
+    scored = [scorer.ScoredFinding(c, s, v) for _, c, s, v, _ in found]
+    _, head = scorer.rate(rubric, scored)
+    sc = scorer.score(rubric, scored, head)
+    return f"{head} {sc.value}/100" if sc else head
+
+
+def _withdraw_cmd(args) -> int:
+    """withdraw / unwithdraw / withdrawn: take one finding off a site's report
+    when its quote doesn't support it, or put it back. The finding is kept
+    with who, why and when; the rating is worked out again from what remains
+    right away (no model call). See db.py, "withdrawals"."""
+    import getpass
+
+    from . import db
+    from .analysis import RUBRIC_VERSION
+    from .batch import clean_domain
+    from .rubric import load
+
+    conn = db.connect()
+    db.init_schema(conn)
+    try:
+        if args.command == "withdrawn":
+            rows = db.withdrawn_findings(conn)
+            for domain, doc_type, check_id, status, rubric_version, version_id, at, reason, by, report in rows:
+                print(f"{at:%Y-%m-%d}  {domain:<28} {doc_type:<8} {check_id:<26} {status:<18} "
+                      f"{rubric_version} v{version_id}  {reason}"
+                      + (f"  (by {by})" if by else "") + (f"  report {report}" if report else ""))
+            print(f"{len(rows)} withdrawn findings")
+            return 0
+
+        rubric = load(args.rubric or RUBRIC_VERSION)
+        if args.check_id not in {c.id for c in rubric.checks}:
+            print(f"no check {args.check_id!r} in rubric {rubric.version}")
+            return 2
+        domain = clean_domain(args.domain) or args.domain
+        version_id = db.rated_version(conn, domain, args.doc, rubric.version)
+        if version_id is None:
+            print(f"no {args.doc} document stored for {domain} (or it is held)")
+            return 1
+        state = db.finding_state(conn, version_id, rubric.version, args.check_id)
+        if state is None:
+            print(f"{domain} {args.doc} has no {args.check_id} finding under rubric {rubric.version}")
+            return 1
+        before = _site_rating(conn, domain, rubric)
+
+        if args.command == "unwithdraw":
+            restored = db.unwithdraw_finding(conn, version_id, rubric.version, args.check_id)
+            if restored is None:
+                print(f"{domain} {args.doc} {args.check_id} is not withdrawn")
+                return 1
+            print(f"restored {domain} {args.doc} {args.check_id} ({restored[0]}), "
+                  f"withdrawn before: {restored[1]}")
+            print(f"rating: {before} -> {_site_rating(conn, domain, rubric)}")
+            return 0
+
+        reason = " ".join(args.reason.split())
+        if not reason:
+            print("give a reason: why the quote doesn't support the finding")
+            return 2
+        if state[1]:
+            print(f"{domain} {args.doc} {args.check_id} is already withdrawn (cli withdrawn lists why)")
+            return 1
+        if args.report is not None and conn.execute(
+                "SELECT 1 FROM reports WHERE id = %s", (args.report,)).fetchone() is None:
+            print(f"no report {args.report}; nothing withdrawn")
+            return 1
+        by = args.by or getpass.getuser()
+        status = db.withdraw_finding(conn, version_id, rubric.version, args.check_id, reason, by,
+                                     args.report)
+        if status is None:  # withdrawn by someone else in the meantime
+            print(f"{domain} {args.doc} {args.check_id} is already withdrawn")
+            return 1
+        print(f"withdrew {domain} {args.doc} {args.check_id} ({status}): {reason}")
+        print(f"rating: {before} -> {_site_rating(conn, domain, rubric)}")
+        if args.report is not None:
+            mark_report(conn, args.report, "withdrawn",
+                        f"withdrew {args.check_id} ({status}) on the {args.doc}: {reason}")
+            print(f"report {args.report}: withdrawn")
+        copies = db.identical_copies(conn, version_id, rubric.version, args.check_id)
+        if copies:
+            print(f"the same text is stored for {len(copies)} other site(s) that still show this finding: "
+                  + " ".join(copies[:10]) + (" ..." if len(copies) > 10 else ""))
+        # Nothing to revalidate: the site page reads the API fresh, search and
+        # lists cache for a minute, the extension's lookup up to about 25.
+        print("the site page shows it now; search and lists within a minute, the extension within half an hour")
+        return 0
+    finally:
+        conn.close()
+
+
 def main() -> int:
     _load_dotenv()
     ap = argparse.ArgumentParser(prog="imbroglio")
@@ -483,10 +584,30 @@ def main() -> int:
 
     sub.add_parser("held", help="list held documents with the reason and address")
 
+    wd = sub.add_parser("withdraw", help="withdraw one finding whose quote doesn't support it: kept, but never "
+                                         "shown or scored; the rating is worked out again right away")
+    wd.add_argument("domain")
+    wd.add_argument("check_id", help="the rubric question, e.g. sells_personal_data")
+    wd.add_argument("--doc", required=True, choices=["privacy", "terms"], help="which document the finding is on")
+    wd.add_argument("--reason", required=True, help="why the quote doesn't support it")
+    wd.add_argument("--report", type=int, help="the reader report this answers: marked withdrawn, with a note")
+    wd.add_argument("--by", help="who is withdrawing it (default: your user name)")
+    wd.add_argument("--rubric", help="rubric version (default: RUBRIC_VERSION, as the API uses)")
+
+    uw = sub.add_parser("unwithdraw", help="put a withdrawn finding back, so it is shown and scored again")
+    uw.add_argument("domain")
+    uw.add_argument("check_id")
+    uw.add_argument("--doc", required=True, choices=["privacy", "terms"])
+    uw.add_argument("--rubric", help="rubric version (default: RUBRIC_VERSION, as the API uses)")
+
+    sub.add_parser("withdrawn", help="list withdrawn findings with who, why and when")
+
     args = ap.parse_args()
 
     if args.command in ("hold", "unhold", "held"):
         return _hold_cmd(args)
+    if args.command in ("withdraw", "unwithdraw", "withdrawn"):
+        return _withdraw_cmd(args)
     if args.command == "reports":
         return _reports_cmd(args)
     if args.command == "harvest-links":
