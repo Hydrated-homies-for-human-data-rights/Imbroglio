@@ -20,7 +20,7 @@ export default function Page({
   return (
     <div className="home page">
       <Masthead current={current} />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <div className="page-head">
           <div className="eyebrow mono">{eyebrow}</div>
           <h1>{title}</h1>

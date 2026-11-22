@@ -43,3 +43,23 @@ button {
   color: #0e263c;
   background: #d9e8f2;
 }
+
+/* Hidden until a keyboard reaches it (components/home/chrome.tsx SkipLink). */
+body a.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -200px;
+  z-index: 100;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #11253a;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+body a.skip-link:focus {
+  top: 12px;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

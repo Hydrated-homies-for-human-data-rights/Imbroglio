@@ -38,7 +38,7 @@
 }
 .learn .l-want:hover,
 .learn .l-want:focus-visible {
-  border-color: var(--pink-deep);
+  border-color: var(--focus);
   box-shadow: 0 0 0 3px rgba(247, 154, 192, 0.25);
 }
 .learn .l-want strong {
@@ -253,7 +253,7 @@
   font-weight: 600;
 }
 .learn .tablist button:focus-visible {
-  outline: 2px solid var(--pink-deep);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .learn .tabpanel {

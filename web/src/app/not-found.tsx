@@ -10,15 +10,16 @@ export const metadata: Metadata = {
   title: "Page not found · Imbroglio",
 }
 
-// Any address with no page, and a site report for something that isn't a
-// web address (site/[domain] calls notFound()). Laid out like the About
+// Any address with no page. (A site report or history for something that
+// isn't a web address, or a site we have nothing on, gets
+// site/[domain]/not-found.tsx instead.) Laid out like the About
 // page's opening, with a search line, since most people who land here were
 // after a site's report. The one picture is a thread that comes loose.
 export default function NotFound() {
   return (
     <div className="home page about notfound">
       <Masthead />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <section className="hero" aria-labelledby="nf-h1">
           <div className="page-head">
             <div className="eyebrow mono">404 · Page not found</div>

@@ -3,6 +3,7 @@
 // only the data types are adapted to the API. Don't restyle here: design
 // changes come from the Figma file.
 
+import Link from "next/link"
 import type { Tier } from "@/lib/api"
 
 export type Rating = "Severe" | "Extensive" | "Moderate" | "Not disclosed" | "Limited" | "Unclear" | "Info"
@@ -21,9 +22,11 @@ export const ratingOf: Record<Tier, Rating> = {
 // a "?" or "i" mark, the word) until the UX team designs them.
 export const ratingStyles: Record<Rating, string> = {
   Severe: "text-[#b73329]",
-  Extensive: "text-[#c76017]",
+  // Extensive and Not disclosed darkened from the Figma file's #c76017 and
+  // #8b95a4, which were under 4.5:1 on the page
+  Extensive: "text-[#b25615]",
   Moderate: "text-[#546579]",
-  "Not disclosed": "text-[#8b95a4]",
+  "Not disclosed": "text-[#667182]",
   Limited: "text-[#39704e]",
   Unclear: "text-[#6b7280]",
   Info: "text-[#6b7280]",
@@ -132,6 +135,7 @@ export function DetailCard({
   quotes,
   source,
   tag,
+  report,
 }: {
   // "grey" (an informational answer) isn't in the Figma file yet: a placeholder
   tone: "orange" | "green" | "grey"
@@ -139,6 +143,8 @@ export function DetailCard({
   quotes: string[]
   source: string
   tag: string
+  // the report-a-problem form, opened on this finding (not in the Figma file yet)
+  report?: string
 }) {
   const green = tone === "green"
   const grey = tone === "grey"
@@ -161,6 +167,18 @@ export function DetailCard({
             <span aria-hidden="true">·</span>
             <span className="text-[#28784c]">quote verified</span>
             <CheckIcon />
+            {report && (
+              <>
+                <span aria-hidden="true">·</span>
+                <Link
+                  href={report}
+                  aria-label={`Report a problem with this finding: ${title}`}
+                  className="underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]"
+                >
+                  Report a problem
+                </Link>
+              </>
+            )}
           </div>
         </div>
         <span

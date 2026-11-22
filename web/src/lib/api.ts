@@ -74,7 +74,11 @@ export type Scorecard = {
 export type SiteDocument = {
   type: DocType
   url: string
+  // when the version shown was first stored
   fetched_at: string
+  // when we last read the document at its address: the newest stored version
+  // or recheck that could read it (null from an API before this field)
+  checked_at?: string | null
   versions_stored: number
   changes_detected: number
 }

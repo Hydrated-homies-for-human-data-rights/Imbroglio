@@ -2,9 +2,9 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { CategoryScore, Evidence, Site, WhatYouCanDo } from "@/lib/api"
-import { docName, shortDate } from "@/lib/format"
+import { docName, shortDate, signed, withArticle } from "@/lib/format"
 import { disputeUrl } from "@/lib/links"
 import { requestText } from "@/lib/nextSteps"
 import { Chevron, DetailCard, RatingMark, ratingOf, ratingStyles } from "./design"
@@ -51,15 +51,31 @@ export default function Report({ site }: { site: Site }) {
 
   // A link straight to a category (the extension's "read the quotes on the
   // full report" sends #<category key>) opens that category: on arrival,
-  // and again if the hash changes while the page is open. The address bar
-  // is the external system here, so the state is set from its callbacks.
+  // and again if the hash changes while the page is open. A link to one
+  // finding, ?doc=<type>#<check_id> (what the report-a-problem form records,
+  // and the score's lines link to), opens its category and scrolls to it once
+  // it is drawn. The address bar is the external system here, so the state
+  // is set from its callbacks.
+  const scrollTo = useRef<string | null>(null) // check_id:document
   useEffect(() => {
     const open = () => {
       const key = window.location.hash.slice(1)
-      const target = key && card.categories.find((c) => c.key === key)
+      if (!key) return
+      const target = card.categories.find((c) => c.key === key)
       if (target) {
         setOpen((was) => new Set(was).add(target.key))
         document.getElementById(key)?.scrollIntoView({ block: "start", behavior: "smooth" })
+        return
+      }
+      const doc = new URLSearchParams(window.location.search).get("doc")
+      const holder = card.categories.find((c) => c.findings.some((f) => f.check_id === key))
+      const found =
+        holder &&
+        (holder.findings.find((f) => f.check_id === key && f.document === doc) ??
+          holder.findings.find((f) => f.check_id === key))
+      if (holder && found) {
+        scrollTo.current = `${found.check_id}:${found.document}`
+        setOpen((was) => new Set(was).add(holder.key))
       }
     }
     const soon = setTimeout(open, 0)
@@ -69,9 +85,18 @@ export default function Report({ site }: { site: Site }) {
       window.removeEventListener("hashchange", open)
     }
   }, [card.categories])
+  // after a finding's category opens, bring the finding into view, once
+  useEffect(() => {
+    const want = scrollTo.current
+    const el = want && document.querySelector(`[data-finding="${CSS.escape(want)}"]`)
+    if (el) {
+      scrollTo.current = null
+      el.scrollIntoView({ block: "start", behavior: "smooth" })
+    }
+  }, [open])
 
   return (
-    <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
+    <main id="main" className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#728093]">
         <span>Privacy report</span>
         <span className="h-1 w-1 rounded-full bg-[#aab3be]" />
@@ -150,7 +175,7 @@ export default function Report({ site }: { site: Site }) {
                 {score.deductions.map((d) => (
                   <li key={d.check_id} className="grid grid-cols-[3.5rem_1fr] gap-2">
                     <span className="text-right font-semibold tabular-nums text-[#a6461d]">−{d.points}</span>
-                    <a href={`#${d.category}`} className="underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]">
+                    <a href={`#${d.check_id}`} className="underline decoration-[#cbd3db] underline-offset-4 hover:text-[#173b5c]">
                       {d.plain ?? d.meaning}
                     </a>
                   </li>
@@ -160,7 +185,7 @@ export default function Report({ site }: { site: Site }) {
                   <span className="text-[#183149]">
                     out of 100
                     {score.value !== score.unadjusted &&
-                      ` (${score.unadjusted} kept at ${score.value}: a ${headline.toLowerCase()} site scores ${score.band[0]} to ${score.band[1]})`}
+                      ` (${signed(score.unadjusted)} kept at ${score.value}: ${withArticle(headline.toLowerCase())} site scores ${score.band[0]} to ${score.band[1]})`}
                   </span>
                 </li>
               </ol>
@@ -324,14 +349,17 @@ function CategoryDetails({ site, category }: { site: Site; category: CategorySco
       {category.findings.length > 0 ? (
         <div className="grid gap-3">
           {category.findings.map((f, i) => (
-            <DetailCard
-              key={`${f.check_id}-${f.document}-${i}`}
-              tone={f.concern === "info" ? "grey" : f.exposure > 0 ? "orange" : "green"}
-              title={f.plain ?? f.meaning}
-              quotes={f.quotes}
-              source={docName(f.document)}
-              tag={TAGS[f.provenance]}
-            />
+            <div key={`${f.check_id}-${f.document}-${i}`} data-finding={`${f.check_id}:${f.document}`} className="scroll-mt-6">
+              <DetailCard
+                tone={f.concern === "info" ? "grey" : f.exposure > 0 ? "orange" : "green"}
+                title={f.plain ?? f.meaning}
+                quotes={f.quotes}
+                source={docName(f.document)}
+                tag={TAGS[f.provenance]}
+                // the form can point at a finding that rests on a quote
+                report={f.quotes.length > 0 && f.status !== "not_disclosed" ? disputeUrl(site.domain, f) : undefined}
+              />
+            </div>
           ))}
         </div>
       ) : (

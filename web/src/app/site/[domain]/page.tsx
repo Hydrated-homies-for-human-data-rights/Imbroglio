@@ -54,35 +54,51 @@ async function domainOf(params: PageProps<"/site/[domain]">["params"]): Promise<
   return cleanDomain(raw) ?? notFound()
 }
 
+// A site we know nothing about has no page: a real 404 (not-found.tsx here
+// offers to analyze it), so search engines never index an empty report.
+// Checked in the metadata too, which crawlers get before the page streams.
+const isUnknown = (site: Site | null) => site?.state === "unknown"
+
 export async function generateMetadata({ params }: PageProps<"/site/[domain]">): Promise<Metadata> {
   const domain = await domainOf(params)
-  const { title, description } = describe(await loadSite(domain).catch(() => null), domain)
+  const site = await loadSite(domain).catch(() => null)
+  if (isUnknown(site)) notFound()
+  const { title, description } = describe(site, domain)
   const url = `/site/${encodeURIComponent(domain)}`
   return { title, description, alternates: { canonical: url }, openGraph: { title, description, url } }
 }
 
 // States other than a finished report aren't in the design yet, so they're
-// plain text until the UX team designs them.
-function Plain({ children }: { children: React.ReactNode }) {
-  return <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 text-sm">{children}</main>
+// plain text until the UX team designs them. The heading is for screen
+// readers; the report itself has a visible one.
+function Plain({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <main id="main" className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 text-sm">
+      <h1 className="sr-only">{title}</h1>
+      {children}
+    </main>
+  )
 }
 
 async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["params"] }) {
   const domain = await domainOf(params)
+  const title = `${domain} privacy report`
   let site
   try {
     site = await loadSite(domain)
   } catch (e) {
-    if (e instanceof ApiError && e.status === 400) return <Plain>“{domain}” isn’t a valid website address.</Plain>
-    return <Plain>The analysis service is unavailable right now. Try again in a minute.</Plain>
+    // the API refuses it as a website address: there is no such page
+    if (e instanceof ApiError && e.status === 400) notFound()
+    return <Plain title={title}>The analysis service is unavailable right now. Try again in a minute.</Plain>
   }
   if (site.scorecard) return <Report site={site} />
+  if (isUnknown(site)) notFound()
 
   if (site.state === "queued" || site.state === "analyzing") {
     // The progress box polls the request and refreshes this page when the
     // report is ready, so the reader never has to reload by hand.
     return (
-      <Plain>
+      <Plain title={title}>
         <p>{site.domain} is being analyzed.</p>
         {site.pending_request ? (
           <RequestProgress id={site.pending_request.id} domain={site.domain} />
@@ -97,7 +113,7 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
     // crawls it again instead of answering from the last try.
     const failure = site.failure
     return (
-      <Plain>
+      <Plain title={title}>
         <p>
           {site.domain}: {failure?.message ?? FALLBACK_MESSAGE}
         </p>
@@ -140,7 +156,7 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
     // report is on its way.
     const names = site.documents.map((d) => (d.type === "privacy" ? "privacy policy" : "terms of service"))
     return (
-      <Plain>
+      <Plain title={title}>
         <p>
           We have {site.domain}’s {names.join(" and ")}, but {names.length === 1 ? "it hasn’t" : "they haven’t"} been
           rated yet.
@@ -157,8 +173,9 @@ async function SiteContent({ params }: { params: PageProps<"/site/[domain]">["pa
       </Plain>
     )
   }
+  // no state the API reports today lands here; kept for one it adds later
   return (
-    <Plain>
+    <Plain title={title}>
       <p>We haven’t analyzed {site.domain} yet.</p>
       <RequestForm initial={site.domain} />
     </Plain>
@@ -169,7 +186,7 @@ export default function SitePage({ params }: PageProps<"/site/[domain]">) {
   return (
     <>
       <Header view="report" />
-      <Suspense fallback={<Plain>Loading…</Plain>}>
+      <Suspense fallback={<Plain title="Privacy report">Loading…</Plain>}>
         <SiteContent params={params} />
       </Suspense>
     </>

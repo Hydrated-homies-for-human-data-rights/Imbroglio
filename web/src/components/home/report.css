@@ -55,7 +55,7 @@
   box-shadow: inset 3px 0 0 var(--pink);
 }
 .rp .rp-finding:has(input:focus-visible) {
-  outline: 2px solid var(--pink-deep);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .rp .rp-finding input,
@@ -152,7 +152,7 @@
   color: #fff;
 }
 .rp .rp-kinds label:has(input:focus-visible) {
-  outline: 2px solid var(--pink-deep);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .rp .rp-kinds[aria-invalid="true"] label {

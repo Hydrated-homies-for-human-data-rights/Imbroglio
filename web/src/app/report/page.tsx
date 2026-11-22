@@ -49,8 +49,8 @@ function Head({ site, pointing }: { site: string; pointing: boolean }) {
       <h1>{pointing ? "Point at the sentence." : "Report a problem."}</h1>
       <p className="lede">
         {pointing
-          ? `Every finding on ${site} rests on a quote from its stored documents. Pick the one that’s wrong and tell us why. A person rereads it against the stored copy, and if the quote doesn’t hold, the finding is withdrawn.`
-          : "A rating, a finding, a quote, a site we read wrong. A team member rereads it against the stored document, and if the quote doesn’t support the finding, we withdraw it."}
+          ? `Every finding on ${site} rests on a quote from its stored documents. Pick the one that’s wrong and tell us why. A person rereads it against the stored copy, and if the quote doesn’t hold, the finding is withdrawn and the rating worked out again.`
+          : "A rating, a finding, a quote, a site we read wrong. A team member rereads it against the stored document, and if the quote doesn’t support the finding, we withdraw it and work out the rating again."}
       </p>
     </div>
   )
@@ -90,7 +90,7 @@ export default function ReportPage({ searchParams }: { searchParams: Params }) {
   return (
     <div className="home page rp">
       <Masthead current="/report" />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <Suspense
           fallback={
             <>

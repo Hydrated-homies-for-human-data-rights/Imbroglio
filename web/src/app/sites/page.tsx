@@ -1,10 +1,8 @@
 import type { Metadata } from "next"
-import { connection } from "next/server"
 import { Suspense } from "react"
 import { BottomBar, Masthead } from "@/components/home/chrome"
-import { showable } from "@/components/home/data"
-import Shelves, { type ShelfSite } from "@/components/home/Shelves"
-import { getSites, type Tier } from "@/lib/api"
+import { ratedSites } from "@/components/home/ratedSites"
+import Shelves from "@/components/home/Shelves"
 import "@/components/home/home.css"
 import "@/components/home/pages.css"
 import "@/components/home/sites.css"
@@ -15,35 +13,11 @@ export const metadata: Metadata = {
 }
 
 // Every rated site, on shelves by rating, worst first. The list comes from
-// the API (GET /v1/sites) at request time; the same front-page gate
-// (showable) keeps the same sites off this page.
-
-const fallbackReason = (tier: Tier) =>
-  tier === "UNCLEAR"
-    ? "Too few of the key questions answered"
-    : tier === "NOT_DISCLOSED"
-      ? "The documents don’t say"
-      : "Nothing takes points off"
-
-async function load(): Promise<ShelfSite[] | null> {
-  await connection() // read at request time, never baked in at build
-  try {
-    const { sites } = await getSites()
-    return sites
-      .filter((s) => s.headline && s.headline !== "INFO" && showable(s.domain))
-      .map((s) => ({
-        domain: s.domain,
-        tier: s.headline as Tier,
-        score: s.score ?? null,
-        reason: s.reason ?? fallbackReason(s.headline as Tier),
-      }))
-  } catch {
-    return null
-  }
-}
+// the API (GET /v1/sites) at request time (components/home/ratedSites.ts,
+// which the about page counts from too).
 
 async function Head() {
-  const sites = await load()
+  const sites = await ratedSites()
   return (
     <>
       <section className="sites-head">
@@ -62,7 +36,7 @@ export default function SitesPage() {
   return (
     <div className="home page sites">
       <Masthead current="/sites" />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <Suspense
           fallback={
             <section className="sites-head">

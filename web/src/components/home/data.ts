@@ -73,7 +73,7 @@ export const CLAUSES: Clause[] = [
     quoteChars: 128,
     key: "retention",
     category: "Retention and deletion",
-    tier: "MODERATE",
+    tier: "INFO",
     note: "kept “as long as necessary”",
   },
 ]
@@ -104,7 +104,7 @@ export const FIRST_THREAD = {
 export const INDEX: { key: string; name: string; tier: Tier; line: number; why: string }[] = [
   { key: "selling_sharing", name: "Data selling and sharing", tier: "MODERATE", line: 58, why: "shares with advertising partners; does not sell" },
   { key: "collection", name: "Data collection", tier: "INFO", line: 25, why: "biometrics, third parties, public sources" },
-  { key: "retention", name: "Retention and deletion", tier: "MODERATE", line: 76, why: "“as long as necessary”; deletion on request" },
+  { key: "retention", name: "Retention and deletion", tier: "INFO", line: 76, why: "“as long as necessary”; deletion on request" },
   { key: "user_rights", name: "Your rights", tier: "MODERATE", line: 68, why: "access and export for all users; a narrower ad opt-out in the terms" },
   { key: "security", name: "Security", tier: "INFO", line: 75, why: "“reasonable measures”" },
   { key: "ai_training", name: "AI and model training", tier: "EXTENSIVE", line: 37, why: "trains models on content and messages" },
@@ -164,9 +164,13 @@ const RECENT_RAW: { domain: string; tier: Tier; why: string }[] = [
 ]
 export const RECENT = RECENT_RAW.filter((s) => showable(s.domain))
 
-// From docs/evaluation.md. `found`: quotes found word for word; `onTopic`: found
-// and containing one of the question's evidence words (the ones shown).
+// From docs/evaluation.md: the last full measurement, made on rubric v0.2
+// (the live ratings may use a newer rubric). `sites` is how many sites that
+// run covered, not how many are rated today (the every-site page counts
+// those). `found`: quotes found word for word; `onTopic`: found and
+// containing one of the question's evidence words (the ones shown).
 export const FIGURES = {
+  rubric: "v0.2",
   sites: 559,
   quotes: 8_407,
   found: "99.4",
