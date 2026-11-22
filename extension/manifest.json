@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Imbroglio",
-  "version": "1.0",
+  "version": "1.1",
   "description": "The privacy rating for the site you're on, from its own privacy policy and terms.",
   "homepage_url": "https://imbroglio.io",
   "permissions": [
