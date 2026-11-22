@@ -5,7 +5,8 @@ written; keep it in step with `extension/README.md` and imbroglio.io/privacy.
 
 ## Package
 
-- Upload: `imbroglio-1.0.zip` (build it with `python extension/store/package.py`)
+- Upload: `imbroglio-1.1.zip` (build it with `python extension/store/package.py`)
+- What's new in this version: `whats-new-1.1.md`
 
 ## Store listing
 
@@ -41,7 +42,9 @@ Private by design:
 • No account, no sign-in
 • No ads, no analytics, no tracking
 • The extension never sends the name of the site you're on. It sends only the first three characters of a SHA-256 hash of it, which many sites share, and finds the right answer on your own computer
-• What it remembers stays in your browser, filed under a key only your browser holds
+• On a subdomain we haven't rated, such as mail.example.com, it sends one more three-character prefix, for example.com, so the main site's rating can show. Never more than two
+• Nothing is sent for localhost, IP addresses or names on your own network
+• What it remembers stays in your browser, filed under a key only your browser holds. Recent lookups are kept in memory for up to ten minutes and cleared when the browser closes
 
 Imbroglio is free and open source, built as a senior capstone project at Metropolitan State University of Denver. Ratings describe what the documents say, not a company's intentions, and are not legal advice.
 
@@ -70,13 +73,13 @@ Show the privacy rating of the website in the current tab, made from that websit
 
 - `tabs`: To know which website each tab is showing, so the toolbar icon can show that site's rating as you browse and the popup can show the rating for the site you're on. The extension reads only the tab's address (its host name), never page content.
 - `notifications`: For two optional, one-time alerts the user can turn off in the popup: a warning the first time they visit a site rated Extensive or Severe, and a notice when a site they have visited changes its privacy policy or terms.
-- `storage`: To remember the user's two alert settings and, for those alerts, when it last warned about a site and the last policy change it saw there. Stored locally under a keyed hash, never the site's name.
-- Host permission `https://imbroglio.io/*`: The extension's only server. It fetches ratings from imbroglio.io's read-only lookup endpoint, sending a 3-character hash prefix, not the site's name.
+- `storage`: To remember the user's two alert settings and, for those alerts, when it last warned about a site and the last policy change it saw there. Stored locally under a keyed hash, never the site's name. Recent lookup results are also kept in session storage (memory only, cleared when the browser closes) so switching tabs doesn't repeat them.
+- Host permission `https://imbroglio.io/*`: The extension's only server. It fetches ratings from imbroglio.io's read-only lookup endpoint, sending a 3-character hash prefix, not the site's name. A subdomain with no rating of its own takes a second 3-character prefix, for its main domain; never more than two per site.
 
 **Remote code:** No, I am not using remote code. (All JavaScript is in the package; the extension only fetches JSON data.)
 
 **Data usage** (check what applies):
-- Web history: **Yes, check it.** To rate the current tab the extension reads its host name and sends a 3-character prefix of the name's SHA-256 hash to imbroglio.io. That is far coarser than the address, but it is derived from the sites you visit, so declare it rather than argue the point with a reviewer.
+- Web history: **Yes, check it.** To rate the current tab the extension reads its host name and sends a 3-character prefix of the name's SHA-256 hash to imbroglio.io (and, for an unrated subdomain, a second one for its main domain). That is far coarser than the address, but it is derived from the sites you visit, so declare it rather than argue the point with a reviewer.
 - Everything else (personally identifiable information, health, financial, authentication, personal communications, location, user activity, website content): **No.**
 
 **Certifications** (all three are true; check them):

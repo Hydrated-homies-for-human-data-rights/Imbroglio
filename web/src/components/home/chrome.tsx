@@ -40,8 +40,20 @@ const NAV = [
   { href: "/about", label: "About" },
 ]
 
+// The skip link is the first thing a keyboard reaches on every page; each
+// page's <main> carries id="main".
+export function SkipLink() {
+  return (
+    <a className="skip-link" href="#main">
+      Skip to content
+    </a>
+  )
+}
+
 export function Masthead({ current }: { current?: string }) {
   return (
+    <>
+    <SkipLink />
     <header className="masthead">
       <div className="masthead-inner">
         <Wordmark />
@@ -54,6 +66,7 @@ export function Masthead({ current }: { current?: string }) {
         </nav>
       </div>
     </header>
+    </>
   )
 }
 

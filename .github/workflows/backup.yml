@@ -1,0 +1,98 @@
+name: Database backup
+
+# Every night, a copy of the production database (Supabase, free plan, which
+# keeps no backups of its own). pg_dump writes the app's schema (public) in
+# Postgres's custom format, gpg encrypts it with a passphrase, and only the
+# encrypted file is kept, as this run's artifact, for 30 days. The repo is
+# public and so are its artifacts to anyone signed in to GitHub, and the
+# database holds readers' contact addresses, so nothing unencrypted ever
+# leaves the runner. How to restore: docs/backups.md.
+#
+# Secrets in this repo's Actions settings:
+#   BACKUP_DATABASE_URL  a Postgres URL for the database: the direct
+#                        connection or the SESSION pooler (port 5432), never
+#                        the transaction pooler (port 6543), which pg_dump
+#                        can't work through. See docs/backups.md.
+#   BACKUP_PASSPHRASE    a long random passphrase, kept somewhere other than
+#                        GitHub too: without it a backup can't be opened.
+# Unlike the health watch, a missing secret or a failed dump fails the run,
+# so GitHub emails about it: a backup that quietly didn't happen is the
+# failure this exists to catch.
+
+on:
+  schedule:
+    - cron: '41 9 * * *'   # 09:41 UTC, the middle of the night in the US
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      PG_BIN: /usr/lib/postgresql/17/bin
+    steps:
+      - name: Check the secrets are set
+        run: |
+          missing=""
+          [ -n "$BACKUP_DATABASE_URL" ] || missing="$missing BACKUP_DATABASE_URL"
+          [ -n "$BACKUP_PASSPHRASE" ] || missing="$missing BACKUP_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            echo "::error::Secret(s) not set:$missing. Add them under Settings > Secrets and variables > Actions (docs/backups.md). No backup was made."
+            exit 1
+          fi
+
+      # Supabase runs Postgres 17, and pg_dump refuses a server newer than
+      # itself, so the client comes from the PostgreSQL project's own apt
+      # repository rather than Ubuntu's.
+      - name: Install pg_dump 17
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends postgresql-client-17
+          "$PG_BIN/pg_dump" --version
+
+      - name: Dump and encrypt
+        id: dump
+        run: |
+          set -euo pipefail
+          umask 077
+          name="imbroglio-$(date -u +%Y-%m-%d-%H%M)"
+          plain="$RUNNER_TEMP/$name.dump"
+          # Only the app's own tables (schema public): Supabase's internal
+          # schemas aren't ours to restore and some can't be read by our role.
+          "$PG_BIN/pg_dump" --format=custom --schema=public --dbname="$BACKUP_DATABASE_URL" --file="$plain"
+          # A dump that can't be listed, or has no tables, is not a backup.
+          tables=$("$PG_BIN/pg_restore" --list "$plain" | grep -c ' TABLE public ' || true)
+          if [ "$tables" -lt 5 ]; then
+            echo "::error::The dump lists only $tables tables; something is wrong. No backup was kept."
+            exit 1
+          fi
+          # The passphrase goes to gpg on a file descriptor, never on the
+          # command line, so it can't show up in a process list or the log.
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+              --symmetric --cipher-algo AES256 --output "$name.dump.gpg" "$plain" 3<<< "$BACKUP_PASSPHRASE"
+          rm -f "$plain"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Backed up $tables tables: $name.dump.gpg ($(du -h "$name.dump.gpg" | cut -f1), encrypted)" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dump.outputs.name }}
+          path: ${{ steps.dump.outputs.name }}.dump.gpg
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0   # already compressed and encrypted

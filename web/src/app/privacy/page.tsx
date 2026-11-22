@@ -49,7 +49,7 @@ export default function PrivacyPage() {
     <div className="home page about">
       <Thread route={ROUTE} drive="time" />
       <Masthead current="/privacy" />
-      <main className="page-main">
+      <main className="page-main" id="main">
         <section className="hero" aria-labelledby="privacy-h1">
           <div className="page-head">
             <div className="eyebrow mono">Privacy · Imbroglio</div>

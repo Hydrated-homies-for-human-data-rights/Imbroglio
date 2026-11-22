@@ -29,3 +29,10 @@ export function cleanDomain(raw: string): string | null {
 }
 
 export const docName =(t: "privacy" | "terms") => (t === "privacy" ? "Privacy Policy" : "Terms of Service")
+
+// A whole number as text, with a real minus sign when it is below zero
+// (a score before it is kept in its range can be): "−30", not "-30".
+export const signed = (n: number) => (n < 0 ? `−${Math.abs(n)}` : String(n))
+
+// "a moderate", "an extensive": the article for the word that follows it.
+export const withArticle = (word: string) => `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word}`

@@ -41,8 +41,9 @@ def rows(conn, rubric_version: str):
     for version_id, domain, doc_type, url, chash, text in latest:
         yield {"kind": "document", "version_id": version_id, "domain": domain, "doc_type": doc_type,
                "url": url, "content_hash": chash, "text": text}
-        for check_id, status, quotes, flags, verified, expl, model, prov in conn.execute(
-                """SELECT check_id, status, quotes, quotes_verified, verified, explanation, model, provenance
+        for check_id, status, quotes, flags, verified, expl, model, prov, withdrawn in conn.execute(
+                """SELECT check_id, status, quotes, quotes_verified, verified, explanation, model, provenance,
+                          withdrawn_at IS NOT NULL
                    FROM findings WHERE version_id = %s AND rubric_version = %s ORDER BY check_id""",
                 (version_id, rubric_version)):
             check = rubric.check(check_id)
@@ -51,7 +52,8 @@ def rows(conn, rubric_version: str):
                    "rubric_version": rubric_version, "check_id": check_id, "category": check.category,
                    "status": status, "exposure": st.exposure if st else None,
                    "quotes": list(quotes or []), "quotes_verified": list(flags or []),
-                   "verified": verified, "explanation": expl, "labeler": model, "provenance": prov}
+                   "verified": verified, "explanation": expl, "labeler": model, "provenance": prov,
+                   "withdrawn": withdrawn}
 
 
 def write(out: Path, stream, rubric_version: str) -> dict[str, int]:

@@ -1,4 +1,11 @@
 # Development / test dependencies
 -r requirements.txt
-pytest>=8.0
-httpx>=0.27
+pytest==9.1.1
+httpx==0.28.1
+
+# What those pull in, pinned like requirements.txt
+httpcore==1.0.9
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pygments==2.21.0

@@ -63,10 +63,12 @@ export async function submitRequest(_prev: RequestState, form: FormData): Promis
 
 // --- report a problem -------------------------------------------------------
 
+// `attempt` counts the tries that came back with an error, so the form can
+// redraw its radio buttons after each one (see ReportForm).
 export type ReportState =
   | { kind: "idle" }
   | { kind: "received"; id: number }
-  | { kind: "error"; message: string; field?: "domain" | "message" | "kind" }
+  | { kind: "error"; message: string; field?: "domain" | "message" | "kind"; attempt: number }
 
 const MAX = { domain: 253, message: 4000, contact: 200, page: 500 }
 
@@ -80,7 +82,16 @@ function text(form: FormData, name: string, max: number): string {
     .slice(0, max)
 }
 
-export async function submitProblem(_prev: ReportState, form: FormData): Promise<ReportState> {
+export async function submitProblem(prev: ReportState, form: FormData): Promise<ReportState> {
+  const r = await checkAndSend(form)
+  if (r.kind !== "error") return r
+  const before = prev.kind === "error" && Number.isSafeInteger(prev.attempt) ? prev.attempt : 0
+  return { ...r, attempt: before + 1 }
+}
+
+type Outcome = { kind: "received"; id: number } | { kind: "error"; message: string; field?: "domain" | "message" | "kind" }
+
+async function checkAndSend(form: FormData): Promise<Outcome> {
   const domain = text(form, "domain", MAX.domain)
   const kind = String(form.get("kind") ?? "")
   const message = text(form, "message", MAX.message)

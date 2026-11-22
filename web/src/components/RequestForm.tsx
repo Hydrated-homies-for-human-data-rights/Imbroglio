@@ -13,9 +13,46 @@ import RequestProgress from "./RequestProgress"
 //
 // On a site's own page, `site` ties the form to that site: the box takes a
 // link to its policy, and the link has to be on that site.
+//
+// Screen readers hear each outcome from one status line that stays on the
+// page whatever the form shows, since a live region only speaks when its
+// text changes, not when it first appears.
 export default function RequestForm({ initial = "", site }: { initial?: string; site?: string }) {
   const [state, action, pending] = useActionState<RequestState, FormData>(submitRequest, { kind: "idle" })
+  const said = pending
+    ? "Sending the request…"
+    : state.kind === "error"
+      ? state.message
+      : state.kind === "accepted" && state.status === "already_available"
+        ? `We already have ${state.domain}.`
+        : state.kind === "accepted" && state.status === "no_policy_found"
+          ? `We looked at ${state.domain} recently. ${state.failure?.message ?? FALLBACK_MESSAGE}`
+          : state.kind === "accepted"
+            ? "Request received. We’ll add it to the analysis queue."
+            : ""
+  return (
+    <>
+      <p className="sr-only" role="status" aria-live="polite">
+        {said}
+      </p>
+      <Outcome state={state} action={action} pending={pending} initial={initial} site={site} />
+    </>
+  )
+}
 
+function Outcome({
+  state,
+  action,
+  pending,
+  initial,
+  site,
+}: {
+  state: RequestState
+  action: (form: FormData) => void
+  pending: boolean
+  initial: string
+  site?: string
+}) {
   if (state.kind === "accepted" && state.status === "already_available") {
     return (
       <p className="mt-4 text-sm">

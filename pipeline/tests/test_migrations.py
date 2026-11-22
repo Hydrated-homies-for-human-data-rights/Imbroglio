@@ -101,3 +101,71 @@ def test_0006_replaces_near_miss_quotes_with_document_text(fresh_db):
         quotes = c.execute("SELECT quotes FROM findings").fetchone()[0]
     assert quotes[0].startswith("You grant us") and "publicly perform" in quotes[0]
     assert quotes[1] == "made up words that are nowhere"      # unverified quotes are left alone
+
+
+API_ROLES = ("anon", "authenticated")
+
+
+def test_0015_takes_the_tables_away_from_supabase_api_roles(fresh_db):
+    """Supabase's anon and authenticated roles, made here the way Supabase
+    sets them up (full rights, and default privileges for new tables). Roles
+    belong to the whole server, so only ones this test made are dropped."""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(db.MIGRATIONS))
+    command.upgrade(cfg, "0014")
+    admin = psycopg.connect(ADMIN_DSN, autocommit=True)
+    made = []
+    try:
+        for role in API_ROLES:
+            if admin.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone() is None:
+                admin.execute(f"CREATE ROLE {role} NOLOGIN")
+                made.append(role)
+        with psycopg.connect(fresh_db, autocommit=True) as c:
+            for role in API_ROLES:
+                c.execute(f"GRANT ALL ON ALL TABLES IN SCHEMA public TO {role}")
+                c.execute(f"GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO {role}")
+                c.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {role}")
+            assert c.execute("SELECT has_table_privilege('anon', 'reports', 'SELECT')").fetchone()[0]
+
+        command.upgrade(cfg, "head")
+        with psycopg.connect(fresh_db, autocommit=True) as c:
+            for role in API_ROLES:
+                for table in ("reports", "findings", "services"):
+                    for right in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                        assert not c.execute("SELECT has_table_privilege(%s, %s, %s)",
+                                             (role, table, right)).fetchone()[0], (role, table, right)
+                assert not c.execute("SELECT has_sequence_privilege(%s, 'reports_id_seq', 'USAGE')",
+                                     (role,)).fetchone()[0]
+            c.execute("CREATE TABLE made_later (id int)")    # default privileges no longer grant it
+            assert not c.execute("SELECT has_table_privilege('anon', 'made_later', 'SELECT')").fetchone()[0]
+            # the app's own role keeps everything
+            assert c.execute("SELECT has_table_privilege(current_user, 'reports', 'INSERT')").fetchone()[0]
+    finally:
+        if made:
+            with psycopg.connect(fresh_db, autocommit=True) as c:
+                for role in made:
+                    c.execute(f"DROP OWNED BY {role}")   # its grants here, so the role can go
+            for role in made:
+                admin.execute(f"DROP ROLE IF EXISTS {role}")
+        admin.close()
+
+
+def test_0015_does_nothing_without_the_supabase_roles(fresh_db):
+    """Plain Postgres (CI, local docker) has no anon or authenticated role."""
+    from alembic import command
+    from alembic.config import Config
+
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as admin:
+        if admin.execute("SELECT 1 FROM pg_roles WHERE rolname = ANY(%s)", (list(API_ROLES),)).fetchone():
+            pytest.skip("this server has a Supabase API role")
+    from alembic.script import ScriptDirectory
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(db.MIGRATIONS))
+    command.upgrade(cfg, "head")
+    with psycopg.connect(fresh_db) as c:
+        current = c.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+    assert current == ScriptDirectory.from_config(cfg).get_current_head()

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import socket
 import threading
 import time
@@ -21,7 +22,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
-from .netguard import NO_PUBLIC_ADDRESS, BlockedURL, check_url, is_allowed
+from .netguard import NO_PUBLIC_ADDRESS, BlockedURL, check_peer, check_url, is_allowed
 
 log = logging.getLogger("imbroglio")
 
@@ -135,10 +136,14 @@ def _watch(sock: socket.socket) -> None:
 
 
 # urllib3 classes that hand every socket a fetch uses to its _Deadline: new
-# connections when they connect, kept-alive ones when they are reused.
+# connections when they connect, kept-alive ones when they are reused. A new
+# connection is also checked against the address it really reached
+# (check_peer), so a name that resolved public a moment ago and private now
+# is still refused.
 class _WatchedHTTPConnection(HTTPConnection):
     def _new_conn(self):
         sock = super()._new_conn()
+        check_peer(sock)
         _watch(sock)
         return sock
 
@@ -146,6 +151,7 @@ class _WatchedHTTPConnection(HTTPConnection):
 class _WatchedHTTPSConnection(HTTPSConnection):
     def _new_conn(self):
         sock = super()._new_conn()
+        check_peer(sock)
         _watch(sock)
         return sock
 
@@ -179,7 +185,12 @@ class _WatchedAdapter(HTTPAdapter):
 
 def _watched(sess: requests.Session) -> requests.Session:
     """The session, with adapters whose sockets a _Deadline can cut off.
-    Callers share one session across a crawl, so this is done once."""
+    Callers share one session across a crawl, so this is done once.
+
+    trust_env is off: a proxy from the environment would make check_peer
+    see the proxy instead of the site, and a ~/.netrc entry would send its
+    password to whatever host a policy link names."""
+    sess.trust_env = False
     if not isinstance(sess.get_adapter("https://"), _WatchedAdapter):
         sess.mount("https://", _WatchedAdapter())
         sess.mount("http://", _WatchedAdapter())
@@ -203,8 +214,39 @@ def _read_capped(resp: requests.Response, deadline: _Deadline | None = None) -> 
     # A cut-off socket can read as a normal end of the body; never return half a page.
     if deadline is not None and deadline.expired:
         raise TooSlow(f"took over {MAX_SECONDS:.0f}s")
-    body = b"".join(chunks)
-    return body.decode(resp.encoding or resp.apparent_encoding or "utf-8", errors="replace")
+    return _decode(b"".join(chunks), resp)
+
+
+_CHARSET = re.compile(rb"""<meta[^>]+charset\s*=\s*["']?\s*([A-Za-z0-9_.:-]+)""", re.I)
+_LATIN = {"iso-8859-1", "latin-1", "latin1", "windows-1252", "cp1252", "us-ascii", "ascii"}
+
+
+def _decode(body: bytes, resp: requests.Response) -> str:
+    """The body as text. requests assumes ISO-8859-1 for any text/html sent
+    without a charset, which turned UTF-8 quotes into mojibake on bereal.com,
+    budgetbakers.com, transitapp.com and two dozen other sites (audit,
+    Nov 21). So a charset counts only when the server or the page names one,
+    and a Latin-1 label on bytes that are valid UTF-8 is not believed: real
+    Latin-1 text almost never happens to be valid UTF-8."""
+    ctype = resp.headers.get("content-type", "")
+    named = re.search(r"charset\s*=\s*[\"']?([\w.:-]+)", ctype, re.I)
+    charset = named.group(1) if named else None
+    if charset is None:
+        meta = _CHARSET.search(body[:4096])
+        charset = meta.group(1).decode("ascii") if meta else None
+    if body.startswith(b"\xef\xbb\xbf"):
+        charset = "utf-8-sig"
+    if charset is None or charset.lower() in _LATIN:
+        try:
+            return body.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+    if charset is None:
+        charset = resp.apparent_encoding or "utf-8"
+    try:
+        return body.decode(charset, errors="replace")
+    except LookupError:  # a charset name Python doesn't know
+        return body.decode("utf-8", errors="replace")
 
 
 def _get_checked(sess: requests.Session, url: str) -> requests.Response:

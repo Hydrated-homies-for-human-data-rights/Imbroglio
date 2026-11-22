@@ -21,6 +21,10 @@ STALL_MINUTES = 30             # work waiting, nothing finished this long
 STALE_RUNNING_MINUTES = 15     # a running job with no heartbeat this long
 FAILED_PER_DAY = 5             # jobs that failed outright in 24 hours
 RECHECK_STALE_HOURS = 26       # the hourly recheck pass hasn't recorded anything
+# ...while documents have been due this long. A quiet day with nothing due
+# is normal (every document checked within RECHECK_DAYS), not a stop. Two
+# hours is two hourly passes, so a document that just came due doesn't count.
+RECHECK_OVERDUE_HOURS = 2
 
 
 @dataclass
@@ -38,6 +42,7 @@ class Snapshot:
     spent_24h_usd: float
     budget_usd: float
     hours_since_last_recheck: float | None
+    overdue_rechecks: int = 0      # documents due for RECHECK_OVERDUE_HOURS+ hours
 
 
 def _minutes(td) -> float | None:
@@ -62,6 +67,10 @@ def snapshot(conn: psycopg.Connection, public_sources: tuple[str, ...]) -> Snaps
            FROM analysis_requests""",
         {"public": list(public_sources), "stale": STALE_RUNNING_MINUTES}).fetchone()
     last_check = conn.execute("SELECT now() - max(checked_at) FROM document_checks").fetchone()[0]
+    overdue = 0
+    from .recheck import RECHECK_DAYS, due
+    if RECHECK_DAYS > 0:  # 0 turns rechecks off, so nothing is ever overdue
+        overdue = len(due(conn, RECHECK_DAYS, grace_hours=RECHECK_OVERDUE_HOURS))
     return Snapshot(
         checked_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         queued=q[0], running=q[1], visitor_queued=q[2],
@@ -70,6 +79,7 @@ def snapshot(conn: psycopg.Connection, public_sources: tuple[str, ...]) -> Snaps
         stale_running=q[7], failed_24h=q[8],
         spent_24h_usd=round(analysis.spent_last_24h(conn), 2), budget_usd=analysis.DAILY_BUDGET_USD,
         hours_since_last_recheck=None if last_check is None else round(last_check.total_seconds() / 3600, 1),
+        overdue_rechecks=overdue,
     )
 
 
@@ -91,9 +101,12 @@ def problems(s: Snapshot) -> list[str]:
     if s.budget_usd and s.spent_24h_usd >= s.budget_usd:
         out.append(f"The analysis budget is used up: ${s.spent_24h_usd:.2f} of ${s.budget_usd:.2f} in "
                    "24 hours. New sites are crawled but wait for analysis.")
-    if s.hours_since_last_recheck is not None and s.hours_since_last_recheck > RECHECK_STALE_HOURS:
-        out.append(f"No policy recheck recorded in {s.hours_since_last_recheck:.0f} hours "
-                   "(the hourly recheck should record some every day).")
+    quiet = s.hours_since_last_recheck is None or s.hours_since_last_recheck > RECHECK_STALE_HOURS
+    if quiet and s.overdue_rechecks:
+        since = ("ever" if s.hours_since_last_recheck is None
+                 else f"in {s.hours_since_last_recheck:.0f} hours")
+        out.append(f"Rechecks look stopped: {s.overdue_rechecks} document(s) are overdue and no "
+                   f"policy recheck was recorded {since}.")
     return out
 
 

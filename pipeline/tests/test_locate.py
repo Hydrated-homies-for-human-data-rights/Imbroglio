@@ -144,6 +144,30 @@ def test_privacy_and_terms_link_to_terms_page_is_not_the_privacy_policy(web):
     assert result["terms"].url == "https://dropbox.com/terms"
 
 
+def test_one_combined_page_is_stored_once_not_as_both_documents(web):
+    # 16 sites had one page stored as both their privacy policy and terms
+    pages, _ = web
+    pages["https://one.test"] = page('<a href="/legal">Privacy Policy</a> <a href="/legal">Terms of Service</a>')
+    pages["https://one.test/legal"] = page(LONG_POLICY + TERMS)
+    result = locate.locate_all("one.test", use_playwright=False)
+    assert result["privacy"].ok and result["privacy"].url == "https://one.test/legal"
+    assert not result["terms"].ok
+    assert result["terms"].notes == ["same page as the privacy document"]
+
+
+def test_two_addresses_with_the_same_text_are_one_page_kept_as_what_it_says(web):
+    # /privacy and /terms both landing on the terms (a redirect, or one page
+    # served at two paths): the page's own title decides, not the link
+    pages, _ = web
+    pages["https://two.test"] = page('<a href="/privacy">Privacy Policy</a> <a href="/terms">Terms of Service</a>')
+    pages["https://two.test/privacy"] = page(TERMS + POLICY)
+    pages["https://two.test/terms"] = page(TERMS + POLICY)
+    result = locate.locate_all("two.test", use_playwright=False)
+    assert result["terms"].ok and result["terms"].url == "https://two.test/terms"
+    assert not result["privacy"].ok
+    assert result["privacy"].notes[-1] == "same page as the terms document"
+
+
 def test_short_privacy_hub_is_followed_to_the_full_policy(web):
     # reddit.com/privacy, apple.com/privacy: a short page that passes validation
     pages, _ = web

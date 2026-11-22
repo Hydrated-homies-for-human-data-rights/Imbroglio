@@ -242,7 +242,7 @@
 .page .form input:focus,
 .page .form textarea:focus,
 .page .form select:focus {
-  border-bottom: 2px solid var(--pink-deep);
+  border-bottom: 2px solid var(--focus);
   padding-bottom: 9px;
 }
 .page .form [aria-invalid="true"] {

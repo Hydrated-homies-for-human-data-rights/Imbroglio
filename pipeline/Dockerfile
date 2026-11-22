@@ -13,12 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-# `playwright install` fetches the Chromium build matching the installed
-# playwright package (an image-pinned browser can drift from requirements.txt);
-# --with-deps adds the system libraries Chromium needs on Debian. libatomic1
-# goes in first: playwright's bundled Node needs it since 1.65, and
-# python:3.12-slim doesn't have it (every Railway build failed without it,
-# Nov 17).
+# requirements.txt pins every package, so builds don't drift. `playwright
+# install` fetches the Chromium build matching the pinned playwright package
+# (an image-pinned browser can drift from requirements.txt); --with-deps adds
+# the system libraries Chromium needs on Debian. libatomic1 goes in first:
+# playwright's bundled Node needs it since 1.65, and python:3.12-slim doesn't
+# have it (every Railway build failed without it, Nov 17). The pin is 1.64.1
+# today; keep libatomic1 so moving the pin past 1.65 still builds.
 RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 tini \
  && pip install -r requirements.txt \
  && playwright install --with-deps chromium \

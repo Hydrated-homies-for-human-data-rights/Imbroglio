@@ -16,9 +16,10 @@ import { ApiError, lookup } from "@/lib/api"
 // stale: someone who just requested a site would otherwise see "not rated"
 // for up to fifteen minutes after its rating is ready.
 
-// extension/background.js PREFIX_LENGTH: 3 since extension 1.0 (5 before;
-// still accepted for copies loaded unpacked before then)
-const PREFIX = /^(?:[0-9a-f]{3}|[0-9a-f]{5})$/
+// extension/background.js PREFIX_LENGTH: 3 since extension 1.0. Longer
+// prefixes (5 before 1.0) are refused: each extra character narrows down
+// which site the visitor is on, and this route only serves the extension.
+const PREFIX = /^[0-9a-f]{3}$/
 const CACHE = "public, s-maxage=300, stale-while-revalidate=600"
 const CACHE_UNRATED = "public, s-maxage=30"
 

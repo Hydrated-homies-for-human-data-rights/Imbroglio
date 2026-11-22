@@ -43,7 +43,8 @@ export default function SearchResults({
   )
 
   return (
-    <main className="mx-auto max-w-[1180px] px-5 py-7 sm:px-8 sm:py-9">
+    <main id="main" className="mx-auto max-w-[1180px] px-5 py-7 sm:px-8 sm:py-9">
+      <h1 className="sr-only">Search results for “{searchTerm}”</h1>
       <section aria-label="Search filters" className="flex flex-wrap items-center gap-3">
         <span className="mr-1 text-sm font-medium text-[#5d6e80]">Filter</span>
         <label>

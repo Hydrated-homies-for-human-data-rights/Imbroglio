@@ -49,10 +49,11 @@ _stop = threading.Event()
 class _ProgressHandler(logging.Handler):
     """Forwards one worker thread's pipeline log lines to its request row."""
 
-    def __init__(self, request_id: int, thread_id: int) -> None:
+    def __init__(self, request_id: int, thread_id: int, cancel: threading.Event | None = None) -> None:
         super().__init__()
         self.request_id = request_id
         self.thread_id = thread_id
+        self.cancel = cancel
         self.conn = db.connect()
         self.last = 0.0
         self.pending: str | None = None
@@ -60,6 +61,8 @@ class _ProgressHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         if record.thread != self.thread_id or getattr(record, "server_only", False):
             return
+        if self.cancel is not None and self.cancel.is_set():
+            return  # the request was already marked failed; its log is closed
         msg = record.getMessage()
         now = time.monotonic()
         if now - self.last < PROGRESS_MIN_INTERVAL:
@@ -96,26 +99,37 @@ def _summary(outcomes) -> dict:
     }
 
 
-def process_one(worker_id: str) -> bool:
-    """Claim and run one job. Returns False if the queue was empty.
+def process_one(worker_id: str, conn=None) -> bool:
+    """Claim and run one job. Returns False if the queue was empty. `conn`
+    is the polling loop's own connection, kept across polls; without one a
+    connection is opened for the claim.
 
     The job runs on its own thread while this one keeps its heartbeat going
     and watches the clock. A job past JOB_TIME_LIMIT is marked failed and left
     behind, so one site that stalls every fetch can't hold a worker thread
     (and, through reclaims, the next one) forever. Python can't kill a
-    thread; the fetch deadlines in fetch.py are what make a stuck one finish."""
-    conn = db.connect()
+    thread, so the job is told to stop instead (`cancel`): it starts no new
+    model call, stores nothing more, and writes no more progress to the
+    request. A fetch already in flight still runs to its own deadline in
+    fetch.py, and a model call already in flight finishes and is recorded,
+    since it has been paid for."""
+    own = conn is None
+    if own:
+        conn = db.connect()
     try:
         job = jobs.claim(conn, worker_id)
     finally:
-        conn.close()
+        if own:
+            conn.close()
     if job is None:
         return False
 
     request_id, domain, use_playwright, policy_url = job
     log.info("job %s: %s (browser %s)", request_id, domain, "on" if use_playwright else "off")
     outcome: dict = {}
-    t = threading.Thread(target=_run_job, args=(request_id, domain, use_playwright, policy_url, outcome),
+    cancel = threading.Event()
+    t = threading.Thread(target=_run_job,
+                         args=(request_id, domain, use_playwright, policy_url, outcome, cancel),
                          daemon=True, name=f"job-{request_id}")
     t0 = time.monotonic()
     t.start()
@@ -124,8 +138,9 @@ def process_one(worker_id: str) -> bool:
         if not t.is_alive():
             break
         if time.monotonic() - t0 > JOB_TIME_LIMIT:
-            log.error("job %s (%s) still running after %ss; marked failed and left behind",
+            log.error("job %s (%s) still running after %ss; marked failed and told to stop",
                       request_id, domain, int(JOB_TIME_LIMIT))
+            cancel.set()
             outcome = {"ok": False, "error": TOOK_TOO_LONG}
             break
         try:
@@ -149,18 +164,24 @@ def process_one(worker_id: str) -> bool:
 
 
 def _run_job(request_id: int, domain: str, use_playwright: bool, policy_url: str | None,
-             outcome: dict) -> None:
+             outcome: dict, cancel: threading.Event | None = None) -> None:
     """Crawl and analyze one site; the result goes into `outcome` for
-    process_one to record."""
+    process_one to record. Once `cancel` is set (process_one gave up on the
+    job) it stops at the next step instead of carrying on unseen."""
+    cancel = cancel or threading.Event()
     pipeline_log = logging.getLogger("imbroglio")
     pipeline_log.setLevel(logging.INFO)
-    handler = _ProgressHandler(request_id, threading.get_ident())
+    handler = _ProgressHandler(request_id, threading.get_ident(), cancel)
     pipeline_log.addHandler(handler)
     t0 = time.time()
     try:
         outcomes = analyze(domain, use_playwright=use_playwright, time_budget=TIME_BUDGET,
                            policy_url=policy_url)
         seconds = time.time() - t0
+        if cancel.is_set():
+            log.warning("job %s (%s) finished its crawl after it was given up on; stopping there",
+                        request_id, domain, extra=SERVER_ONLY)
+            return
         conn = db.connect()
         try:
             for o in outcomes:  # same audit trail as batch and console runs
@@ -173,13 +194,13 @@ def _run_job(request_id: int, domain: str, use_playwright: bool, policy_url: str
             # never fails the crawl that already succeeded.
             for o in outcomes:
                 if o.version_id:
-                    o.analysis = _analyze_safely(conn, o.version_id)
+                    o.analysis = _analyze_safely(conn, o.version_id, cancel)
             # Documents stored earlier that are still waiting (the budget ran
             # out, or this crawl couldn't reach them today).
             seen = {o.version_id for o in outcomes}
             for version_id in pending_versions(conn, domain=domain):
-                if version_id not in seen:
-                    _analyze_safely(conn, version_id)
+                if version_id not in seen and not cancel.is_set():
+                    _analyze_safely(conn, version_id, cancel)
         finally:
             conn.close()
         outcome.update(ok=True, result=_summary(outcomes))
@@ -192,9 +213,9 @@ def _run_job(request_id: int, domain: str, use_playwright: bool, policy_url: str
         handler.close()
 
 
-def _analyze_safely(conn, version_id: int) -> str:
+def _analyze_safely(conn, version_id: int, cancel: threading.Event | None = None) -> str:
     try:
-        return ensure_analyzed(conn, version_id)
+        return ensure_analyzed(conn, version_id, cancel=cancel)
     except Exception:
         conn.rollback()
         log.exception("analysis failed for version %s", version_id, extra=SERVER_ONLY)
@@ -202,14 +223,31 @@ def _analyze_safely(conn, version_id: int) -> str:
 
 
 def _loop(worker_id: str) -> None:
-    while not _stop.is_set():
-        try:
-            busy = process_one(worker_id)
-        except Exception:
-            log.exception("worker loop error (database unreachable?)")
-            busy = False
-        if not busy:
-            _stop.wait(POLL_SECONDS)
+    # One connection for polling, kept between polls: an idle worker asks for
+    # a job every POLL_SECONDS, and a new connection each time was one TLS
+    # handshake and backend start per thread every two seconds. Dropped and
+    # opened again after any error, since it may be the connection that broke.
+    conn = None
+    try:
+        while not _stop.is_set():
+            try:
+                if conn is None or conn.closed:
+                    conn = db.connect()
+                busy = process_one(worker_id, conn)
+            except Exception:
+                log.exception("worker loop error (database unreachable?)")
+                busy = False
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    conn = None
+            if not busy:
+                _stop.wait(POLL_SECONDS)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 RECHECK_TICK_SECONDS = 3600.0
