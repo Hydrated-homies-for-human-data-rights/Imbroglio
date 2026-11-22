@@ -7,6 +7,7 @@
   scoring schemes compared on real findings
 - `design-changes.md`: where the built system differs from the design spec, and why
 - `rubric-v1.md`: the draft of rubric v1.0, the open decisions, and the bar it must meet before launch
+- `backups.md`: the nightly encrypted database backup, the two secrets it needs, and how to restore
 
 Planned:
 
