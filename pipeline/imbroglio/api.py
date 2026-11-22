@@ -520,10 +520,19 @@ CLIENT_IP_HEADER = os.environ.get("CLIENT_IP_HEADER", "").strip().lower()
 WEB_CLIENT_KEY = os.environ.get("WEB_CLIENT_KEY", "")
 
 
-def _network(addr: str) -> str:
-    """An IPv6 address counts as its /64 network: one home or phone is handed
-    a whole /64, so counting single addresses would let anyone rotate past
-    the limits. IPv4 addresses (and anything unparseable) count as given."""
+# The daily per-client limit counts an IPv6 client by this wider network.
+# One customer is commonly handed a /48 (65,536 /64s), so per /64 a single
+# person could rotate through enough networks to use up DAILY_REQUEST_CAP,
+# and with it the day's analysis budget. The hourly limits stay per /64, so
+# neighbours on one /48 only share the day's allowance.
+DAILY_IPV6_PREFIX = 48
+
+
+def _network(addr: str, v6_prefix: int = 64) -> str:
+    """An IPv6 address counts as its /64 network (or `v6_prefix`): one home
+    or phone is handed a whole /64, so counting single addresses would let
+    anyone rotate past the limits. IPv4 addresses (and anything unparseable)
+    count as given."""
     try:
         ip = ipaddress.ip_address(addr.strip().strip("[]").split("%")[0])
     except ValueError:
@@ -531,22 +540,22 @@ def _network(addr: str) -> str:
     if ip.version == 6:
         if ip.ipv4_mapped is not None:
             return str(ip.ipv4_mapped)
-        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+        return str(ipaddress.ip_network(f"{ip}/{v6_prefix}", strict=False))
     return str(ip)
 
 
-def client_address(request: Request) -> str:
+def client_address(request: Request, v6_prefix: int = 64) -> str:
     if WEB_CLIENT_KEY:
         key = request.headers.get("x-imbroglio-web-key", "")
         visitor = request.headers.get("x-imbroglio-visitor-ip", "").strip()
         if visitor and secrets.compare_digest(key.encode(), WEB_CLIENT_KEY.encode()):
-            return "visitor " + _network(visitor[:64])
+            return "visitor " + _network(visitor[:64], v6_prefix)
     if CLIENT_IP_HEADER:
         # If the platform appends to a list, the last entry is the one it added.
         value = request.headers.get(CLIENT_IP_HEADER, "").split(",")[-1].strip()
         if value:
-            return _network(value[:64])
-    return _network(request.client.host) if request.client else "unknown"
+            return _network(value[:64], v6_prefix)
+    return _network(request.client.host, v6_prefix) if request.client else "unknown"
 
 
 class NewRequest(BaseModel):
@@ -639,7 +648,7 @@ def create_request(body: NewRequest, request: Request):
         if not _limiter.allow(client):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_HOUR} requests per hour."},
                                 status_code=429, headers={"Retry-After": "600"})
-        if not _daily_limiter.allow(client):
+        if not _daily_limiter.allow(client_address(request, DAILY_IPV6_PREFIX)):
             return JSONResponse({"error": f"Rate limit: at most {REQUESTS_PER_DAY} requests a day."},
                                 status_code=429, headers={"Retry-After": "3600"})
         site = site_of(domain)

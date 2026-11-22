@@ -4,7 +4,7 @@ import "server-only"
 // Runs only on the server, so the API base URL and any credentials never
 // reach the browser.
 //
-//   IMBROGLIO_API_URL       e.g. https://api.imbroglio.io (no trailing slash)
+//   IMBROGLIO_API_URL       the Railway API service's address (no trailing slash)
 //   IMBROGLIO_API_USER      optional basic-auth user while the API is password-protected
 //   IMBROGLIO_API_PASSWORD  optional basic-auth password
 //   IMBROGLIO_WEB_KEY       must match the API's WEB_CLIENT_KEY (for rate limits)

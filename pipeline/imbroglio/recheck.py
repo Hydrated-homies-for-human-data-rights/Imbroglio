@@ -53,12 +53,13 @@ class Check:
 
 
 def due(conn, every_days: int, limit: int | None = None,
-        domains: list[str] | None = None) -> list[tuple[int, str, str, str]]:
+        domains: list[str] | None = None, grace_hours: int = 0) -> list[tuple[int, str, str, str]]:
     """(document_id, domain, doc_type, url) for documents neither fetched nor
-    checked in the last `every_days` days, longest-waiting first. Documents
-    stored by hand (fetch_method 'manual') are left out: they were stored
-    that way because the crawler can't fetch them. So are held documents:
-    a new version of the wrong page is still the wrong page."""
+    checked in the last `every_days` days (plus `grace_hours`, for the health
+    watch's "overdue"), longest-waiting first. Documents stored by hand
+    (fetch_method 'manual') are left out: they were stored that way because
+    the crawler can't fetch them. So are held documents: a new version of
+    the wrong page is still the wrong page."""
     return conn.execute(
         f"""SELECT d.id, s.domain, d.doc_type, d.url
             FROM documents d
@@ -70,11 +71,12 @@ def due(conn, every_days: int, limit: int | None = None,
                                WHERE c.document_id = d.id) c ON true
             WHERE coalesce(v.fetch_method, '') <> 'manual'
               AND d.held_reason IS NULL
-              AND greatest(v.fetched_at, c.at) <= now() - make_interval(days => %(days)s)
+              AND greatest(v.fetched_at, c.at) <= now() - make_interval(days => %(days)s,
+                                                                         hours => %(grace)s)
               {"AND s.domain = ANY(%(domains)s)" if domains else ""}
             ORDER BY greatest(v.fetched_at, c.at), d.id
             {"LIMIT %(limit)s" if limit else ""}""",
-        {"days": every_days, "domains": domains, "limit": limit},
+        {"days": every_days, "grace": grace_hours, "domains": domains, "limit": limit},
     ).fetchall()
 
 

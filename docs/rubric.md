@@ -36,7 +36,10 @@ Every category is rated on one scale, read in one direction: how exposed the use
 
 On screen each rating is a shape, a word and a color together, so it never relies on color alone (N3).
 
-## Scorer s1 (live)
+## Scorer s1 (rubric v0.1, the first rules)
+
+The live rules are scorer s3, which builds on s2 (see "Next: scorer s2 and rubric v0.2" and
+"Next: rubric v0.3" below). s1 is kept here because the rules that follow start from it.
 
 1. Only verified findings count.
 2. A category's rating is the highest exposure among its verified findings.

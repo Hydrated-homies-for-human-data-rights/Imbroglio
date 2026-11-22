@@ -19,6 +19,7 @@
     python -m imbroglio.cli withdraw notion.so sells_personal_data --doc privacy \\
         --reason "the quote is about cookies, not selling" --report 12
     python -m imbroglio.cli withdrawn             # every withdrawn finding; unwithdraw puts one back
+    python -m imbroglio.cli scores-table          # which stored score rows are old (read-only)
 """
 
 from __future__ import annotations
@@ -50,7 +51,8 @@ def _extract_cmd(args) -> int:
     from concurrent.futures import ThreadPoolExecutor
 
     from . import db
-    from .analysis import RUBRIC_VERSION, ensure_analyzed, extraction_enabled, spent_last_24h
+    from .analysis import (RUBRIC_VERSION, ensure_analyzed, extraction_enabled, spent_last_24h,
+                           worth_trying_params, worth_trying_sql)
 
     logging.basicConfig(level=logging.WARNING)
     if not extraction_enabled():
@@ -58,19 +60,26 @@ def _extract_cmd(args) -> int:
         return 1
     conn = db.connect()
     db.init_schema(conn)
-    where, params = "", []
+    where, params = "", worth_trying_params()
     if args.domains:
-        where, params = "WHERE s.domain = ANY(%s)", [list(args.domains)]
+        where, params["domains"] = "WHERE s.domain = ANY(%(domains)s)", list(args.domains)
     elif not args.all:
         print("give domains, or --all")
         return 1
     # Held documents are the wrong page: ensure_analyzed refuses them anyway,
-    # but left in they would take up --limit slots on every run.
+    # but left in they would take up --limit slots on every run. So would
+    # text too long for one call and documents that already failed
+    # MAX_ANALYSIS_TRIES times, the worker's rule (analysis.worth_trying_sql).
+    # --force reads a document again however often it was read before, so
+    # it skips only the ones too long to read.
     rows = conn.execute(
-        f"""SELECT DISTINCT ON (d.id) s.domain, d.doc_type, v.id
-            FROM documents d JOIN services s ON s.id = d.service_id AND d.held_reason IS NULL
-            JOIN document_versions v ON v.document_id = d.id {where}
-            ORDER BY d.id, v.fetched_at DESC""", params).fetchall()
+        f"""SELECT domain, doc_type, version_id FROM (
+                SELECT DISTINCT ON (d.id) d.id AS document_id, s.domain, d.doc_type, v.id AS version_id
+                FROM documents d JOIN services s ON s.id = d.service_id AND d.held_reason IS NULL
+                JOIN document_versions v ON v.document_id = d.id {where}
+                ORDER BY d.id, v.fetched_at DESC) latest
+            WHERE {worth_trying_sql("latest.version_id", count_tries=not args.force)}
+            ORDER BY document_id""", params).fetchall()
     if not args.force:
         rows = [r for r in rows if not conn.execute(
             "SELECT 1 FROM findings WHERE version_id = %s AND rubric_version = %s LIMIT 1",
@@ -161,6 +170,41 @@ def _reanalyze_cmd(args) -> int:
 
 
 REPORT_STATUSES = ("new", "reviewed", "withdrawn", "dismissed")
+
+
+def scores_table(conn, rubric_version: str) -> list[tuple]:
+    """(rubric_version, scorer_version, rows, document versions, newest,
+    current?) for each kind of row in the scores table. Read-only."""
+    from . import scorer
+    from .rubric import load
+
+    current = (rubric_version, scorer.version_for(load(rubric_version)))
+    return [(*r, (r[0], r[1]) == current) for r in conn.execute(
+        """SELECT rubric_version, scorer_version, count(*), count(DISTINCT version_id), max(created_at)
+           FROM scores GROUP BY rubric_version, scorer_version
+           ORDER BY rubric_version, scorer_version""")]
+
+
+def _scores_table_cmd() -> int:
+    """The scores table is a record written beside each analysis
+    (analysis._write_scores). Nothing reads it back: the API, search and
+    lookup rate each site from its findings when asked (scorer.rate), so
+    rows from an older scorer (s2) or rubric are leftovers and are never
+    served. This only lists them; it changes nothing."""
+    from . import db
+    from .analysis import RUBRIC_VERSION
+
+    conn = db.connect()
+    try:
+        rows = scores_table(conn, RUBRIC_VERSION)
+    finally:
+        conn.close()
+    for rubric_version, scorer_version, n, versions, newest, current in rows:
+        print(f"{rubric_version:<6} {scorer_version:<4} {n:>6} rows  {versions:>5} document versions  "
+              f"newest {newest:%Y-%m-%d}  {'current' if current else 'old: nothing reads these'}")
+    print("The site ratings come from findings, scored when asked; this table is never read. "
+          "Old rows can stay, or be deleted by hand once nobody wants them for history.")
+    return 0
 
 
 def list_reports(conn, status: str = "new", limit: int = 50) -> list[tuple]:
@@ -552,6 +596,10 @@ def main() -> int:
                     help="the document, as UTF-8 text or the page saved as HTML (- for stdin)")
     sd.add_argument("--analyze", action="store_true", help="run the LLM analysis right away")
 
+    sub.add_parser("scores-table",
+                   help="what the scores table holds, per rubric and scorer, and which rows are old "
+                        "(read-only; nothing serves this table)")
+
     el = sub.add_parser("export-labels", help="export findings + document texts as classifier training data")
     el.add_argument("--rubric", default="v0.1")
     el.add_argument("--out", type=Path, default=Path("exports/labels-v0.1"))
@@ -745,6 +793,9 @@ def main() -> int:
 
     if args.command == "extract":
         return _extract_cmd(args)
+
+    if args.command == "scores-table":
+        return _scores_table_cmd()
 
     if args.command == "reanalyze":
         return _reanalyze_cmd(args)

@@ -20,20 +20,34 @@ Working:
   extracts clean text, hashes it, and stores every version. On a random sample
   of ToS;DR services it finds a privacy policy for about 80% of the sites it
   can reach.
-- **Analysis:** Claude reads each document against the rubric (v0.1, 14 checks
-  across 7 categories) and must quote the document for every answer. Each quote
+- **Analysis:** Claude reads each document against the rubric (v0.3 with
+  scorer s3 since Nov 17, 14 checks across 7 categories) and must quote the
+  document for every answer. Each quote
   is checked against the stored text before it can count, and the document's
   own words are what gets stored and shown. Plain code then turns the findings
   into a rating per category (`scorer.py`, no model involved). A document whose
   text was already analyzed for another site reuses those findings instead of
-  calling the model again. LLM spend has a daily cap.
+  calling the model again. LLM spend has a daily cap, checked and reserved
+  in one step so two workers can't both spend the last of it.
 - **Job queue + worker:** new sites are queued and analyzed by a separate
-  worker service; cached sites are served straight from the database.
-- **Read API v1** (docs generated at `/v1/docs`):
+  worker service; cached sites are served straight from the database. The
+  worker also rechecks stored documents for changes on a schedule
+  (`RECHECK_DAYS`, detect-only, no model calls) and rates documents whose
+  analysis waited for the budget.
+- **Read API v1**, served by the Railway API service (docs generated at
+  `/v1/docs`). It is not open to the public: every route except `/healthz`
+  needs the shared password (HTTP basic auth). Visitors reach it through the
+  website's server, which adds the password; the only routes the website
+  passes straight through for browsers and the extension are
+  `imbroglio.io/api/v1/lookup/{prefix}` and `imbroglio.io/api/v1/requests/{id}`.
   - `GET /v1/sites/{domain}`: documents, scorecard with quotes, analysis in
     progress, state
   - `POST /v1/requests` + `GET /v1/requests/{id}`: ask for an analysis and
-    follow it (per-client rate limit and a daily cap)
+    follow it (per-client rate limits and a daily cap)
+  - `POST /v1/reports`: report a wrong rating, quote, or document (rate limited)
+  - `GET /v1/sites`, `GET /v1/recent`: every rated site, and the latest ones
+  - `GET /v1/health`: queue, worker, recheck and budget numbers for the
+    health watch (`.github/workflows/health.yml`), counts only
   - `GET /v1/lookup/{prefix}`: look a site up by a prefix of `sha256(domain)`,
     so clients like the extension never reveal which site a user is on. Each
     match carries its ratings (headline, tier and finding count per category)
@@ -72,10 +86,11 @@ Working:
 
 Not built yet:
 
-- rubric v0.2 and scorer s2 (chosen, see [docs/rubric.md](docs/rubric.md)), then rubric v1
+- rubric v1.0 (drafted, see [docs/rubric-v1.md](docs/rubric-v1.md))
 - the classifier in the live pipeline, clause retrieval, confidence calibration
-- daily change monitor and change feed (versions are already hashed and stored)
-- ToS;DR comparison, request voting, run-to-run consistency measurement
+- a public change feed (rechecks already detect and store changes), and
+  re-rating a policy that changed (`cli extract` does it by hand)
+- ToS;DR comparison, request voting
 
 ## How it fits together
 
@@ -105,7 +120,7 @@ The web service never fetches a website or runs a browser; only workers do.
 | `pipeline/spike_a/`, `spike_b/` | Early feasibility spikes |
 | `web/` | Next.js website |
 | `extension/` | Chrome extension: ratings for the site you're on |
-| `docs/` | Rubric calibration report; evaluation reports later |
+| `docs/` | Rubric spec, measured accuracy, calibration report, design changes ([index](docs/README.md)) |
 
 ## Setup
 
@@ -143,6 +158,28 @@ python -m imbroglio.cli report
 # Queue new sites for the production worker (crawls nothing locally; batch
 # jobs wait behind every visitor request). Try --dry-run first.
 python -m imbroglio.cli enqueue seeds/tosdr_rated.csv --limit 100
+
+# Rate stored documents that have no findings under RUBRIC_VERSION yet. Skips
+# held documents, text too long for one call, and documents that already
+# failed twice; --force reads documents again even if they have findings
+python -m imbroglio.cli extract --all --limit 50
+python -m imbroglio.cli extract tiktok.com reddit.com
+
+# Fetch stored documents again and record which changed (no model calls)
+python -m imbroglio.cli recheck --dry-run --limit 20
+
+# Problem reports from readers, and marking one reviewed
+python -m imbroglio.cli reports
+python -m imbroglio.cli reports --mark 12 withdrawn --note "quote not in document"
+
+# Hold a stored document that is the wrong page: kept, but never shown,
+# rated or rechecked. `held` lists them, `unhold` lifts one
+python -m imbroglio.cli hold coinbase.com terms --reason "promo help article, not the terms"
+python -m imbroglio.cli held
+
+# Which rows of the scores table are from an older scorer. Read-only: the
+# ratings are scored from findings when asked, so nothing reads that table
+python -m imbroglio.cli scores-table
 
 # A policy you fetched by hand, for a site whose bot protection blocks the
 # crawler: save the page (Ctrl+S, HTML or text), then (--analyze rates it now)
@@ -212,7 +249,7 @@ push to `main`:
 
 | Service | Start command | Notes |
 | --- | --- | --- |
-| `pipeline` (web) | default (`python demo/app.py`) | public URL, health check `/healthz`, `EMBEDDED_WORKER=0` |
+| `pipeline` (web) | default (`python demo/app.py`) | the API service: public URL behind basic auth, health check `/healthz`, `EMBEDDED_WORKER=0` |
 | `worker` | `python -m imbroglio.worker` | no public URL; runs Chromium |
 
 | Variable | Purpose |
@@ -226,20 +263,26 @@ push to `main`:
 | `REQUESTS_PER_HOUR` | Analysis requests allowed per client per hour (default 30) |
 | `LOOKUPS_PER_HOUR` | Hash-prefix lookups allowed per client per hour (default 600) |
 | `DAILY_REQUEST_CAP` | Analysis requests accepted per 24 hours, all clients (default 300) |
-| `REQUESTS_PER_DAY` | Analysis requests one client may make per 24 hours (default 60; an IPv6 client counts as its /64) |
+| `REQUESTS_PER_DAY` | Analysis requests one client may make per 24 hours (default 60; an IPv6 client counts as its /48 here, and as its /64 for the hourly limits) |
+| `REPORTS_PER_HOUR`, `REPORTS_PER_DAY` | Problem reports allowed per client per hour (default 5) and in all per 24 hours (default 200) (web) |
+| `NEGATIVE_TTL_DAYS` | How long "no policy found" is remembered before a new request crawls the site again (default 7) (web) |
 | `SITE_REQUESTS_PER_DAY` | New analysis requests per registrable domain and its subdomains per 24 hours, all clients (default 10) (web) |
 | `CLIENT_IP_HEADER` | Header the platform sets with the caller's real address, used for the per-client limit. Set to `x-real-ip` on Railway (web). Empty means the connection's address |
 | `WEB_CLIENT_KEY` | Shared secret, 32+ random characters. Lets the website pass on each visitor's address so visitors get their own limit. Must match `IMBROGLIO_WEB_KEY` on Vercel (web) |
 | `ANTHROPIC_API_KEY` | Turns on LLM analysis (worker) |
+| `EXTRACTION_ENABLED` | `0` turns LLM analysis off even with a key (default `1`) (worker) |
 | `EXTRACTION_MODEL` | Model that reads the documents, default `claude-sonnet-5` (worker) |
 | `EXTRACTION_DAILY_BUDGET_USD` | LLM spend allowed per 24 hours, default 5 (worker) |
 | `BACKLOG_BUDGET_SHARE` | Share of that budget the hourly pass may spend on stored documents still waiting for analysis, default 0.5 (worker) |
 | `JOB_TIME_LIMIT` | Seconds one request may run, crawl and analysis together, before it is marked failed (default 600) (worker) |
-| `RECHECK_DAYS` | How often each stored document is fetched again to look for changes, in days (default 7; 30 for monthly; 0 turns it off). Detect-only, no model calls (worker) |
+| `RECHECK_DAYS` | How often each stored document is fetched again to look for changes, in days (default 7; 30 for monthly; 0 turns it off). Detect-only, no model calls. Set the same value on both services: the worker schedules the rechecks, and the web service's health watch uses it to tell overdue documents from a quiet day |
 | `RECHECK_BATCH` | Documents rechecked per hourly pass, one at a time (default 100) (worker) |
-| `RUBRIC_VERSION` | Rubric used for new analyses and for the ratings shown, default `v0.1`. `v0.2` switches to scorer s2 (set it on both services) |
+| `RUBRIC_VERSION` | Rubric used for new analyses and for the ratings shown. The code's default is still `v0.1`; production runs `v0.3`, which uses scorer s3. Set it on both services, and in your shell for CLI runs against production, or the ratings don't show |
 
-Security: every route except `/healthz` requires the password; outbound fetches
+Security: every route of the API service except `/healthz` requires the
+password, `/v1/docs` included. The website holds the password on its server
+(`IMBROGLIO_API_PASSWORD` on Vercel) and only passes the lookup and
+request-status routes through to browsers; outbound fetches
 refuse private, loopback and cloud-metadata addresses, including via redirects
 and in-browser requests (`pipeline/imbroglio/netguard.py`); Chromium runs as a
 non-root user in the worker only. The rate limit never trusts a caller's own

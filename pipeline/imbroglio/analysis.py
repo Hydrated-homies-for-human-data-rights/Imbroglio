@@ -11,7 +11,9 @@ preference, cheapest first:
   3. otherwise one LLM extraction call, if the daily budget allows
 
 Every call is recorded in extraction_runs; findings and scores are written in
-the same transaction so a scorecard is never half-updated.
+the same transaction so a scorecard is never half-updated. The row is written
+before the call, as a reservation against the daily budget (_reserve), so two
+workers can't both pass the budget check and then both spend.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ EXTRACTION_MODEL = os.environ.get("EXTRACTION_MODEL", "claude-sonnet-5")
 # reached, crawling continues but analysis waits; the Console spend limit is
 # the second, independent backstop.
 DAILY_BUDGET_USD = float(os.environ.get("EXTRACTION_DAILY_BUDGET_USD", "5"))
+_BUDGET_LOCK = 0x1B0C_0012  # check-and-reserve on the budget (recheck ..10, backlog ..11)
 
 
 def extraction_enabled() -> bool:
@@ -65,6 +68,9 @@ def _reusable_version(conn, version_id: int, rubric_version: str) -> int | None:
 
 def _write_scores(conn, version_id: int, rubric_version: str) -> dict[str, str]:
     """A withdrawn finding is left out, as if the model had never given it."""
+    # A record of the tiers at analysis time, keyed by scorer version. Nothing
+    # reads it back: every public answer is scored from findings when asked,
+    # so rows from an older scorer stay behind unread (`cli scores-table`).
     rubric = load(rubric_version)
     rows = conn.execute("""SELECT check_id, status, verified FROM findings
                            WHERE version_id = %s AND rubric_version = %s AND withdrawn_at IS NULL""",
@@ -124,6 +130,63 @@ def _copy_findings(conn, source_version: int, version_id: int, rubric_version: s
     )
 
 
+def _reserve(conn, version_id: int, rubric_version: str, model: str) -> tuple[int | None, float]:
+    """Check the daily budget and take a place in it in one step. Returns
+    (run_id, spent before), run_id None when the budget is reached.
+
+    The check and the reservation happen under one advisory lock, so callers
+    running at once (worker threads, a second worker, `cli extract
+    --workers`) take turns: each sees what the others reserved. The
+    reservation is an extraction_runs row with status 'running' and the
+    average cost of a call so far; _record_run replaces it with the real
+    numbers when the call returns. A process that dies mid-call leaves its
+    reservation in place, which only errs on the side of spending less.
+    Commits."""
+    from .llm_extract import ALIASES
+
+    conn.commit()  # the lock is per transaction, so start a fresh one
+    conn.execute("SELECT pg_advisory_xact_lock(%s)", (_BUDGET_LOCK,))
+    spent = spent_last_24h(conn)
+    if spent >= DAILY_BUDGET_USD:
+        conn.commit()
+        return None, spent
+    run_id = conn.execute(
+        """INSERT INTO extraction_runs (version_id, rubric_version, model, status, cost_usd)
+           VALUES (%s, %s, %s, 'running', %s) RETURNING id""",
+        (version_id, rubric_version, ALIASES.get(model, model), average_cost(conn)),
+    ).fetchone()[0]
+    conn.commit()  # releases the lock with the reservation visible to everyone
+    return run_id, spent
+
+
+def _record_run(conn, run_id: int, ex: Extraction) -> None:
+    """Replace a reservation with what the call really did and cost."""
+    conn.execute(
+        """UPDATE extraction_runs SET model = %s, status = %s, stop_reason = %s, input_tokens = %s,
+               output_tokens = %s, cache_read_tokens = %s, cost_usd = %s, seconds = %s, error = %s
+           WHERE id = %s""",
+        (ex.model, ex.status, ex.stop_reason, ex.input_tokens, ex.output_tokens,
+         ex.cache_read_tokens, ex.cost_usd, ex.seconds, ex.error, run_id),
+    )
+
+
+def _extract_reserved(conn, run_id: int, text: str, rubric, model: str) -> Extraction:
+    """One extraction call against a reservation. If the call itself raises
+    (extract() turns API errors into a status, so this is a bug), the
+    reservation is marked failed and keeps its estimated cost."""
+    try:
+        return extract(text, rubric, model)
+    except Exception:
+        try:
+            conn.rollback()
+            conn.execute("UPDATE extraction_runs SET status = 'error', error = 'crashed' WHERE id = %s",
+                         (run_id,))
+            conn.commit()
+        except Exception:
+            pass  # the reservation stays 'running', which still counts against the budget
+        raise
+
+
 def _held(conn, version_id: int) -> bool:
     row = conn.execute(
         """SELECT d.held_reason IS NOT NULL FROM document_versions v
@@ -132,8 +195,12 @@ def _held(conn, version_id: int) -> bool:
 
 
 def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = False,
-                    model: str | None = None, rubric_version: str | None = None) -> str:
-    """Returns what happened: done-already | reused | analyzed | held | skipped:<why> | failed:<why>."""
+                    model: str | None = None, rubric_version: str | None = None,
+                    cancel=None) -> str:
+    """Returns what happened: done-already | reused | analyzed | held | skipped:<why> | failed:<why>.
+
+    `cancel` (a threading.Event) is the worker's way to stop a job it gave
+    up on: once set, no new model call starts."""
     rubric_version = rubric_version or RUBRIC_VERSION
     # A held document is the wrong page: rating it would only cost money and
     # put a wrong rating in the database. Checked before anything, force too.
@@ -152,8 +219,11 @@ def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = 
 
     if not extraction_enabled():
         return "skipped:extraction disabled or no API key"
-    spent = spent_last_24h(conn)
-    if spent >= DAILY_BUDGET_USD:
+    if cancel is not None and cancel.is_set():
+        return "skipped:cancelled"
+    model = model or EXTRACTION_MODEL
+    run_id, spent = _reserve(conn, version_id, rubric_version, model)
+    if run_id is None:
         # Progress lines are public (GET /v1/requests/{id}); amounts stay in the server log.
         log.info("analysis paused: daily limit reached, it will finish later")
         log.info("analysis: daily LLM budget reached ($%.2f of $%.2f), version %d waits",
@@ -163,16 +233,9 @@ def ensure_analyzed(conn: psycopg.Connection, version_id: int, *, force: bool = 
     text = conn.execute("SELECT normalized_text FROM document_versions WHERE id = %s",
                         (version_id,)).fetchone()[0]
     rubric = load(rubric_version)
-    log.info("analysis: reading the document with %s (%d checks)", model or EXTRACTION_MODEL,
-             len(rubric.checks))
-    ex = extract(text, rubric, model or EXTRACTION_MODEL)
-    run_id = conn.execute(
-        """INSERT INTO extraction_runs (version_id, rubric_version, model, status, stop_reason,
-               input_tokens, output_tokens, cache_read_tokens, cost_usd, seconds, error)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-        (version_id, rubric_version, ex.model, ex.status, ex.stop_reason, ex.input_tokens,
-         ex.output_tokens, ex.cache_read_tokens, ex.cost_usd, ex.seconds, ex.error),
-    ).fetchone()[0]
+    log.info("analysis: reading the document with %s (%d checks)", model, len(rubric.checks))
+    ex = _extract_reserved(conn, run_id, text, rubric, model)
+    _record_run(conn, run_id, ex)
     if ex.status != "ok":
         conn.commit()
         log.info("analysis failed, we'll retry")
@@ -199,6 +262,28 @@ BACKLOG_BATCH = 20  # documents per hourly pass at most
 _BACKLOG_LOCK = 0x1B0C_0011  # one backlog pass at a time across workers (recheck uses ..10)
 
 
+def worth_trying_sql(version_col: str, *, count_tries: bool = True) -> str:
+    """SQL condition: the version in `version_col` can still be read by the
+    model. It fits in one call (MAX_DOCUMENT_CHARS; longer text is refused
+    before any call) and, with `count_tries`, hasn't used up
+    MAX_ANALYSIS_TRIES under the rubric. Takes the named parameters from
+    worth_trying_params. Shared by the worker's backlog and `cli extract`, so
+    neither spends its slots on documents that can never succeed."""
+    cond = (f"(SELECT length(t.normalized_text) FROM document_versions t WHERE t.id = {version_col})"
+            " <= %(max_chars)s")
+    if count_tries:
+        cond += (f" AND (SELECT count(*) FROM extraction_runs r WHERE r.version_id = {version_col}"
+                 " AND r.rubric_version = %(rubric)s) < %(tries)s")
+    return cond
+
+
+def worth_trying_params(rubric_version: str | None = None) -> dict:
+    from .llm_extract import MAX_DOCUMENT_CHARS
+
+    return {"max_chars": MAX_DOCUMENT_CHARS, "rubric": rubric_version or RUBRIC_VERSION,
+            "tries": MAX_ANALYSIS_TRIES}
+
+
 def pending_versions(conn: psycopg.Connection, domain: str | None = None,
                      limit: int | None = None, rubric_version: str | None = None) -> list[int]:
     """Newest stored version of each document that has never been rated under
@@ -207,9 +292,10 @@ def pending_versions(conn: psycopg.Connection, domain: str | None = None,
     budget, extraction off) or failed. A document that was rated and has
     changed since is left alone: rechecks only detect changes (recheck.py),
     and re-analyzing changed policies is a separate, deliberate spend.
-    Held documents are never pending. `domain` narrows it to one site."""
+    Held documents are never pending, and neither is text too long to read
+    (worth_trying_sql). `domain` narrows it to one site."""
     rows = conn.execute(
-        """WITH latest AS (
+        f"""WITH latest AS (
                SELECT DISTINCT ON (d.id) v.id AS version_id, d.id AS document_id, v.fetched_at,
                       d.valid_from
                FROM documents d JOIN services s ON s.id = d.service_id
@@ -222,12 +308,10 @@ def pending_versions(conn: psycopg.Connection, domain: str | None = None,
                              JOIN document_versions v2 ON v2.id = f.version_id
                              WHERE v2.document_id = l.document_id AND f.rubric_version = %(rubric)s
                                AND v2.fetched_at >= coalesce(l.valid_from, '-infinity'::timestamptz))
-             AND (SELECT count(*) FROM extraction_runs r
-                  WHERE r.version_id = l.version_id AND r.rubric_version = %(rubric)s) < %(tries)s
+             AND {worth_trying_sql("l.version_id")}
            ORDER BY l.fetched_at, l.version_id
            LIMIT %(limit)s""",
-        {"domain": domain, "rubric": rubric_version or RUBRIC_VERSION,
-         "tries": MAX_ANALYSIS_TRIES, "limit": limit},
+        {"domain": domain, "limit": limit, **worth_trying_params(rubric_version)},
     ).fetchall()
     return [r[0] for r in rows]
 
@@ -355,20 +439,15 @@ def reanalyze_checks(conn: psycopg.Connection, version_ids: list[int], rubric_ve
         return f"skipped:no {rubric_version} findings yet (run rebase-rubric first)"
     if not extraction_enabled():
         return "skipped:extraction disabled or no API key"
-    spent = spent_last_24h(conn)
-    if spent >= DAILY_BUDGET_USD:
+    model = model or EXTRACTION_MODEL
+    run_id, _ = _reserve(conn, first, rubric_version, model)
+    if run_id is None:
         return "skipped:daily budget reached"
 
     rubric = load(rubric_version)
     text = conn.execute("SELECT normalized_text FROM document_versions WHERE id = %s", (first,)).fetchone()[0]
-    ex = extract(text, rubric, model or EXTRACTION_MODEL)
-    run_id = conn.execute(
-        """INSERT INTO extraction_runs (version_id, rubric_version, model, status, stop_reason,
-               input_tokens, output_tokens, cache_read_tokens, cost_usd, seconds, error)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-        (first, rubric_version, ex.model, ex.status, ex.stop_reason, ex.input_tokens,
-         ex.output_tokens, ex.cache_read_tokens, ex.cost_usd, ex.seconds, ex.error),
-    ).fetchone()[0]
+    ex = _extract_reserved(conn, run_id, text, rubric, model)
+    _record_run(conn, run_id, ex)
     if ex.status != "ok":
         conn.commit()
         return f"failed:{ex.status}"
