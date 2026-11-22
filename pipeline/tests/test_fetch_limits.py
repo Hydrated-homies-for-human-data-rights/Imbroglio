@@ -91,7 +91,7 @@ def test_the_browser_refuses_a_redirect_to_a_private_address(monkeypatch):
 
 def test_a_report_page_link_to_another_site_is_dropped():
     assert api._site_page("//evil.example/x") is None
-    assert api._site_page("/\evil.example") is None
+    assert api._site_page("/\\evil.example") is None
     assert api._site_page("/site/notion.so") == "/site/notion.so"
     assert api._site_page("https://imbroglio.io/site/notion.so") == "https://imbroglio.io/site/notion.so"
 
@@ -99,3 +99,32 @@ def test_a_report_page_link_to_another_site_is_dropped():
 def test_requests_raise_too_large_as_a_request_error():
     # fetch_static treats it as permanent; other callers see an ordinary RequestException
     assert issubclass(fetch.TooLarge, requests.RequestException)
+
+
+def _text(monkeypatch, raw: bytes, ctype: str) -> str:
+    _serve(monkeypatch, _Body([raw], ctype=ctype))
+    html, status = fetch.fetch_static("https://site.example/")
+    assert status == "200"
+    return html
+
+
+def test_utf8_sent_without_a_charset_is_not_read_as_latin1(monkeypatch):
+    # bereal.com and two dozen others: "text/html" with no charset, UTF-8 body
+    raw = "<p>We don’t sell your data — café</p>".encode("utf-8")
+    assert _text(monkeypatch, raw, "text/html") == raw.decode("utf-8")
+
+
+def test_a_latin1_label_on_utf8_bytes_is_not_believed(monkeypatch):
+    raw = "<p>don’t</p>".encode("utf-8")
+    assert _text(monkeypatch, raw, "text/html; charset=ISO-8859-1") == "<p>don’t</p>"
+
+
+def test_real_windows_1252_still_decodes(monkeypatch):
+    raw = "<p>don’t café</p>".encode("cp1252")
+    assert _text(monkeypatch, raw, "text/html; charset=windows-1252") == "<p>don’t café</p>"
+
+
+def test_a_charset_named_in_the_page_counts(monkeypatch):
+    body = "<p>個人情報</p>"
+    raw = b'<html><head><meta charset="shift_jis"></head>' + body.encode("shift_jis")
+    assert _text(monkeypatch, raw, "text/html").endswith(body)
