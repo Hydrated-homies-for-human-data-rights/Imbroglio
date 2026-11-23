@@ -44,7 +44,7 @@ Private by design:
 • The extension never sends the name of the site you're on. It sends only the first three characters of a SHA-256 hash of it, which many sites share, and finds the right answer on your own computer
 • On a subdomain we haven't rated, such as mail.example.com, it sends one more three-character prefix, for example.com, so the main site's rating can show. Never more than two
 • Nothing is sent for localhost, IP addresses or names on your own network
-• What it remembers stays in your browser, filed under a key only your browser holds. Recent lookups are kept in memory for up to ten minutes and cleared when the browser closes
+• What it remembers stays in your browser, filed under a key only your browser holds. Recent lookups are kept in memory only, reused for up to ten minutes, and cleared when the browser closes
 
 Imbroglio is free and open source, built as a senior capstone project at Metropolitan State University of Denver. Ratings describe what the documents say, not a company's intentions, and are not legal advice.
 

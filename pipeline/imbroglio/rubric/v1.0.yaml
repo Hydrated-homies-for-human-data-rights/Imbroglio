@@ -214,7 +214,13 @@ checks:
       is deleted, or removal from one listing such as a directory, is not `no`:
       answer from what the document says about deleting the rest, or
       `not_disclosed` if it doesn't say. What is kept afterwards is the
-      kept_after_deletion question.
+      kept_after_deletion question. Public contributions, such as posts,
+      edits, edit history, code or an account name that stays attached to
+      them, are not `no` when they stay visible or can't be removed: that is
+      about public content, not the user's personal information as a whole.
+      Retaining information for legal, audit, regulatory or business reasons
+      after a deletion request is not `no`. Waiving deletion for one kind of
+      information is `no` only if it covers the user's information generally.
     statuses:
       all_users: {exposure: 0, meaning: "Any user can request deletion", plain: "Anyone can ask them to delete their information."}
       some_jurisdictions: {exposure: 1, concern: medium, meaning: "Deletion is offered only to residents of certain jurisdictions", plain: "Only people in some places, such as the EU or California, can ask them to delete their information."}
@@ -309,7 +315,11 @@ checks:
     guidance: >
       `no` only if the document says users will not be notified or disclaims
       any duty to notify them. If it doesn't mention notifying users of a
-      breach, answer `not_disclosed`.
+      breach, answer `not_disclosed`. Disclaiming liability or responsibility
+      for a breach (including a payment processor's breach) says nothing about
+      notice and is not `no`; neither is asking users to tell the company
+      about a breach they notice. `no` needs words about notifying users
+      themselves, such as "assumes no obligation to notify you".
     statuses:
       "yes": {exposure: 0, meaning: "The company commits to notifying users of breaches", plain: "They promise to tell you if your data is breached."}
       "no": {exposure: 1, concern: medium, meaning: "The document says users won't be notified or disclaims notification", plain: "They say they won't necessarily tell you if your data is breached."}

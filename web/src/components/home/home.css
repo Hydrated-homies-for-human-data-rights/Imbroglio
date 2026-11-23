@@ -13,6 +13,9 @@
   --rule: #dfe4ea;
   --pink: #f79ac0;
   --pink-deep: #e6739f;
+  /* pink text: --pink-deep's hue darkened to 4.5:1 on --paper; --pink-deep
+     stays for underlines, rules and fills, which aren't text */
+  --pink-ink: #d42669;
   /* focus rings and focused borders: --pink-deep's hue at 3:1 on --paper */
   --focus: #e25f91;
   --pin: #c0392b;
