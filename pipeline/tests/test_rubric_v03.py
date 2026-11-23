@@ -33,6 +33,24 @@ def test_as_long_as_necessary_is_shown_but_costs_nothing():
     assert sc.band == (60, 89)  # one medium concern: MODERATE under s3
 
 
+
+@pytest.mark.parametrize("version", ["v0.3", "v1.0"])
+@pytest.mark.parametrize("check_id, rule", [
+    # Nov 23, 2026 hand check: every live `no` for deletion was about public
+    # contributions or what is kept afterwards (wikipedia, statefarm)
+    ("deletion_on_request", "Public contributions, such as posts"),
+    ("deletion_on_request", "after a deletion request is not `no`"),
+    # and most `no` answers for breach notice were liability disclaimers
+    ("breach_notification", "Disclaiming liability or responsibility"),
+    ("breach_notification", "asking users to tell the company"),
+])
+def test_misread_no_answers_have_guidance_the_model_sees(version, check_id, rule):
+    from imbroglio.llm_extract import system_prompt
+    rubric = load(version)
+    guidance = " ".join(rubric.check(check_id).guidance.split())
+    assert rule in guidance
+    assert rule in " ".join(system_prompt(rubric).split())
+
 @pytest.mark.parametrize("answer, headline", [
     ("private_content", "EXTENSIVE"), ("private_content_opt_out", "MODERATE"),
     ("other_data", "MODERATE"), ("other_data_opt_out", "LIMITED"),
