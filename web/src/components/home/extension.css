@@ -1,0 +1,310 @@
+/* The extension page (app/extension/page.tsx): a poster headline with the
+   thread woven through it, the popup wrapped in thread, and privacy as a
+   torn ticket. Scoped under .xt; tokens come from home.css. */
+
+.xt .page-main {
+  max-width: 1168px;
+  padding: 56px 24px 72px;
+}
+
+/* ---- headline: two lines stretched to the full width ---- */
+.xt .xt-head {
+  margin: 0;
+}
+.xt .xt-head svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.xt .xt-head text {
+  font-family: var(--font-instrument), "Instrument Sans", system-ui, sans-serif;
+  font-weight: 700;
+  fill: var(--ink);
+}
+.xt .xt-head .l1 {
+  font-size: 174px;
+  letter-spacing: -8px;
+}
+.xt .xt-head .l2 {
+  font-size: 427px;
+  letter-spacing: -16px;
+}
+.xt .xt-head .thread {
+  fill: none;
+  stroke: var(--pink);
+  stroke-width: 12;
+  stroke-linecap: round;
+}
+.xt .xt-head .over {
+  stroke-dasharray: 170 200;
+  stroke-dashoffset: 40;
+}
+
+/* ---- the bar under it: what it is, the button, the stamp ---- */
+.xt .xt-bar {
+  margin-top: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 36px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+}
+.xt .xt-bar p {
+  margin: 0;
+  flex: 1 1 360px;
+  max-width: 34ch;
+  font-size: 22px;
+  line-height: 1.45;
+}
+.xt .xt-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 0 30px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.xt a.xt-install:hover,
+.xt a.xt-install:focus-visible {
+  background: #000;
+  box-shadow: inset 0 -3px 0 var(--pink);
+}
+.xt .xt-install small {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--pink);
+}
+.xt .xt-stamp {
+  flex: 0 0 auto;
+  width: 150px;
+  height: 150px;
+  transform: rotate(-12deg);
+}
+.xt .xt-stamp .outer {
+  fill: var(--pink);
+}
+.xt .xt-stamp .inner {
+  fill: #fff;
+}
+.xt .xt-stamp text {
+  font-family: var(--font-instrument), "Instrument Sans", system-ui, sans-serif;
+}
+.xt .xt-stamp .ring {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
+  font-size: 15.5px;
+  font-weight: 500;
+  letter-spacing: 2.6px;
+  fill: #321e28;
+}
+.xt .xt-stamp .ver {
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--muted);
+}
+.xt .xt-stamp .num {
+  font-size: 34px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+
+/* ---- the popup, wrapped in thread, and what it gives you ---- */
+.xt .xt-what {
+  padding-top: 80px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 56px 72px;
+  align-items: center;
+}
+.xt .xt-popup {
+  position: relative;
+  flex: 0 0 auto;
+  width: min(360px, 100%);
+  aspect-ratio: 504 / 756;
+}
+.xt .xt-popup img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  box-shadow: 0 24px 50px rgba(17, 37, 58, 0.18);
+}
+.xt .xt-popup svg {
+  position: absolute;
+  left: -11.1%;
+  top: -7.4%;
+  width: 122.2%;
+  height: 114.8%;
+  pointer-events: none;
+}
+.xt .xt-popup path {
+  fill: none;
+  stroke: var(--pink);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.xt .xt-lines {
+  flex: 1 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.xt .xt-lines h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.xt .xt-lines p {
+  margin: 0;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: clamp(32px, 4.6vw, 52px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+.xt .xt-lines .pink {
+  color: var(--pink-ink);
+}
+.xt .xt-lines .note {
+  border-bottom: 0;
+  padding-bottom: 0;
+  font-size: 24px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: #2b3e52;
+}
+
+/* ---- privacy: a ticket torn in two ---- */
+.xt .xt-private {
+  padding-top: 104px;
+}
+.xt .xt-private h2 {
+  margin: 0 0 24px;
+  font-size: clamp(32px, 4.6vw, 52px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+.xt .xt-ticket {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  background: var(--sheet);
+  border: 2px solid var(--ink);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.xt .xt-ticket > div {
+  padding: 32px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.xt .xt-ticket .ours {
+  justify-content: center;
+  background: var(--pink);
+  border-left: 3px dashed var(--ink);
+  color: #321e28;
+}
+.xt .xt-ticket .label {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.xt .xt-ticket .ours .label {
+  color: #321e28;
+}
+.xt .xt-ticket .big {
+  font-size: clamp(30px, 4.6vw, 52px);
+  overflow-wrap: anywhere;
+}
+.xt .xt-ticket .code {
+  font-size: 84px;
+  font-weight: 500;
+  line-height: 1;
+}
+.xt .xt-ticket .say {
+  font-size: 17px;
+  line-height: 1.55;
+  color: #2b3e52;
+}
+.xt .xt-ticket .ours .say {
+  color: #321e28;
+}
+.xt .xt-more {
+  margin: 16px 0 0;
+  font-size: 15px;
+}
+.xt .xt-more a {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .xt .page-main {
+    padding-top: 36px;
+  }
+  .xt .page-main {
+    padding-bottom: 48px;
+  }
+  .xt .xt-bar {
+    gap: 22px 16px;
+  }
+  .xt .xt-bar p {
+    font-size: 19px;
+  }
+  /* button and stamp share a row: the button's note drops under its label */
+  .xt .xt-install {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 26px;
+    min-height: 64px;
+  }
+  .xt .xt-stamp {
+    width: 100px;
+    height: 100px;
+  }
+  .xt .xt-what {
+    padding-top: 56px;
+  }
+  .xt .xt-popup {
+    margin: 0 auto;
+    width: min(300px, 86%);
+  }
+  .xt .xt-lines .note {
+    font-size: 20px;
+  }
+  .xt .xt-private {
+    padding-top: 72px;
+  }
+  .xt .xt-ticket {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .xt .xt-ticket > div {
+    padding: 24px 22px;
+  }
+  .xt .xt-ticket .ours {
+    border-left: 0;
+    border-top: 3px dashed var(--ink);
+  }
+  .xt .xt-ticket .code {
+    font-size: 64px;
+  }
+}
