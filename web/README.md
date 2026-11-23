@@ -34,6 +34,9 @@ Environment variables (set in Vercel → Project → Settings → Environment Va
 - `IMBROGLIO_WEB_KEY`: the same value as the API's `WEB_CLIENT_KEY`. It lets the site pass on
   each visitor's address, so the API's rate limit counts visitors one by one. Without it, every
   visitor shares this server's limit
+- `EXTENSION_STORE_URL`: optional, the extension's Chrome Web Store address (`https://chromewebstore.google.com/...`).
+  While it is unset, /extension shows "Add to Chrome" as "link coming soon". The page is built ahead of
+  time, so redeploy after setting it
 
 ## Link previews
 

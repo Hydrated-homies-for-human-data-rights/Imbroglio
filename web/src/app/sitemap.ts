@@ -7,7 +7,7 @@ import { SITE_URL } from "@/lib/links"
 // The editorial pages and every rated site's report, from the same list the
 // every-site page shows (GET /v1/sites) behind the same front-page gate. The
 // list is cached for an hour, so crawlers never wait on the API.
-const PAGES = ["/", "/how-we-score", "/learn", "/sites", "/research", "/about", "/privacy"]
+const PAGES = ["/", "/how-we-score", "/learn", "/sites", "/research", "/extension", "/about", "/privacy"]
 
 async function ratedReports(): Promise<{ domain: string; analyzed: string | null }[]> {
   "use cache"
