@@ -36,7 +36,7 @@ API = "https://imbroglio.io/api/v1/lookup/"
 def site_data(domain: str) -> dict:
     """What background.js's toSiteData() hands the popup, from a live lookup."""
     h = hashlib.sha256(domain.encode()).hexdigest()
-    req = urllib.request.Request(API + h[:5], headers={"Accept": "application/json",
+    req = urllib.request.Request(API + h[:3], headers={"Accept": "application/json",
                                                        "User-Agent": "imbroglio-store-assets"})
     entry = next(s for s in json.load(urllib.request.urlopen(req))["sites"] if s["hash"] == h)
     s = entry["scores"]
