@@ -1034,9 +1034,23 @@ class SearchResult(BaseModel):
                                                  "words when the rubric has them; null when nothing does")
 
 
+class SearchDeduction(BaseModel):
+    check_id: str
+    points: int = Field(description="Points this answer takes off the score")
+    text: str = Field(description="The answer in plain words")
+
+
+class SearchHit(SearchResult):
+    deductions: list[SearchDeduction] = Field(
+        description="Every answer that takes points off, biggest first; empty when nothing does "
+                    "or the site has no score")
+    band: tuple[int, int] | None = Field(
+        description="The score range a site with this rating is kept in; null when there is no score")
+
+
 class SearchResponse(BaseModel):
     query: str
-    results: list[SearchResult]
+    results: list[SearchHit]
     can_request: str | None = Field(
         description="When the query is a valid domain we have never seen: the domain to "
                     "offer for analysis (POST /v1/requests)")
@@ -1067,7 +1081,10 @@ def search_sites(q: str, response: Response, limit: int = 10):
     response.headers["Cache-Control"] = "private, max-age=30"
     return SearchResponse(
         query=q,
-        results=[_search_result(e) for e in hits],
+        results=[SearchHit(**_search_result(e).model_dump(), band=e.band,
+                           deductions=[SearchDeduction(check_id=c, points=p, text=s)
+                                       for c, p, s in e.deductions])
+                 for e in hits],
         can_request=as_domain if as_domain and as_domain not in known else None)
 
 

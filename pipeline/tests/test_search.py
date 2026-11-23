@@ -145,11 +145,21 @@ def test_search_and_recent_carry_the_score_and_biggest_reason(conn, monkeypatch)
     hit = client.get("/v1/search", params={"q": "aitrain.example"}).json()["results"][0]
     assert (hit["headline"], hit["score"]) == ("EXTENSIVE", 46)
     assert hit["reason"] == "They can use your private content, like messages, files or AI chats, to train AI."
+    # search alone carries every deduction, biggest first, and the rating's score range
+    assert [d["check_id"] for d in hit["deductions"]] == ["trains_ai_on_user_data", "shares_for_advertising"]
+    assert hit["deductions"][0]["text"] == hit["reason"]
+    assert hit["deductions"][0]["points"] >= hit["deductions"][1]["points"] > 0
+    assert hit["band"][0] <= hit["score"] <= hit["band"][1]
+    clean = client.get("/v1/search", params={"q": "older.example"}).json()["results"][0]
+    assert (clean["score"], clean["deductions"]) == (100, [])
+    thin = client.get("/v1/search", params={"q": "thin.example"}).json()["results"][0]
+    assert (thin["deductions"], thin["band"]) == ([], None)
 
     sites = client.get("/v1/recent", params={"limit": 5}).json()["sites"]
     assert [s["domain"] for s in sites] == ["thin.example", "aitrain.example", "older.example"]
     assert [(s["score"], s["reason"]) for s in sites] == [
         (None, None), (46, hit["reason"]), (100, None)]
+    assert all("deductions" not in s and "band" not in s for s in sites)
     assert client.get("/v1/recent", params={"limit": 1}).json()["sites"][0]["domain"] == "thin.example"
     search.clear_cache()
 
