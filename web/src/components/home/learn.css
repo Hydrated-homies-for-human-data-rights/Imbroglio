@@ -54,7 +54,7 @@
   margin-top: auto;
   font-size: 13px;
   font-weight: 600;
-  color: var(--pink-deep);
+  color: var(--pink-ink);
 }
 
 /* ---- contents beside the sections ---- */
@@ -82,7 +82,7 @@
   text-decoration: none;
 }
 .learn .l-contents a:hover {
-  color: var(--pink-deep);
+  color: var(--pink-ink);
 }
 .learn .l-main {
   display: flex;
@@ -183,7 +183,7 @@
   display: none;
 }
 .learn .l-topic summary:hover .l-topic-title {
-  color: var(--pink-deep);
+  color: var(--pink-ink);
 }
 .learn .l-topic-title {
   font-size: 16px;

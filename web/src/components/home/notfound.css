@@ -24,7 +24,7 @@
   text-underline-offset: 4px;
 }
 .notfound .nf-links a:hover {
-  color: var(--pink-deep);
+  color: var(--pink-ink);
   text-decoration-color: currentColor;
 }
 .notfound .loose {
