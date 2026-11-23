@@ -1,0 +1,306 @@
+/* The search page, best match first (SearchBest.tsx): the closest match as a
+   small report card with a length of thread down its edge, the other
+   matches as rows, then the request form. Scoped under .find. */
+
+.find .find-box {
+  flex: 1 1 280px;
+  max-width: 420px;
+  border-bottom-color: #000;
+}
+.find .find-box input {
+  font-size: 17px;
+}
+
+.find .page-main {
+  padding-top: 56px;
+}
+.find .eyebrow {
+  margin: 0 0 18px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.find .none h1 {
+  max-width: 22ch;
+}
+
+/* ---- the best match ---- */
+.find .best {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 32px 56px;
+  padding: 36px 40px 36px 60px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+}
+/* the thread down the card's left edge, and its pin */
+.find .best::before {
+  content: "";
+  position: absolute;
+  left: 26px;
+  top: 0;
+  bottom: 0;
+  width: 2.5px;
+  background: var(--pink);
+}
+.find .best::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  top: 46px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--pin);
+}
+.find .best-id {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.find .best h1 {
+  margin: 0;
+  font-size: clamp(34px, 4.4vw, 52px);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+.find .best .verdict.big {
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.find .best .verdict.big .score {
+  font-size: 30px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.find .meta {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.find .meta .changed {
+  color: var(--sev-severe);
+}
+
+.find .scorebar {
+  position: relative;
+  height: 30px;
+  max-width: 420px;
+}
+.find .scorebar .track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 2px;
+  background: var(--rule);
+}
+.find .scorebar .range {
+  position: absolute;
+  top: 10px;
+  height: 6px;
+  background: #c9d3dd;
+}
+.find .scorebar .tick {
+  position: absolute;
+  top: 4px;
+  width: 3px;
+  height: 20px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+.find .scorebar .end {
+  position: absolute;
+  top: 19px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.find .scorebar .lo {
+  left: 0;
+}
+.find .scorebar .hi {
+  right: 0;
+}
+
+.find .best-why {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.find .best-why h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.find .best-why ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.find .best-why li {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+.find .pts {
+  min-width: 34px;
+  font-size: 13px;
+  color: var(--sev-severe);
+}
+.find .said {
+  font-family: var(--font-newsreader), Newsreader, Georgia, serif;
+  font-style: italic;
+  font-size: 20px;
+  line-height: 1.35;
+}
+.find .cta {
+  align-self: flex-start;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 22px;
+  background: var(--ink);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+}
+.find .cta:hover,
+.find .cta:focus-visible {
+  background: #000;
+  box-shadow: inset 0 -3px 0 var(--pink);
+}
+
+/* ---- the other matches ---- */
+.find .also {
+  margin-top: 40px;
+}
+.find .also h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.find .also ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.find .also li {
+  border-bottom: 1px solid var(--rule);
+}
+.find .also a {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) auto;
+  gap: 6px 24px;
+  align-items: baseline;
+  padding: 16px 4px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.find .also .d {
+  font-size: 18px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.find .also .said {
+  font-size: 17px;
+  color: #2b3e52;
+}
+.find .also .v {
+  justify-self: end;
+}
+.find .also a:hover .d,
+.find .also a:focus-visible .d {
+  text-decoration: underline;
+  text-decoration-color: var(--pink);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* ---- ask for a site we haven't seen ---- */
+.find .ask {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px 48px;
+  margin-top: 48px;
+  padding: 28px 30px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+}
+.find .ask h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+.find .ask p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #2b3e52;
+}
+
+.find .masthead nav a {
+  white-space: nowrap;
+}
+/* with five links there is no room for the box beside them: it takes its
+   own row under the bar's first line */
+@media (max-width: 1120px) {
+  .find .masthead-inner {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .find .find-box {
+    order: 3;
+    flex-basis: 100%;
+    max-width: 560px;
+  }
+}
+
+@media (max-width: 880px) {
+  .find .page-main {
+    padding-top: 36px;
+  }
+  .find .best {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 28px 20px 28px 44px;
+  }
+  .find .best::before {
+    left: 18px;
+  }
+  .find .best-why .said {
+    font-size: 18px;
+  }
+  .find .best::after {
+    left: 14px;
+    top: 38px;
+  }
+  .find .also a {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .find .also .said {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .find .ask {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 22px 20px;
+  }
+}
+
+.find .ask a,
+.find .none a {
+  text-decoration: underline;
+  text-decoration-color: var(--pink-deep);
+  text-underline-offset: 3px;
+}
