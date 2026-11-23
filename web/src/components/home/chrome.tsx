@@ -50,13 +50,16 @@ export function SkipLink() {
   )
 }
 
-export function Masthead({ current }: { current?: string }) {
+// `search` puts a search box in the bar, between the wordmark and the
+// links (the search page keeps its query there).
+export function Masthead({ current, search }: { current?: string; search?: React.ReactNode }) {
   return (
     <>
     <SkipLink />
     <header className="masthead">
       <div className="masthead-inner">
         <Wordmark />
+        {search}
         <nav aria-label="Primary">
           {NAV.map((n) => (
             <Link key={n.href} href={n.href} aria-current={n.href === current ? "page" : undefined}>

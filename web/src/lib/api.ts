@@ -130,7 +130,14 @@ export type SearchResult = {
   reason?: string | null
 }
 
-export type SearchResponse = { query: string; results: SearchResult[]; can_request: string | null }
+// What /v1/search adds to each result: every answer that takes points off,
+// biggest first, and the score range the site's rating keeps it in.
+export type SearchHit = SearchResult & {
+  deductions?: { check_id: string; points: number; text: string }[]
+  band?: [number, number] | null
+}
+
+export type SearchResponse = { query: string; results: SearchHit[]; can_request: string | null }
 
 export type LearnTopic = {
   check_id: string
